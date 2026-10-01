@@ -118,6 +118,20 @@ describe("NewSessionScreen", () => {
     expect(checkbox("Kim")).not.toBeChecked();
   });
 
+  it("blocks Start until a Club (or No club) is chosen when there are several Clubs", async () => {
+    setClubs([riverside, beacon]);
+    renderScreen();
+    const u = user();
+    for (const name of ["Ann", "Bo", "Cy", "Di"]) await addGuest(name);
+    expect(startButton()).toBeDisabled();
+    expect(screen.getByText("Choose a club", { selector: "p" })).toBeInTheDocument();
+    expect(screen.queryByText("Add at least 4 players")).not.toBeInTheDocument();
+
+    await u.selectOptions(clubSelect(), "none");
+    expect(startButton()).toBeEnabled();
+    expect(screen.queryByText("Choose a club", { selector: "p" })).not.toBeInTheDocument();
+  });
+
   it("selects all / none and shows the count", async () => {
     setClubs([riverside]);
     renderScreen();

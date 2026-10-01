@@ -79,6 +79,29 @@ test.describe("Club selection", () => {
     await expect(page.getByRole("option", { name: "Choose a club" })).toHaveCount(0);
   });
 
+  test("several Clubs: Start is blocked with 'Choose a club' until a choice is made", async ({
+    page,
+  }) => {
+    await seedStorage(page, {
+      clubs: [
+        friday(),
+        makeClub({ name: "Alpha Club", players: [makeClubPlayer({ name: "Xena" })] }),
+      ],
+    });
+    await page.goto("/session/new");
+    await addGuests(page, ["Ann", "Bo", "Cy", "Di"]);
+    await expect(page.getByText("4 players selected")).toBeVisible();
+
+    await expect(startButton(page)).toBeDisabled();
+    await expect(page.locator("p", { hasText: /^Choose a club$/ })).toBeVisible();
+
+    await page.getByRole("combobox", { name: "Club" }).selectOption("none");
+    await expect(startButton(page)).toBeEnabled();
+    await startButton(page).click();
+    await expect(page).toHaveURL(/\/session$/);
+    expect((await readStoredData<Session>(page, "session"))!.clubId).toBeNull();
+  });
+
   test("Select all / none toggles; changing Club clears checked players but keeps Guests", async ({
     page,
   }) => {

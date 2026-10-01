@@ -69,13 +69,16 @@ export function NewSessionScreen() {
   );
 
   const nameMissing = normalizeName(name) === "";
-  const blocker = nameMissing
-    ? "Enter a session name"
-    : playerCount < MIN_PLAYERS
-      ? `Add at least ${MIN_PLAYERS} players`
-      : clashes.size > 0
-        ? "Two players have the same name"
-        : null;
+  const blocker =
+    clubChoice === NO_CHOICE
+      ? "Choose a club"
+      : nameMissing
+        ? "Enter a session name"
+        : playerCount < MIN_PLAYERS
+          ? `Add at least ${MIN_PLAYERS} players`
+          : clashes.size > 0
+            ? "Two players have the same name"
+            : null;
   const canStart = blocker === null;
 
   function chooseClub(next: string) {
