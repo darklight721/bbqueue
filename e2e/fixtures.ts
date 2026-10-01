@@ -7,6 +7,7 @@ import type {
   Session,
   SessionPlayer,
   SessionSummary,
+  TopWinner,
 } from "../src/domain/types.ts";
 
 /** Mirrors `STORAGE_KEYS` in src/storage/storage.ts (kept literal so e2e never imports app runtime code). */
@@ -189,4 +190,8 @@ export function makeMidMatchSession(options: {
     ],
     ...options.overrides,
   });
+}
+
+export function makeTopWinner(overrides: Partial<TopWinner> = {}): TopWinner {
+  return { place: 1, name: "Ana", skill: "intermediate", wins: 1, played: 1, ...overrides };
 }

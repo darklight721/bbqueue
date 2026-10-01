@@ -342,6 +342,10 @@ test.describe("Jump bar", () => {
     const heading = page.getByRole("heading", { level: 2, name: "History" });
     await nav.getByRole("button", { name: "History" }).click();
     await expect(heading).toBeInViewport();
+    await expect(nav.getByRole("button", { name: "History" })).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
     await expect
       .poll(async () => {
         const navBox = (await nav.boundingBox())!;
