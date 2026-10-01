@@ -243,6 +243,7 @@ describe("Section jump bar", () => {
       "Courts",
       "Queues",
       "Players",
+      "History",
     ]);
     expect(nav.getByRole("button", { name: "Courts" })).toHaveAttribute("aria-current", "true");
   });

@@ -40,15 +40,15 @@ export function SectionJumpBar({ targets }: { targets: readonly JumpTarget[] }) 
       aria-label="Sections"
       className="sticky top-[calc(4rem+env(safe-area-inset-top))] z-10 -mx-4 -mt-5 border-b border-base-300 bg-base-100/95 px-4 py-1.5 backdrop-blur"
     >
-      <ul className="flex gap-2 overflow-x-auto">
+      <ul className="flex gap-1 overflow-x-auto sm:gap-2">
         {targets.map((target) => {
           const current = target.id === active;
           return (
-            <li key={target.id}>
+            <li key={target.id} className="flex-1 sm:flex-none">
               <button
                 type="button"
                 aria-current={current ? "true" : undefined}
-                className={`btn h-11 min-h-11 rounded-full px-5 ${
+                className={`btn h-11 min-h-11 w-full rounded-full px-3 sm:px-5 ${
                   current ? "btn-secondary" : "btn-ghost text-base-content/70"
                 }`}
                 onClick={() => {

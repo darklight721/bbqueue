@@ -1,6 +1,6 @@
 import { Redirect } from "wouter";
 import { Screen } from "../../components/Screen.tsx";
-import { useSession } from "../../storage/store.ts";
+import { useSession, useSummary } from "../../storage/store.ts";
 import { CourtsSection } from "./courts/CourtsSection.tsx";
 import { EndSessionSection } from "./end/EndSessionSection.tsx";
 import { HistorySection } from "./history/HistorySection.tsx";
@@ -9,13 +9,12 @@ import { QueuesSection } from "./queues/QueuesSection.tsx";
 import { SECTION_SCROLL_MARGIN, SectionJumpBar, type JumpTarget } from "./SectionJumpBar.tsx";
 import { SessionProvider } from "./SessionProvider.tsx";
 
-/**
- * Sections shown in the jump bar, in screen order. Add History (ticket 04) once it renders.
- */
+/** Sections shown in the jump bar, in screen order. */
 const JUMP_TARGETS: readonly JumpTarget[] = [
   { id: "courts", label: "Courts" },
   { id: "queues", label: "Queues" },
   { id: "players", label: "Players" },
+  { id: "history", label: "History" },
 ];
 
 /**
@@ -24,7 +23,9 @@ const JUMP_TARGETS: readonly JumpTarget[] = [
  */
 export function SessionScreen() {
   const session = useSession();
-  if (!session) return <Redirect to="/" replace />;
+  const summary = useSummary();
+  // Safety net: just after End session, go to the summary rather than Home.
+  if (!session) return <Redirect to={summary ? "/session/summary" : "/"} replace />;
 
   return (
     <SessionProvider session={session}>
@@ -52,7 +53,9 @@ export function SessionScreen() {
           <div id="players" className={SECTION_SCROLL_MARGIN}>
             <PlayersSection />
           </div>
-          <HistorySection />
+          <div id="history" className={SECTION_SCROLL_MARGIN}>
+            <HistorySection />
+          </div>
           <EndSessionSection />
         </div>
       </Screen>
