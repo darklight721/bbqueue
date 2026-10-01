@@ -3,6 +3,7 @@ import type {
   Club,
   ClubPlayer,
   Court,
+  Match,
   Session,
   SessionPlayer,
   SessionSummary,
@@ -133,4 +134,59 @@ export async function readStored(page: Page, name: StorageKey): Promise<unknown>
 export async function readStoredData<T>(page: Page, name: StorageKey): Promise<T | null> {
   const envelope = (await readStored(page, name)) as { data: T } | null;
   return envelope === null ? null : envelope.data;
+}
+
+/**
+ * Session mid-match: Court 1 is Busy (p1+p2 vs p3+p4, started at `startedAt`),
+ * Court 2 is Idle holding a Lineup (p5+p6 vs p7+p8). Player names default to Ana…Hal.
+ */
+export function makeMidMatchSession(options: {
+  startedAt: number;
+  names?: string[];
+  overrides?: Partial<Session>;
+}): Session {
+  const names = options.names ?? ["Ana", "Ben", "Cat", "Dan", "Eve", "Fay", "Gus", "Hal"];
+  const players = names.map((name) => makeSessionPlayer({ name }));
+  const ids = players.map((player) => player.id);
+  const [a, b, c, d, e, f, g, h] = ids as [
+    string,
+    string,
+    string,
+    string,
+    string,
+    string,
+    string,
+    string,
+  ];
+  const match: Match = {
+    id: nextId("match"),
+    number: null,
+    courtNumber: 1,
+    teams: [
+      [a, b],
+      [c, d],
+    ],
+    freeAtStart: [e, f, g, h],
+    startedAt: options.startedAt,
+    endedAt: null,
+    score: null,
+    status: "active",
+  };
+  return makeSession({
+    name: "Mid match",
+    players,
+    matches: [match],
+    courts: [
+      makeCourt(1, { activeMatchId: match.id }),
+      makeCourt(2, {
+        lineup: {
+          teams: [
+            [e, f],
+            [g, h],
+          ],
+        },
+      }),
+    ],
+    ...options.overrides,
+  });
 }

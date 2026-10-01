@@ -21,9 +21,7 @@ test.describe("Home", () => {
 
     await resume.click();
     await expect(page).toHaveURL(/\/session$/);
-    await expect(
-      page.getByRole("heading", { level: 1, name: "Session", exact: true }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Friday smash" })).toBeVisible();
   });
 
   test("New session link navigates and Back returns Home", async ({ page }) => {

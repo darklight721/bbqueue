@@ -148,9 +148,7 @@ test.describe("Starting a session", () => {
 
     await startButton(page).click();
     await expect(page).toHaveURL(/\/session$/);
-    await expect(
-      page.getByRole("heading", { level: 1, name: "Session", exact: true }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "League night" })).toBeVisible();
 
     const session = await readStoredData<Session>(page, "session");
     expect(session).not.toBeNull();
