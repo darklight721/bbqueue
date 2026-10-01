@@ -239,7 +239,11 @@ describe("Section jump bar", () => {
   it("offers shortcuts to the sections", () => {
     renderSession(makeSession({ players: 4 }));
     const nav = within(screen.getByRole("navigation", { name: "Sections" }));
-    expect(nav.getAllByRole("button").map((b) => b.textContent)).toEqual(["Courts", "Players"]);
+    expect(nav.getAllByRole("button").map((b) => b.textContent)).toEqual([
+      "Courts",
+      "Queues",
+      "Players",
+    ]);
     expect(nav.getByRole("button", { name: "Courts" })).toHaveAttribute("aria-current", "true");
   });
 });

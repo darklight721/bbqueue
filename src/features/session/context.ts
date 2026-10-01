@@ -8,6 +8,9 @@ export interface SessionView {
   /** Every player (including removed) → stats, from `allPlayerStats`. */
   stats: ReadonlyMap<string, PlayerStats>;
   playerById: ReadonlyMap<string, SessionPlayer>;
+  /** The time `stats` were computed for (latest timestamp in the Session). Pass as `now` to
+   *  other engine read helpers (e.g. queueWarnings) so they agree with `stats`. */
+  asOf: number;
 }
 
 export type EngineOperation = (session: Session, ctx: EngineContext) => Result<string>;

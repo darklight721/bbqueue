@@ -31,16 +31,17 @@ function lastChangeAt(session: Session): number {
 }
 
 export function SessionProvider({ session, children }: { session: Session; children: ReactNode }) {
-  const view = useMemo<SessionView>(
-    () => ({
+  const view = useMemo<SessionView>(() => {
+    const asOf = lastChangeAt(session);
+    return {
       session,
+      asOf,
       // Computed once per Session change (not per tick). Display fields — matchesPlayed,
       // status, courtNumber — don't depend on time; `wait`/`recent` are as of the last change.
-      stats: allPlayerStats(session, lastChangeAt(session)),
+      stats: allPlayerStats(session, asOf),
       playerById: new Map(session.players.map((player) => [player.id, player])),
-    }),
-    [session],
-  );
+    };
+  }, [session]);
 
   const [notice, setNotice] = useState<{ id: number; text: string } | null>(null);
   const counter = useRef(0);

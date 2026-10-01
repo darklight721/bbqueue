@@ -12,6 +12,7 @@ const REASON_MESSAGES: Record<string, string> = {
   "queue-incomplete": "Fill all four places in the queue first.",
   "player-on-court": "A player in this queue is still on court.",
   "player-not-found": "That player is no longer in the session.",
+  "duplicate-in-queue": "That player is already in this queue.",
   "player-in-active-match": "End or remove their match first.",
   "name-required": "Enter a name.",
   "duplicate-name": "That name is already used in this session.",

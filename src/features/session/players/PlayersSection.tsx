@@ -99,7 +99,9 @@ function PlayerRow({ player, onRemove }: { player: SessionPlayer; onRemove: () =
       <button
         type="button"
         className={`btn btn-ghost btn-square shrink-0 ${
-          onCourt ? "text-base-content/30 pointer-events-auto!" : "text-base-content/70 hover:text-error"
+          onCourt
+            ? "text-base-content/30 pointer-events-auto!"
+            : "text-base-content/70 hover:text-error"
         }`}
         aria-label={`Remove ${player.name}`}
         aria-disabled={onCourt ? true : undefined}

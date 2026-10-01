@@ -10,11 +10,11 @@ import { SECTION_SCROLL_MARGIN, SectionJumpBar, type JumpTarget } from "./Sectio
 import { SessionProvider } from "./SessionProvider.tsx";
 
 /**
- * Sections shown in the jump bar. Add Queues (ticket 03) and History (ticket 04)
- * here once they render something, in screen order.
+ * Sections shown in the jump bar, in screen order. Add History (ticket 04) once it renders.
  */
 const JUMP_TARGETS: readonly JumpTarget[] = [
   { id: "courts", label: "Courts" },
+  { id: "queues", label: "Queues" },
   { id: "players", label: "Players" },
 ];
 
@@ -46,7 +46,9 @@ export function SessionScreen() {
           <div id="courts" className={SECTION_SCROLL_MARGIN}>
             <CourtsSection />
           </div>
-          <QueuesSection />
+          <div id="queues" className={SECTION_SCROLL_MARGIN}>
+            <QueuesSection />
+          </div>
           <div id="players" className={SECTION_SCROLL_MARGIN}>
             <PlayersSection />
           </div>
