@@ -1,11 +1,10 @@
 import type { Court, Lineup, Session, Team } from "../types.ts";
 import { SKILL_VALUE } from "../types.ts";
 import type { EngineContext } from "./context.ts";
-import { randomInt } from "./rng.ts";
 import { buildHistory, matchPlayerIds, type History } from "./stats.ts";
 
-/** Maximum number of player sets scored when the tie pool is large. */
-const MAX_COMBINATIONS = 2000;
+/** The tie pool is cut to this many longest-waiting players before enumerating combinations. */
+const MAX_POOL = 12;
 
 export type Split = [Team, Team];
 type Key = readonly [rest: number, recent: number, total: number];
@@ -68,7 +67,8 @@ export function candidatesFor(session: Session, courtId: string): string[] {
 
 export function rankKey(env: Env, id: string): Key {
   const h = env.history.byPlayer.get(id)!;
-  return [h.streak >= 2 ? 1 : 0, h.recent, h.total];
+  // Graded Rest: a Streak of 1 is fine, longer Streaks are progressively rested first.
+  return [Math.max(0, h.streak - 1), h.recent, h.total];
 }
 
 export function compareNumbers(a: readonly number[], b: readonly number[]): number {
@@ -99,53 +99,43 @@ export function selectionPool(
   return { inn, pool };
 }
 
-function countCombinations(n: number, k: number, limit: number): number {
-  let result = 1;
-  for (let i = 1; i <= k; i++) {
-    result = (result * (n - k + i)) / i;
-    if (result > limit) return Infinity;
-  }
-  return Math.round(result);
-}
-
-/** All k-combinations, or `limit` random ones when there are more than that. */
-export function combinations<T>(
-  items: readonly T[],
-  k: number,
-  limit: number,
-  rng: () => number,
-): T[][] {
+/** Every k-combination of `items` (callers keep `items` small). */
+export function combinations<T>(items: readonly T[], k: number): T[][] {
   if (k === 0) return [[]];
   if (k > items.length) return [];
-  if (countCombinations(items.length, k, limit) <= limit) {
-    const all: T[][] = [];
-    const walk = (start: number, chosen: T[]) => {
-      if (chosen.length === k) {
-        all.push(chosen);
-        return;
-      }
-      for (let i = start; i < items.length; i++) walk(i + 1, [...chosen, items[i]!]);
-    };
-    walk(0, []);
-    return all;
-  }
-  const sampled: T[][] = [];
-  for (let n = 0; n < limit; n++) {
-    const pool = [...items];
-    const chosen: T[] = [];
-    for (let i = 0; i < k; i++) chosen.push(pool.splice(randomInt(rng, pool.length), 1)[0]!);
-    sampled.push(chosen);
-  }
-  return sampled;
+  const all: T[][] = [];
+  const walk = (start: number, chosen: T[]) => {
+    if (chosen.length === k) {
+      all.push(chosen);
+      return;
+    }
+    for (let i = start; i < items.length; i++) walk(i + 1, [...chosen, items[i]!]);
+  };
+  walk(0, []);
+  return all;
 }
 
-/** Candidate 4-sets under the strict rule (Rest, then Fairness; ties from the pool). */
+export function waitOf(env: Env, id: string): number {
+  return env.history.byPlayer.get(id)!.wait;
+}
+
+/** Longest Wait first; players with equal Wait are ordered randomly. */
+export function orderByWait(ids: readonly string[], env: Env): string[] {
+  const tiebreak = new Map(ids.map((id) => [id, env.rng()]));
+  return [...ids].sort(
+    (a, b) => waitOf(env, b) - waitOf(env, a) || tiebreak.get(a)! - tiebreak.get(b)!,
+  );
+}
+
+/**
+ * Candidate 4-sets under the strict rule: Rest, then Fairness (recent, total, then Wait).
+ * Everybody with a better key is in; the remaining slots come from the 12 longest-waiting
+ * players of the tie pool, with every combination enumerated.
+ */
 export function strictSets(candidates: readonly string[], env: Env): string[][] {
   const { inn, pool } = selectionPool(candidates, 4, env);
-  return combinations(pool, 4 - inn.length, MAX_COMBINATIONS, env.rng).map((chosen) => [
-    ...inn,
-    ...chosen,
-  ]);
+  const cut = pool.length > MAX_POOL ? orderByWait(pool, env).slice(0, MAX_POOL) : pool;
+  return combinations(cut, 4 - inn.length).map((chosen) => [...inn, ...chosen]);
 }
 
 // ---------------------------------------------------------------------- splits
@@ -180,7 +170,7 @@ export function partnerRepeats(env: Env, teams: Split): number {
   return teams.reduce((sum, team) => sum + env.history.partnered(team[0], team[1]), 0);
 }
 
-function teamKey(team: Team): string {
+export function teamKey(team: Team): string {
   return [...team].sort().join("|");
 }
 
@@ -191,20 +181,23 @@ export function splitSignature(teams: Split): string {
 
 function scoreSplit(env: Env, teams: Split, withWait: boolean): Score {
   const balance = balanceOf(env, teams);
-  const wait = withWait
-    ? [...teams[0], ...teams[1]].reduce((sum, id) => sum + env.history.byPlayer.get(id)!.wait, 0)
-    : 0;
-  return [balance > 1 ? 1 : 0, partnerRepeats(env, teams), balance, -wait, env.rng()];
+  const rest = [balance > 1 ? 1 : 0, partnerRepeats(env, teams), balance, env.rng()];
+  if (!withWait) return rest;
+  // Wait is part of Fairness, so longest total Wait outranks balance and partners. The "in"
+  // players are common to every compared set, so summing all four ranks the same as summing
+  // only the pool players.
+  const wait = [...teams[0], ...teams[1]].reduce((sum, id) => sum + waitOf(env, id), 0);
+  return [-wait, ...rest];
 }
 
 interface BestOptions {
-  /** Include longest total Wait as a tie-breaker (Lineup selection, not replacements). */
+  /** Rank by longest total Wait first (Lineup selection, not replacements). */
   withWait: boolean;
   /** Splits to ignore. */
   skip?: (teams: Split) => boolean;
 }
 
-/** Best (set, split) over the given 4-sets: balance, partners, [wait], then random. */
+/** Best (set, split) over the given 4-sets: [wait], balance, partners, then random. */
 export function bestSplitOf(
   sets: readonly (readonly string[])[],
   env: Env,

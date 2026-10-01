@@ -1,7 +1,7 @@
 import type { Court, Queue, Session } from "../types.ts";
 import { makeId, type EngineContext } from "./context.ts";
 import { balanceOf, makeEnv, type Split } from "./select.ts";
-import { buildHistory, matchPlayerIds } from "./stats.ts";
+import { matchPlayerIds } from "./stats.ts";
 
 export type QueueSlotRef = { team: 0 | 1; slot: 0 | 1 };
 
@@ -96,7 +96,7 @@ export function clearPlayerFromQueues(session: Session, playerId: string): Sessi
 
 export type MoveCheck =
   | { ok: true }
-  | { ok: false; reason: "court-busy" | "queue-incomplete" }
+  | { ok: false; reason: "court-busy" | "queue-incomplete" | "player-not-found" }
   | {
       ok: false;
       reason: "player-on-court";
@@ -109,6 +109,10 @@ export type MoveCheck =
 export function canMoveQueue(session: Session, queue: Queue, court: Court): MoveCheck {
   if (court.activeMatchId !== null) return { ok: false, reason: "court-busy" };
   if (queueTeams(queue) === null) return { ok: false, reason: "queue-incomplete" };
+  const missing = queuePlayerIds(queue).some(
+    (id) => !session.players.some((player) => player.id === id && !player.removed),
+  );
+  if (missing) return { ok: false, reason: "player-not-found" };
   for (const match of session.matches) {
     if (match.status !== "active") continue;
     const onCourt = queuePlayerIds(queue).find((id) => matchPlayerIds(match).includes(id));
@@ -137,9 +141,9 @@ export function queueWarnings(session: Session, queue: Queue, now: number): Queu
   const warnings: QueueWarning[] = [];
   const teams = queueTeams(queue);
   const env = makeEnv(session, { now, rng: () => 0 });
+  const history = env.history;
   if (teams && balanceOf(env, teams) > 1) warnings.push({ kind: "unbalanced" });
 
-  const history = buildHistory(session, now);
   const ids = queuePlayerIds(queue);
   for (const id of ids) {
     if ((history.byPlayer.get(id)?.streak ?? 0) >= 2)

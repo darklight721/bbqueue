@@ -148,6 +148,15 @@ export function violations(session: Session): string[] {
       held.add(id);
     }
   }
+  // Fill completeness: no Idle Court may lack a Lineup while 4+ Free players are unheld.
+  const busy = new Set(activeIds.keys());
+  const unheldFree = session.players.filter(
+    (p) => !p.removed && !p.sittingOut && !busy.has(p.id) && !held.has(p.id),
+  ).length;
+  const emptyIdle = session.courts.filter((c) => c.activeMatchId === null && !c.lineup).length;
+  if (emptyIdle > 0 && unheldFree >= 4) {
+    problems.push(`${emptyIdle} idle court(s) empty while ${unheldFree} free players are unheld`);
+  }
   const numbersOfCourts = session.courts.map((c) => c.number);
   if (new Set(numbersOfCourts).size !== numbersOfCourts.length)
     problems.push("duplicate court numbers");

@@ -1,5 +1,5 @@
 import type { Session } from "../types.ts";
-import { busyPlayerIds, lineupPlayerIds } from "./select.ts";
+import { lineupPlayerIds } from "./select.ts";
 import { buildHistory, matchPlayerIds } from "./stats.ts";
 
 export type PlayerStatus = "on-court" | "in-lineup" | "sitting-out" | "free" | "removed";
@@ -19,26 +19,37 @@ export interface PlayerStats {
   courtNumber: number | null;
 }
 
-/** Stats for every player (including removed ones) in one pass. */
+/**
+ * Stats for every player (including removed ones) in one pass over Matches and Courts.
+ * Compute this once per render/tick and look players up in the map.
+ *
+ * `status` stays `on-court` while a player is in an Active match, even if they are Sitting
+ * out; the UI combines it with the player's `sittingOut` flag ("Sitting out after this match").
+ */
 export function allPlayerStats(session: Session, now: number): Map<string, PlayerStats> {
   const history = buildHistory(session, now);
-  const busy = busyPlayerIds(session);
+  const onCourtNumber = new Map<string, number>();
+  for (const match of session.matches) {
+    if (match.status !== "active") continue;
+    for (const id of matchPlayerIds(match)) onCourtNumber.set(id, match.courtNumber);
+  }
+  const lineupNumber = new Map<string, number>();
+  for (const court of session.courts) {
+    for (const id of lineupPlayerIds(court.lineup)) lineupNumber.set(id, court.number);
+  }
+
   const result = new Map<string, PlayerStats>();
   for (const player of session.players) {
     const h = history.byPlayer.get(player.id)!;
     let status: PlayerStatus = "free";
     let courtNumber: number | null = null;
-    const match = session.matches.find(
-      (m) => m.status === "active" && matchPlayerIds(m).includes(player.id),
-    );
-    const court = session.courts.find((c) => lineupPlayerIds(c.lineup).includes(player.id));
     if (player.removed) status = "removed";
-    else if (busy.has(player.id)) {
+    else if (onCourtNumber.has(player.id)) {
       status = "on-court";
-      courtNumber = match?.courtNumber ?? null;
-    } else if (court) {
+      courtNumber = onCourtNumber.get(player.id)!;
+    } else if (lineupNumber.has(player.id)) {
       status = "in-lineup";
-      courtNumber = court.number;
+      courtNumber = lineupNumber.get(player.id)!;
     } else if (player.sittingOut) status = "sitting-out";
     result.set(player.id, {
       streak: h.streak,
@@ -53,6 +64,10 @@ export function allPlayerStats(session: Session, now: number): Map<string, Playe
   return result;
 }
 
+/**
+ * Convenience for a single player. It recomputes everything, so rendering a list should call
+ * `allPlayerStats` once instead of this per player.
+ */
 export function playerStats(session: Session, playerId: string, now: number): PlayerStats | null {
   return allPlayerStats(session, now).get(playerId) ?? null;
 }

@@ -2,6 +2,9 @@ export { createRng } from "./rng.ts";
 export type { EngineContext } from "./context.ts";
 export {
   MAX_COURTS,
+  MAX_HOURS,
+  MIN_HOURS,
+  MIN_PLAYERS,
   addCourt,
   addPlayer,
   canRehashAll,
@@ -17,6 +20,7 @@ export {
   removePlayer,
   setSittingOut,
   startMatch,
+  validateCreateSessionInput,
 } from "./operations.ts";
 export type { CreateSessionInput, MoveQueueReason, NewPlayerInput, Result } from "./operations.ts";
 export {

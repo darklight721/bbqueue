@@ -8,7 +8,7 @@ import type {
   SkillLevel,
   Team,
 } from "../types.ts";
-import { normalizeName, findDuplicateName } from "../validation.ts";
+import { findDuplicateName, namesEqual, normalizeName } from "../validation.ts";
 import { makeId, type EngineContext } from "./context.ts";
 import { fillLineups, releasePlayers, rehashLineup, setLineup, updateCourt } from "./lineups.ts";
 import { canMoveQueue, clearPlayerFromQueues, queueTeams } from "./queues.ts";
@@ -80,6 +80,39 @@ export function createSession(input: CreateSessionInput, ctx: EngineContext): Se
   return fillLineups(session, ctx);
 }
 
+export type CreateSessionError =
+  | "name-required"
+  | "courts-out-of-range"
+  | "hours-out-of-range"
+  | "too-few-players"
+  | "player-name-required"
+  | "duplicate-name";
+
+export const MIN_PLAYERS = 4;
+export const MIN_HOURS = 0.5;
+export const MAX_HOURS = 12;
+
+/** Everything wrong with a `createSession` input; empty means it is safe to create. */
+export function validateCreateSessionInput(input: CreateSessionInput): CreateSessionError[] {
+  const errors: CreateSessionError[] = [];
+  if (normalizeName(input.name) === "") errors.push("name-required");
+  if (!Number.isInteger(input.courts) || input.courts < 1 || input.courts > MAX_COURTS) {
+    errors.push("courts-out-of-range");
+  }
+  if (!(input.plannedHours >= MIN_HOURS && input.plannedHours <= MAX_HOURS)) {
+    errors.push("hours-out-of-range");
+  }
+  if (input.players.length < MIN_PLAYERS) errors.push("too-few-players");
+  const names = input.players.map((player) => player.name);
+  if (names.some((name) => normalizeName(name) === "")) errors.push("player-name-required");
+  if (
+    names.some((name, i) => name.trim() !== "" && findDuplicateName(name, names.slice(0, i)) !== -1)
+  ) {
+    errors.push("duplicate-name");
+  }
+  return errors;
+}
+
 export function fill(session: Session, ctx: EngineContext): Session {
   return fillLineups(session, ctx);
 }
@@ -147,6 +180,7 @@ export type MoveQueueReason =
   | "court-not-found"
   | "court-busy"
   | "queue-incomplete"
+  | "player-not-found"
   | "player-on-court";
 
 /** Start a Queue's hand-built Teams on an Idle Court, overriding that Court's Lineup. */
@@ -210,6 +244,7 @@ export function endMatch(
   );
   const next: Session = {
     ...session,
+    streakResetAt: applyDeferredRests(session, match, ctx.now),
     matches: renumberEnded(ended),
     courts: session.courts.map((court) =>
       court.activeMatchId === matchId ? { ...court, activeMatchId: null } : court,
@@ -218,15 +253,37 @@ export function endMatch(
   return ok(fillLineups(next, ctx));
 }
 
-/** Delete a Match as if it never happened. */
+/**
+ * "Sitting out after this match": players who sat out while on court get their Streak reset
+ * when that match ends or is removed. The match itself still counts normally.
+ */
+function applyDeferredRests(session: Session, match: Match, now: number): Record<string, number> {
+  const resets = { ...session.streakResetAt };
+  for (const id of [...match.teams[0], ...match.teams[1]]) {
+    if (session.players.find((player) => player.id === id)?.sittingOut) resets[id] = now;
+  }
+  return resets;
+}
+
+/**
+ * Delete a Match as if it never happened.
+ *
+ * Known trade-off: Matches that started while this one was Active recorded its players as
+ * not Free, so those players lose the Rest credit they would otherwise have earned from them.
+ */
 export function removeMatch(
   session: Session,
   matchId: string,
   ctx: EngineContext,
 ): Result<"match-not-found"> {
   if (!session.matches.some((match) => match.id === matchId)) return fail("match-not-found");
+  const removed = session.matches.find((match) => match.id === matchId)!;
   const next: Session = {
     ...session,
+    streakResetAt:
+      removed.status === "active"
+        ? applyDeferredRests(session, removed, ctx.now)
+        : session.streakResetAt,
     matches: renumberEnded(session.matches.filter((match) => match.id !== matchId)),
     courts: session.courts.map((court) =>
       court.activeMatchId === matchId ? { ...court, activeMatchId: null } : court,
@@ -270,6 +327,22 @@ export function addPlayer(
   if (name === "") return fail("name-required");
   const others = session.players.filter((player) => !player.removed).map((player) => player.name);
   if (findDuplicateName(name, others) !== -1) return fail("duplicate-name");
+  // A removed player with the same name comes back as themselves (same id and history).
+  const returning = session.players.find(
+    (candidate) => candidate.removed && namesEqual(candidate.name, name),
+  );
+  if (returning) {
+    const restored: SessionPlayer = {
+      ...returning,
+      name,
+      skill: input.skill,
+      clubPlayerId: input.clubPlayerId ?? returning.clubPlayerId,
+      removed: false,
+      sittingOut: false,
+    };
+    const players = session.players.map((p) => (p.id === returning.id ? restored : p));
+    return ok(fillLineups({ ...session, players }, ctx));
+  }
   const player = snapshotPlayer({ ...input, name }, ctx);
   return ok(fillLineups({ ...session, players: [...session.players, player] }, ctx));
 }
@@ -295,7 +368,13 @@ export function removePlayer(
   return ok(fillLineups(released, ctx));
 }
 
-/** Sit a player out (resets their Streak, replaces them in a Lineup) or bring them back. */
+/**
+ * Sit a player out or bring them back.
+ *
+ * Free / in a Lineup: the Streak resets now and a Lineup spot is replaced. On court: allowed,
+ * but nothing changes until the Active match ends or is removed ("Sitting out after this
+ * match"); the match counts normally and the Streak resets then.
+ */
 export function setSittingOut(
   session: Session,
   playerId: string,
@@ -305,14 +384,16 @@ export function setSittingOut(
   const player = findPlayer(session, playerId);
   if (!player) return fail("player-not-found");
   if (player.sittingOut === sittingOut) return ok(session);
+  const onCourt = busyPlayerIds(session).has(playerId);
+  const resetNow = sittingOut && !onCourt;
   const changed: Session = {
     ...session,
     players: session.players.map((p) => (p.id === playerId ? { ...p, sittingOut } : p)),
-    streakResetAt: sittingOut
+    streakResetAt: resetNow
       ? { ...session.streakResetAt, [playerId]: ctx.now }
       : session.streakResetAt,
   };
-  const released = sittingOut ? releasePlayers(changed, [playerId], ctx) : changed;
+  const released = resetNow ? releasePlayers(changed, [playerId], ctx) : changed;
   return ok(fillLineups(released, ctx));
 }
 
