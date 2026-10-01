@@ -19,6 +19,7 @@ import {
   type SessionView,
 } from "./context.ts";
 import { messageForReason } from "./reasons.ts";
+import { NOTICE_BOTTOM } from "./SectionJumpBar.tsx";
 
 const NOTICE_MS = 4000;
 
@@ -106,7 +107,7 @@ function Notice({
     <div
       role="status"
       aria-live="polite"
-      className="pointer-events-none fixed inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-40 flex justify-center px-4"
+      className={`pointer-events-none fixed inset-x-0 z-40 flex justify-center px-4 ${NOTICE_BOTTOM}`}
     >
       {notice ? (
         <div

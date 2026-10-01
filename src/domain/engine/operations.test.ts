@@ -13,6 +13,7 @@ import {
   removeCourt,
   removeMatch,
   removePlayer,
+  setPointSystem,
   setSittingOut,
   startMatch,
   type CreateSessionInput,
@@ -577,5 +578,68 @@ describe("purity", () => {
     };
     expect(script(42)).toBe(script(42));
     expect(script(42)).not.toBe(script(43));
+  });
+});
+
+describe("point system during a Session", () => {
+  function playing() {
+    const { ctx, session: s } = created(8, 2);
+    return { ctx, s: unwrap(startMatch(s, s.courts[0]!.id, at(ctx, T0))) };
+  }
+
+  it("stores the Session's Point system as the Match's Target when it starts", () => {
+    const { ctx, session: s } = created(8, 1);
+    const s31 = unwrap(setPointSystem(s, 31, ctx));
+    const next = unwrap(startMatch(s31, s31.courts[0]!.id, ctx));
+    expect(next.matches[0]!.target).toBe(31);
+  });
+
+  it("stores the Target for Matches started from a Queue", () => {
+    const ctx = makeCtx(5);
+    let current = unwrap(setPointSystem(createSession(input(8, 2), ctx), 31, ctx));
+    const ids = lineupSet(current, 2);
+    current = addQueue(current, ctx);
+    const queueId = current.queues[0]!.id;
+    const slots: [0 | 1, 0 | 1][] = [
+      [0, 0],
+      [0, 1],
+      [1, 0],
+      [1, 1],
+    ];
+    ids.forEach((id, i) => {
+      current = unwrap(setQueueSlot(current, queueId, ...slots[i]!, id));
+    });
+    const next = unwrap(moveQueueToCourt(current, queueId, current.courts[0]!.id, ctx));
+    expect(next.matches[0]!.target).toBe(31);
+  });
+
+  it("validates a Score against the Match's Target, not the Session's Point system", () => {
+    const { ctx, s } = playing();
+    const oldMatch = s.matches[0]!;
+    expect(oldMatch.target).toBe(21);
+    const switched = unwrap(setPointSystem(s, 31, ctx));
+    const withNew = unwrap(startMatch(switched, switched.courts[1]!.id, ctx));
+    const newMatch = withNew.matches[1]!;
+    expect(newMatch.target).toBe(31);
+    expect(unwrap(endMatch(withNew, oldMatch.id, [21, 18], ctx)).matches[0]!.score).toEqual([
+      21, 18,
+    ]);
+    expect(endMatch(withNew, newMatch.id, [21, 18], ctx)).toEqual({
+      ok: false,
+      reason: "invalid-score",
+    });
+    expect(endMatch(withNew, newMatch.id, [31, 18], ctx).ok).toBe(true);
+  });
+
+  it("setPointSystem changes only the Session's Point system", () => {
+    const { ctx, s } = playing();
+    const next = unwrap(setPointSystem(s, 31, ctx));
+    expect(next).toEqual({ ...s, pointSystem: 31 });
+    expect(next.matches[0]!.target).toBe(21);
+    expect(unwrap(setPointSystem(next, 31, ctx))).toBe(next);
+    expect(setPointSystem(s, 25 as never, ctx)).toEqual({
+      ok: false,
+      reason: "invalid-point-system",
+    });
   });
 });

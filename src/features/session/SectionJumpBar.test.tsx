@@ -63,4 +63,19 @@ describe("SectionJumpBar", () => {
     fireEvent.click(screen.getByRole("button", { name: "Players" }));
     expect(current()).toBe("Players");
   });
+
+  it("lets the section open before scrolling to it", () => {
+    const calls: string[] = [];
+    const section = document.createElement("div");
+    section.id = "history";
+    section.scrollIntoView = () => calls.push("scroll");
+    document.body.append(section);
+    try {
+      render(<SectionJumpBar targets={TARGETS} onJump={(id) => calls.push(`open ${id}`)} />);
+      fireEvent.click(screen.getByRole("button", { name: "History" }));
+      expect(calls).toEqual(["open history", "scroll"]);
+    } finally {
+      section.remove();
+    }
+  });
 });

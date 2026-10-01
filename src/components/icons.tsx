@@ -62,6 +62,24 @@ export function CloseIcon(props: IconProps) {
   );
 }
 
+export function TrashIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 6.5h16M9.5 6.5V4.5h5v2" />
+      <path d="M6 6.5l1 13h10l1-13" />
+      <path d="M10 10.5v5.5M14 10.5v5.5" />
+    </Icon>
+  );
+}
+
+export function ChevronDownIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M6 9l6 6 6-6" />
+    </Icon>
+  );
+}
+
 export function PlayIcon(props: IconProps) {
   return (
     <Icon {...props}>

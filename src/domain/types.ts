@@ -67,6 +67,8 @@ export interface Match {
   /** Free players not in this Match when it started (used for Streak / Rest). */
   freeAtStart: string[];
   startedAt: number;
+  /** Session's Point system when the Match started (ADR-0004). */
+  target: PointSystem;
   endedAt: number | null;
   /** null = ended without a Score (or still active). */
   score: [number, number] | null;

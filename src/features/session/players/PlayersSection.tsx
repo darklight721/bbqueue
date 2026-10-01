@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { AddPlayerForm, type NewPlayer } from "../../../components/AddPlayerForm.tsx";
 import { ConfirmDialog } from "../../../components/ConfirmDialog.tsx";
-import { CloseIcon } from "../../../components/icons.tsx";
+import { ChevronDownIcon, CloseIcon } from "../../../components/icons.tsx";
 import { addPlayer, removePlayer, setSittingOut } from "../../../domain/engine/index.ts";
 import { newId } from "../../../domain/ids.ts";
 import type { ClubPlayer, SessionPlayer } from "../../../domain/types.ts";
@@ -11,35 +11,97 @@ import { useSessionActions, useSessionView } from "../context.ts";
 import { SessionPlayerChip } from "../PlayerViews.tsx";
 import { messageForReason } from "../reasons.ts";
 import { SectionHeader } from "../SectionHeader.tsx";
-import { activePlayersByName, playerStatus, playersSummary } from "./playerStatus.ts";
+import {
+  activePlayersByName,
+  PLAYER_SORTS,
+  playerStatus,
+  playersSummary,
+  sortPlayers,
+  type PlayerSort,
+} from "./playerStatus.ts";
+import { loadPlayerSort, savePlayerSort } from "./sortPreference.ts";
 import { STATUS_TONE_CLASS } from "./statusTone.ts";
 
 const PLAYERS_HEADING_ID = "session-players";
 
-/** Every Session player: status, Sit out / Back in, Remove, and adding late arrivals. */
-export function PlayersSection() {
-  const { session } = useSessionView();
+/**
+ * Every Session player: status, Sit out / Back in, Remove, and adding late arrivals.
+ * Open by default; collapsed shows only the header. Pass `open` / `onOpenChange` to control it
+ * from outside (the jump bar opens it before scrolling to it).
+ */
+export function PlayersSection({
+  open: openProp,
+  onOpenChange,
+}: {
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+} = {}) {
+  const { session, stats } = useSessionView();
   const actions = useSessionActions();
-  const players = useMemo(() => activePlayersByName(session.players), [session.players]);
+  const [ownOpen, setOwnOpen] = useState(true);
+  const open = openProp ?? ownOpen;
+  const setOpen = (value: boolean) => {
+    setOwnOpen(value);
+    onOpenChange?.(value);
+  };
+  const [sort, setSort] = useState<PlayerSort>(loadPlayerSort);
+  const bodyId = useId();
+  const active = useMemo(() => activePlayersByName(session.players), [session.players]);
+  const players = useMemo(() => sortPlayers(active, stats, sort), [active, stats, sort]);
   const [removing, setRemoving] = useState<SessionPlayer | null>(null);
 
   return (
     <section aria-labelledby={PLAYERS_HEADING_ID} className="flex flex-col gap-4">
-      <SectionHeader id={PLAYERS_HEADING_ID} title="Players" detail={playersSummary(players)} />
+      <SectionHeader
+        id={PLAYERS_HEADING_ID}
+        title="Players"
+        detail={playersSummary(active)}
+        action={
+          <button
+            type="button"
+            className="btn shrink-0 btn-square border-base-300 btn-outline sm:w-auto sm:px-4"
+            aria-expanded={open}
+            aria-controls={bodyId}
+            onClick={() => setOpen(!open)}
+          >
+            {/* Phones: just the chevron, so the player count next to the title has room. */}
+            <span className="sr-only sm:not-sr-only">{open ? "Hide players" : "Show players"}</span>
+            <ChevronDownIcon
+              className={`size-6 transition-transform sm:size-5 ${open ? "rotate-180" : ""}`}
+            />
+          </button>
+        }
+      />
 
-      <AddSessionPlayer />
+      {open ? (
+        <div id={bodyId} className="flex flex-col gap-4">
+          <AddSessionPlayer />
 
-      {players.length > 0 ? (
-        <ul className="overflow-hidden rounded-box border-[1.5px] border-base-300 bg-base-100 md:grid md:grid-cols-2 md:gap-x-0">
-          {players.map((player) => (
-            <PlayerRow key={player.id} player={player} onRemove={() => setRemoving(player)} />
-          ))}
-        </ul>
-      ) : (
-        <p className="rounded-box border-[1.5px] border-dashed border-base-300 px-4 py-5 text-center text-base-content/70">
-          No players in this session.
-        </p>
-      )}
+          {players.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              <SortControl
+                value={sort}
+                onChange={(value) => {
+                  setSort(value);
+                  savePlayerSort(value);
+                }}
+              />
+              <ul
+                aria-label="Session players"
+                className="overflow-hidden rounded-box border-[1.5px] border-base-300 bg-base-100 md:grid md:grid-cols-2 md:gap-x-0"
+              >
+                {players.map((player) => (
+                  <PlayerRow key={player.id} player={player} onRemove={() => setRemoving(player)} />
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <p className="rounded-box border-[1.5px] border-dashed border-base-300 px-4 py-5 text-center text-base-content/70">
+              No players in this session.
+            </p>
+          )}
+        </div>
+      ) : null}
 
       <ConfirmDialog
         open={removing !== null}
@@ -55,6 +117,50 @@ export function PlayersSection() {
         onCancel={() => setRemoving(null)}
       />
     </section>
+  );
+}
+
+function SortControl({
+  value,
+  onChange,
+}: {
+  value: PlayerSort;
+  onChange: (value: PlayerSort) => void;
+}) {
+  const groupName = useId();
+  return (
+    <fieldset className="flex items-center justify-between gap-3">
+      <legend className="sr-only">Sort players</legend>
+      <span
+        aria-hidden="true"
+        className="text-xs font-bold tracking-[0.14em] text-base-content/60 uppercase"
+      >
+        Sort by
+      </span>
+      <div className="flex gap-1 rounded-full bg-base-200 p-1">
+        {PLAYER_SORTS.map((option) => {
+          const on = option.value === value;
+          return (
+            <label
+              key={option.value}
+              className={`btn h-10 min-h-10 rounded-full border-0 px-3.5 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-1 has-[:focus-visible]:outline-primary min-[380px]:px-4 ${
+                on ? "btn-secondary" : "btn-ghost text-base-content/70"
+              }`}
+            >
+              <input
+                type="radio"
+                className="sr-only"
+                name={groupName}
+                value={option.value}
+                checked={on}
+                onChange={() => onChange(option.value)}
+              />
+              {option.label}
+            </label>
+          );
+        })}
+      </div>
+    </fieldset>
   );
 }
 
@@ -86,7 +192,7 @@ function PlayerRow({ player, onRemove }: { player: SessionPlayer; onRemove: () =
 
       <button
         type="button"
-        className={`btn min-w-[6.5rem] shrink-0 ${
+        className={`btn w-[4.5rem] shrink-0 px-2 ${
           player.sittingOut ? "btn-primary" : "btn-outline border-base-300"
         }`}
         aria-label={`${player.sittingOut ? "Back in" : "Sit out"} ${player.name}`}

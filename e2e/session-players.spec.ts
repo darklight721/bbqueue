@@ -340,12 +340,16 @@ test.describe("Section jump bar", () => {
       "aria-current",
       "true",
     );
-    // Not hidden under the sticky bars once scrolling settles.
+    // Not hidden under the top bar, nor under the jump bar (at the bottom on phones).
     await expect
       .poll(async () => {
+        const topBar = (await page.getByRole("banner").boundingBox())!;
         const navBox = (await nav.boundingBox())!;
         const headingBox = (await heading.boundingBox())!;
-        return headingBox.y >= navBox.y + navBox.height - 1;
+        const navOnTop = navBox.y < topBar.y + topBar.height + 1;
+        const clearTop = navOnTop ? navBox.y + navBox.height : topBar.y + topBar.height;
+        const clearBottom = navOnTop ? Infinity : navBox.y;
+        return headingBox.y >= clearTop - 1 && headingBox.y + headingBox.height <= clearBottom + 1;
       })
       .toBe(true);
 
@@ -355,5 +359,107 @@ test.describe("Section jump bar", () => {
       "aria-current",
       "true",
     );
+  });
+
+  test("on phones it sits at the bottom and never covers End session", async ({ page }) => {
+    await openSeeded(page);
+    const nav = page.getByRole("navigation", { name: "Sections" });
+    const viewport = page.viewportSize()!;
+    const navBox = (await nav.boundingBox())!;
+    expect(navBox.y + navBox.height).toBeGreaterThan(viewport.height - 2);
+
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    const end = page.getByRole("button", { name: "End session" });
+    await expect
+      .poll(async () => {
+        const box = (await end.boundingBox())!;
+        const bar = (await nav.boundingBox())!;
+        return box.y + box.height <= bar.y;
+      })
+      .toBe(true);
+  });
+
+  test("on phones pop-up messages sit above the bar", async ({ page }) => {
+    await openSeeded(page);
+    const nav = page.getByRole("navigation", { name: "Sections" });
+    // Removing a player on court is blocked with a message (the button is aria-disabled).
+    await row(page, "Ben")
+      .getByRole("button", { name: "Remove Ben", exact: true })
+      .dispatchEvent("click");
+    const message = notice(page, "End or remove their match first.");
+    await expect(message).toBeVisible();
+    const text = (await message.getByText("End or remove their match first.").boundingBox())!;
+    const bar = (await nav.boundingBox())!;
+    expect(text.y + text.height).toBeLessThanOrEqual(bar.y);
+  });
+
+  test("on wider screens it sticks under the top bar without hiding section titles", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1024, height: 768 });
+    await openSeeded(page);
+    const nav = page.getByRole("navigation", { name: "Sections" });
+    const topBar = (await page.getByRole("banner").boundingBox())!;
+    const navBox = (await nav.boundingBox())!;
+    expect(Math.abs(navBox.y - (topBar.y + topBar.height))).toBeLessThan(2);
+
+    const heading = page.getByRole("heading", { level: 2, name: "Players" });
+    await nav.getByRole("button", { name: "Players" }).click();
+    await expect(heading).toBeInViewport();
+    await expect
+      .poll(async () => {
+        const bar = (await nav.boundingBox())!;
+        const box = (await heading.boundingBox())!;
+        return box.y >= bar.y + bar.height - 1;
+      })
+      .toBe(true);
+  });
+
+  test("jumping to a collapsed Players section opens it", async ({ page }) => {
+    await openSeeded(page);
+    await playersRegion(page).getByRole("button", { name: "Hide players" }).click();
+    await expect(row(page, "Ivy")).toHaveCount(0);
+    await expect(playersRegion(page).getByText("10 players")).toBeVisible();
+
+    await page
+      .getByRole("navigation", { name: "Sections" })
+      .getByRole("button", { name: "Players" })
+      .click();
+    await expect(row(page, "Ivy")).toBeVisible();
+    await expect(page.getByRole("heading", { level: 2, name: "Players" })).toBeInViewport();
+  });
+});
+
+test.describe("Players sort", () => {
+  test("sorts by Status and Plays; the choice is remembered", async ({ page }) => {
+    await openSeeded(page, buildSession({}, true));
+    const region = playersRegion(page);
+    await expect(region.getByRole("radio", { name: "Name" })).toBeChecked();
+
+    await region.getByText("Status", { exact: true }).click();
+    await expect(region.getByRole("radio", { name: "Status" })).toBeChecked();
+    expect(await rowNames(page)).toEqual([
+      "ana",
+      "Ben",
+      "Dan",
+      "Zoe",
+      "Eve",
+      "Fay",
+      "Gus",
+      "Hal",
+      "Ivy",
+      "Jon",
+    ]);
+
+    // Court 1's four players now have 1 played, so they go last.
+    const dialog = await openScoreDialog(page, 1);
+    await dialog.getByRole("button", { name: "End without score" }).click();
+    await expect(dialog).toBeHidden();
+    await region.getByText("Plays", { exact: true }).click();
+    const names = await rowNames(page);
+    expect(names.slice(-4)).toEqual(["ana", "Ben", "Dan", "Zoe"]);
+
+    await page.reload();
+    await expect(playersRegion(page).getByRole("radio", { name: "Plays" })).toBeChecked();
   });
 });

@@ -56,6 +56,29 @@ describe("clubs", () => {
     expect(JSON.parse(localStorage.getItem("bq:v1:clubs")!)).toEqual({ version: 1, data: [club] });
   });
 
+  it("gives Matches saved without a Target the Session's Point system", () => {
+    const legacyMatch = {
+      id: "m1",
+      number: 1,
+      courtNumber: 1,
+      teams: [
+        ["a", "b"],
+        ["c", "d"],
+      ],
+      freeAtStart: [],
+      startedAt: 1,
+      endedAt: 2,
+      score: [21, 10],
+      status: "ended",
+    };
+    const legacy = { ...session, pointSystem: 31, matches: [legacyMatch] };
+    localStorage.setItem("bq:v1:session", JSON.stringify({ version: 1, data: legacy }));
+    expect(loadSession()?.matches[0]).toMatchObject({ id: "m1", target: 31 });
+    const withTarget = { ...legacy, matches: [{ ...legacyMatch, target: 21 }] };
+    localStorage.setItem("bq:v1:session", JSON.stringify({ version: 1, data: withTarget }));
+    expect(loadSession()?.matches[0]!.target).toBe(21);
+  });
+
   it("treats corrupt JSON, wrong version and bad shape as absent", () => {
     localStorage.setItem("bq:v1:clubs", "{not json");
     expect(loadClubs()).toEqual([]);

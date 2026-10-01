@@ -18,6 +18,7 @@ export {
   removeCourt,
   removeMatch,
   removePlayer,
+  setPointSystem,
   setSittingOut,
   startMatch,
   validateCreateSessionInput,
@@ -35,7 +36,17 @@ export {
 export type { MoveCheck, QueueWarning, RemoveQueueResult, SetQueueSlotResult } from "./queues.ts";
 export { allPlayerStats, playerStats } from "./playerStats.ts";
 export type { PlayerStats, PlayerStatus } from "./playerStats.ts";
-export { gamesEach, suggestPointSystem, validateScore } from "./scoring.ts";
-export type { PointSystemSuggestion, ScoreError, SuggestionInput } from "./scoring.ts";
+export {
+  gamesEach,
+  suggestPointSystem,
+  suggestPointSystemForTimeLeft,
+  validateScore,
+} from "./scoring.ts";
+export type {
+  PointSystemSuggestion,
+  ScoreError,
+  SuggestionInput,
+  TimeLeftSuggestionInput,
+} from "./scoring.ts";
 export { buildSummary } from "./summary.ts";
 export { fairnessWindowMs } from "./stats.ts";

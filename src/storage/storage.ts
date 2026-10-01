@@ -74,8 +74,22 @@ export function saveClubs(clubs: Club[]): void {
   write(CLUBS_KEY, clubs);
 }
 
+/** Older saves have Matches without a Target: they were played to the Session's Point system. */
+export function normalizeSession(session: Session): Session {
+  if (session.matches.every((match) => match.target === 21 || match.target === 31)) return session;
+  return {
+    ...session,
+    matches: session.matches.map((match) =>
+      match.target === 21 || match.target === 31
+        ? match
+        : { ...match, target: session.pointSystem },
+    ),
+  };
+}
+
 export function loadSession(): Session | null {
-  return read(SESSION_KEY, isSession);
+  const session = read(SESSION_KEY, isSession);
+  return session && normalizeSession(session);
 }
 
 export function saveSession(session: Session): void {

@@ -52,6 +52,7 @@ function build({ matches = [], active, removed = [], names = NAMES }: Scenario =
       teams: [team(played.a), team(played.b)],
       freeAtStart: [],
       startedAt,
+      target: 21,
       endedAt,
       score: played.score,
       status: "ended",
@@ -68,6 +69,7 @@ function build({ matches = [], active, removed = [], names = NAMES }: Scenario =
       teams: [team(active.a), team(active.b)],
       freeAtStart: [],
       startedAt: Date.now() - 120_000,
+      target: 21,
       endedAt: null,
       score: null,
       status: "active",
@@ -274,6 +276,7 @@ test.describe("End session", () => {
       ],
       freeAtStart: [],
       startedAt: Date.now() - 60_000,
+      target: 21,
       endedAt: null,
       score: null,
       status: "active",
@@ -340,17 +343,25 @@ test.describe("Jump bar", () => {
     ]);
 
     const heading = page.getByRole("heading", { level: 2, name: "History" });
+    await expect(historyList(page)).toHaveCount(0);
     await nav.getByRole("button", { name: "History" }).click();
+    // Jumping opens the collapsed list.
+    await expect(historyList(page)).toBeVisible();
     await expect(heading).toBeInViewport();
     await expect(nav.getByRole("button", { name: "History" })).toHaveAttribute(
       "aria-current",
       "true",
     );
+    // Not hidden under the top bar, nor under the jump bar (at the bottom on phones).
     await expect
       .poll(async () => {
+        const topBar = (await page.getByRole("banner").boundingBox())!;
         const navBox = (await nav.boundingBox())!;
         const headingBox = (await heading.boundingBox())!;
-        return headingBox.y >= navBox.y + navBox.height - 1;
+        const navOnTop = navBox.y < topBar.y + topBar.height + 1;
+        const clearTop = navOnTop ? navBox.y + navBox.height : topBar.y + topBar.height;
+        const clearBottom = navOnTop ? Infinity : navBox.y;
+        return headingBox.y >= clearTop - 1 && headingBox.y + headingBox.height <= clearBottom + 1;
       })
       .toBe(true);
   });

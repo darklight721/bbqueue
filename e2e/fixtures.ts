@@ -169,6 +169,7 @@ export function makeMidMatchSession(options: {
     ],
     freeAtStart: [e, f, g, h],
     startedAt: options.startedAt,
+    target: 21,
     endedAt: null,
     score: null,
     status: "active",

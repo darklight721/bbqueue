@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
-import { gamesEach, suggestPointSystem, validateScore } from "./scoring.ts";
+import {
+  gamesEach,
+  suggestPointSystem,
+  suggestPointSystemForTimeLeft,
+  validateScore,
+} from "./scoring.ts";
 
 describe("validateScore", () => {
   it("accepts a winner at or above the target", () => {
@@ -55,5 +60,29 @@ describe("suggestPointSystem", () => {
       pointSystem: 31,
       gamesEach: 3,
     });
+  });
+});
+
+describe("suggestPointSystemForTimeLeft", () => {
+  const HOUR = 3_600_000;
+  const base = { players: 4, courts: 1, plannedHours: 2, startedAt: 0 };
+
+  it("uses the hours left (planned − elapsed)", () => {
+    // 0.5 h elapsed of 2 h → 1.5 h left → 3 more games each at 30 min.
+    expect(suggestPointSystemForTimeLeft({ ...base, now: 0.5 * HOUR })).toEqual({
+      pointSystem: 31,
+      gamesEach: 3,
+    });
+    // 1 h elapsed → 1 h left → 21, 4 more games each.
+    expect(suggestPointSystemForTimeLeft({ ...base, now: HOUR })).toEqual({
+      pointSystem: 21,
+      gamesEach: 4,
+    });
+  });
+
+  it("is null when time is up, over, or under 4 players", () => {
+    expect(suggestPointSystemForTimeLeft({ ...base, now: 2 * HOUR })).toBeNull();
+    expect(suggestPointSystemForTimeLeft({ ...base, now: 3 * HOUR })).toBeNull();
+    expect(suggestPointSystemForTimeLeft({ ...base, players: 3, now: 0 })).toBeNull();
   });
 });

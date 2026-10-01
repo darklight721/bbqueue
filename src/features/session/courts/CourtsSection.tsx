@@ -19,16 +19,19 @@ export function CourtsSection() {
         title="Courts"
         detail={`${busyCount} of ${courts.length} playing`}
         action={
-          <button
-            type="button"
-            className="btn btn-outline border-base-300"
-            disabled={!rehashAllEnabled}
-            title={rehashAllEnabled ? undefined : "Needs at least 2 idle courts"}
-            onClick={() => actions.rehashAll()}
-          >
-            <RefreshIcon className="size-5" />
-            Rehash all
-          </button>
+          // With a single court there is nothing to rehash "all" of: hide it.
+          courts.length >= 2 ? (
+            <button
+              type="button"
+              className="btn btn-outline border-base-300"
+              disabled={!rehashAllEnabled}
+              title={rehashAllEnabled ? undefined : "Needs at least 2 idle courts"}
+              onClick={() => actions.rehashAll()}
+            >
+              <RefreshIcon className="size-5" />
+              Rehash all
+            </button>
+          ) : null
         }
       />
 

@@ -40,3 +40,27 @@ export function suggestPointSystem(input: SuggestionInput): PointSystemSuggestio
   const pointSystem: PointSystem = thirtyMinuteGames ? 31 : 21;
   return { pointSystem, gamesEach: Math.round(gamesEach(input, pointSystem === 31 ? 30 : 15)) };
 }
+
+export interface TimeLeftSuggestionInput {
+  /** Current non-removed players. */
+  players: number;
+  /** Current number of Courts. */
+  courts: number;
+  plannedHours: number;
+  /** Epoch ms. */
+  startedAt: number;
+  /** Epoch ms. */
+  now: number;
+}
+
+/**
+ * Suggestion for the rest of the Session: hours left = plannedHours − elapsed. `gamesEach` is
+ * the number of *more* games each player can expect. Null once time is up or under 4 players.
+ */
+export function suggestPointSystemForTimeLeft(
+  input: TimeLeftSuggestionInput,
+): PointSystemSuggestion | null {
+  const hours = input.plannedHours - (input.now - input.startedAt) / 3_600_000;
+  if (!(hours > 0)) return null;
+  return suggestPointSystem({ players: input.players, courts: input.courts, hours });
+}

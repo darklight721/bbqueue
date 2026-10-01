@@ -7,10 +7,24 @@ import { SectionHeader } from "../SectionHeader.tsx";
 
 const HEADING_ID = "session-history";
 
-/** Ended matches, newest first. Collapsed by default to keep the screen short. */
-export function HistorySection() {
+/**
+ * Ended matches, newest first. Collapsed by default to keep the screen short.
+ * Pass `open` / `onOpenChange` to control it from outside (the jump bar opens it).
+ */
+export function HistorySection({
+  open: openProp,
+  onOpenChange,
+}: {
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+} = {}) {
   const { session } = useSessionView();
-  const [open, setOpen] = useState(false);
+  const [ownOpen, setOwnOpen] = useState(false);
+  const open = openProp ?? ownOpen;
+  const setOpen = (value: boolean) => {
+    setOwnOpen(value);
+    onOpenChange?.(value);
+  };
   const listId = useId();
 
   const ended = useMemo(
@@ -21,6 +35,8 @@ export function HistorySection() {
     [session.matches],
   );
   const count = ended.length;
+  // Points are only worth showing once the Session has used both 21 and 31.
+  const showPoints = new Set(ended.map((match) => match.target)).size > 1;
 
   return (
     <section aria-labelledby={HEADING_ID} className="flex flex-col gap-3">
@@ -35,7 +51,7 @@ export function HistorySection() {
               className="btn btn-outline border-base-300"
               aria-expanded={open}
               aria-controls={listId}
-              onClick={() => setOpen((value) => !value)}
+              onClick={() => setOpen(!open)}
             >
               {open ? "Hide history" : "Show history"}
               <svg
@@ -66,7 +82,7 @@ export function HistorySection() {
           className="overflow-hidden rounded-box border-[1.5px] border-base-300 bg-base-100 md:grid md:grid-cols-2"
         >
           {ended.map((match) => (
-            <HistoryEntry key={match.id} match={match} />
+            <HistoryEntry key={match.id} match={match} showPoints={showPoints} />
           ))}
         </ol>
       ) : null}
@@ -74,7 +90,7 @@ export function HistorySection() {
   );
 }
 
-function HistoryEntry({ match }: { match: Match }) {
+function HistoryEntry({ match, showPoints }: { match: Match; showPoints: boolean }) {
   const score = match.score;
   const winner = score ? (score[0] > score[1] ? 0 : 1) : null;
   const duration = match.endedAt !== null ? formatDuration(match.endedAt - match.startedAt) : "";
@@ -85,6 +101,12 @@ function HistoryEntry({ match }: { match: Match }) {
         <span className="font-display text-lg leading-none font-bold uppercase">
           Match #{match.number} · Court {match.courtNumber}
         </span>
+        {showPoints ? (
+          <span className="self-center rounded-full border-[1.5px] border-base-content/25 px-2 py-px text-xs font-bold whitespace-nowrap text-base-content/70">
+            <span aria-hidden="true">{match.target} pts</span>
+            <span className="sr-only">{match.target} points</span>
+          </span>
+        ) : null}
         <span className="ml-auto text-base-content/60 tabular-nums">
           <span className="sr-only">Duration </span>
           {duration}

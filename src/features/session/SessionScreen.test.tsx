@@ -91,7 +91,7 @@ describe("SessionScreen", () => {
     expect(court(1).getAllByText("0 played")).toHaveLength(4);
     expect(court(1).getByRole("button", { name: "Start match" })).toBeEnabled();
     expect(court(1).getByRole("button", { name: "Rehash" })).toBeEnabled();
-    expect(court(1).getByRole("button", { name: "Remove court" })).toBeEnabled();
+    expect(court(1).getByRole("button", { name: "Remove court 1" })).toBeEnabled();
   });
 
   it("shows Waiting for players when a Court has no Lineup", () => {
@@ -116,9 +116,9 @@ describe("SessionScreen", () => {
     expect(teamNamesIn(2, "Team A")).toEqual(lineupTwo);
     expect(getSession()?.matches).toHaveLength(1);
 
-    const removeCourt = court(1).getByRole("button", { name: "Remove court" });
-    expect(removeCourt).toBeDisabled();
-    expect(removeCourt).toHaveAccessibleDescription("End or remove the match first");
+    // A Busy court can't be removed, so it doesn't offer it.
+    expect(court(1).queryByRole("button", { name: /^Remove court/ })).not.toBeInTheDocument();
+    expect(court(2).getByRole("button", { name: "Remove court 2" })).toBeEnabled();
   });
 
   it("ticks the match timer from startedAt, every second", () => {
@@ -246,6 +246,25 @@ describe("SessionScreen", () => {
     expect(screen.getByRole("button", { name: "Rehash all" })).toBeDisabled();
   });
 
+  it("hides Rehash all with a single court", async () => {
+    setSession(makeSession({ players: 4, courts: 1 }));
+    renderAt();
+    expect(screen.queryByRole("button", { name: "Rehash all" })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Add court" }));
+    expect(screen.getByRole("button", { name: "Rehash all" })).toBeEnabled();
+
+    await userEvent.click(court(1).getByRole("button", { name: "Start match" }));
+    expect(screen.getByRole("button", { name: "Rehash all" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Rehash all" })).toHaveAttribute(
+      "title",
+      "Needs at least 2 idle courts",
+    );
+
+    await userEvent.click(court(2).getByRole("button", { name: "Remove court 2" }));
+    expect(screen.queryByRole("button", { name: "Rehash all" })).not.toBeInTheDocument();
+  });
+
   it("adds Courts up to 10 and removes Idle ones without asking", async () => {
     setSession(makeSession({ courts: 9 }));
     renderAt();
@@ -255,7 +274,7 @@ describe("SessionScreen", () => {
     expect(add).toBeDisabled();
     expect(screen.getByText("Up to 10 courts.")).toBeInTheDocument();
 
-    await userEvent.click(court(3).getByRole("button", { name: "Remove court" }));
+    await userEvent.click(court(3).getByRole("button", { name: "Remove court 3" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Court 3" })).not.toBeInTheDocument();
     expect(getSession()!.courts).toHaveLength(9);

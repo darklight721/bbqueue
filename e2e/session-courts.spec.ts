@@ -92,19 +92,26 @@ test.describe("Courts and Lineups", () => {
     expect(await lineupOf(court(page, 2))).toEqual(otherBefore);
   });
 
-  test("Rehash all is disabled with one Idle Court and enabled with two", async ({ page }) => {
+  test("Rehash all is hidden with one Court, then needs two Idle Courts", async ({ page }) => {
     await startSession(page, { players: 4, courts: 1 });
     const rehashAll = page.getByRole("button", { name: "Rehash all" });
-    await expect(rehashAll).toBeDisabled();
+    await expect(court(page, 1)).toBeVisible();
+    await expect(rehashAll).toHaveCount(0);
 
     await page.getByRole("button", { name: "Add court" }).click();
     await expect(court(page, 2)).toBeVisible();
     await expect(rehashAll).toBeEnabled();
 
-    // A Busy Court no longer counts as Idle.
+    // A Busy Court no longer counts as Idle: still shown (2 Courts), but disabled.
     await court(page, 1).getByRole("button", { name: "Start match" }).click();
     await expect(court(page, 1).getByText("Playing", { exact: true })).toBeVisible();
     await expect(rehashAll).toBeDisabled();
+    await expect(rehashAll).toHaveAttribute("title", "Needs at least 2 idle courts");
+
+    // Back to one Court: hidden again.
+    await court(page, 2).getByRole("button", { name: "Remove court 2", exact: true }).click();
+    await expect(court(page, 2)).toHaveCount(0);
+    await expect(rehashAll).toHaveCount(0);
   });
 
   test("Rehash all re-picks Lineups for all Idle Courts", async ({ page }) => {
@@ -133,7 +140,7 @@ test.describe("Courts and Lineups", () => {
     await expect(three.getByRole("button", { name: "Rehash", exact: true })).toBeDisabled();
     expect((await storedSession(page)).courts.map((c) => c.number)).toEqual([1, 2, 3]);
 
-    await three.getByRole("button", { name: "Remove court" }).click();
+    await three.getByRole("button", { name: "Remove court 3", exact: true }).click();
     await expect(court(page, 3)).toHaveCount(0);
     expect((await storedSession(page)).courts).toHaveLength(2);
 
@@ -142,13 +149,14 @@ test.describe("Courts and Lineups", () => {
     await expect(court(page, 3)).toBeVisible();
   });
 
-  test("Remove court is disabled while Busy", async ({ page }) => {
+  test("Remove court is only offered on Idle courts", async ({ page }) => {
     await startSession(page);
     await court(page, 1).getByRole("button", { name: "Start match" }).click();
-    const remove = court(page, 1).getByRole("button", { name: "Remove court" });
-    await expect(remove).toBeDisabled();
-    await expect(remove).toHaveAccessibleDescription("End or remove the match first");
-    await expect(court(page, 2).getByRole("button", { name: "Remove court" })).toBeEnabled();
+    await expect(court(page, 1).getByText("Playing")).toBeVisible();
+    await expect(court(page, 1).getByRole("button", { name: /^Remove court/ })).toHaveCount(0);
+    await expect(
+      court(page, 2).getByRole("button", { name: "Remove court 2", exact: true }),
+    ).toBeEnabled();
   });
 
   test("Add court is disabled at 10 Courts", async ({ page }) => {

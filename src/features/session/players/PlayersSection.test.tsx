@@ -230,6 +230,118 @@ describe("PlayersSection", () => {
   });
 });
 
+describe("Players collapse and sort", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetStoreForTests();
+  });
+
+  /** Court 1 Busy, Court 2 Lineup, one player Sitting out, the rest Free. */
+  function mixedSession() {
+    let session = makeSession();
+    session = ok(startMatch(session, session.courts[0]!.id, ctx()));
+    const busy = new Set(session.matches[0]!.teams.flat());
+    const lineup = new Set(session.courts[1]!.lineup!.teams.flat());
+    const rest = session.players.map((p) => p.id).filter((id) => !busy.has(id) && !lineup.has(id));
+    session = ok(setSittingOut(session, rest[0]!, true, ctx()));
+    return { session, busy, lineup, sitting: rest[0]!, free: rest.slice(1) };
+  }
+
+  it("is open by default and collapses to just the header", async () => {
+    renderSession(makeSession());
+    const toggle = playersRegion().getByRole("button", { name: "Hide players" });
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(playersRegion().getByRole("textbox", { name: "Player name" })).toBeInTheDocument();
+
+    await userEvent.click(toggle);
+    expect(playersRegion().getByRole("button", { name: "Show players" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(playersRegion().getByText("10 players")).toBeInTheDocument();
+    expect(playersRegion().queryByRole("textbox", { name: "Player name" })).not.toBeInTheDocument();
+    expect(playersRegion().queryByRole("listitem")).not.toBeInTheDocument();
+    expect(playersRegion().queryByRole("radio")).not.toBeInTheDocument();
+
+    await userEvent.click(playersRegion().getByRole("button", { name: "Show players" }));
+    expect(rowNames()).toHaveLength(10);
+  });
+
+  it("the jump bar opens a collapsed Players or History section", async () => {
+    let session = makeSession();
+    session = ok(startMatch(session, session.courts[0]!.id, ctx()));
+    renderSession(session);
+    await userEvent.click(court1Button("End match"));
+    await userEvent.click(screen.getByRole("button", { name: "End without score" }));
+
+    await userEvent.click(playersRegion().getByRole("button", { name: "Hide players" }));
+    expect(playersRegion().queryByRole("listitem")).not.toBeInTheDocument();
+    const nav = within(screen.getByRole("navigation", { name: "Sections" }));
+
+    await userEvent.click(nav.getByRole("button", { name: "Players" }));
+    expect(rowNames()).toHaveLength(10);
+
+    const history = within(screen.getByRole("region", { name: "History" }));
+    expect(history.queryByRole("list", { name: "Match history" })).not.toBeInTheDocument();
+    await userEvent.click(nav.getByRole("button", { name: "History" }));
+    expect(history.getByRole("list", { name: "Match history" })).toBeInTheDocument();
+    expect(history.getByRole("button", { name: "Hide history" })).toBeInTheDocument();
+  });
+
+  it("sorts by Name, Plays or Status and remembers the choice", async () => {
+    const { session, busy, lineup, sitting, free } = mixedSession();
+    renderSession(session);
+    const nameOfIn = (id: string) => session.players.find((p) => p.id === id)!.name;
+    const byName = (ids: Iterable<string>) =>
+      [...ids].map(nameOfIn).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+
+    expect(playersRegion().getByRole("radio", { name: "Name" })).toBeChecked();
+    expect(rowNames()).toEqual([
+      "ana",
+      "Ben",
+      "Cat",
+      "Dan",
+      "Eve",
+      "Fay",
+      "Gus",
+      "Hal",
+      "Ivy",
+      "zoe",
+    ]);
+
+    await userEvent.click(playersRegion().getByRole("radio", { name: "Status" }));
+    expect(rowNames()).toEqual([
+      ...byName(busy),
+      ...byName(lineup),
+      ...byName(free),
+      nameOfIn(sitting),
+    ]);
+    expect(localStorage.getItem("bq:v1:players-sort")).toBe('"status"');
+
+    // Plays: end Court 1's match, so its four players have 1 played and go last.
+    await userEvent.click(court1Button("End match"));
+    await userEvent.click(screen.getByRole("button", { name: "End without score" }));
+    await userEvent.click(playersRegion().getByRole("radio", { name: "Plays" }));
+    const notPlayed = session.players.map((p) => p.id).filter((id) => !busy.has(id));
+    expect(rowNames()).toEqual([...byName(notPlayed), ...byName(busy)]);
+  });
+
+  it("starts with the remembered sort", () => {
+    localStorage.setItem("bq:v1:players-sort", '"plays"');
+    renderSession(makeSession());
+    expect(playersRegion().getByRole("radio", { name: "Plays" })).toBeChecked();
+  });
+
+  it("falls back to Name when the saved sort is unreadable", () => {
+    localStorage.setItem("bq:v1:players-sort", "{oops");
+    renderSession(makeSession());
+    expect(playersRegion().getByRole("radio", { name: "Name" })).toBeChecked();
+  });
+});
+
+const court1Button = (name: string) =>
+  within(screen.getByRole("region", { name: "Court 1" })).getByRole("button", { name });
+
 describe("Section jump bar", () => {
   beforeEach(() => {
     localStorage.clear();

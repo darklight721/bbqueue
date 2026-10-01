@@ -38,6 +38,7 @@ export function match(options: {
   score?: [number, number] | null;
   freeAtStart?: string[];
   number?: number | null;
+  target?: PointSystem;
 }): Match {
   const endedAt = options.endedAt ?? null;
   return {
@@ -47,6 +48,7 @@ export function match(options: {
     teams: options.teams,
     freeAtStart: options.freeAtStart ?? [],
     startedAt: options.startedAt,
+    target: options.target ?? 21,
     endedAt,
     score: options.score ?? null,
     status: endedAt === null ? "active" : "ended",

@@ -155,6 +155,7 @@ function beginMatch(
     teams,
     freeAtStart: freePlayerIds(session).filter((id) => !inMatch.has(id)),
     startedAt: ctx.now,
+    target: session.pointSystem,
     endedAt: null,
     score: null,
     status: "active",
@@ -234,7 +235,7 @@ export function endMatch(
   const match = session.matches.find((candidate) => candidate.id === matchId);
   if (!match) return fail("match-not-found");
   if (match.status !== "active") return fail("match-not-active");
-  if (score !== null && validateScore(score, session.pointSystem) !== null) {
+  if (score !== null && validateScore(score, match.target) !== null) {
     return fail("invalid-score");
   }
   const ended = session.matches.map((candidate) =>
@@ -395,6 +396,19 @@ export function setSittingOut(
   };
   const released = resetNow ? releasePlayers(changed, [playerId], ctx) : changed;
   return ok(fillLineups(released, ctx));
+}
+
+// ---------------------------------------------------------------- point system
+
+/** Change the Point system for Matches started from now on; Active matches keep their Target. */
+export function setPointSystem(
+  session: Session,
+  pointSystem: PointSystem,
+  _ctx: EngineContext,
+): Result<"invalid-point-system"> {
+  if (pointSystem !== 21 && pointSystem !== 31) return fail("invalid-point-system");
+  if (session.pointSystem === pointSystem) return ok(session);
+  return ok({ ...session, pointSystem });
 }
 
 // ------------------------------------------------------------------ end session

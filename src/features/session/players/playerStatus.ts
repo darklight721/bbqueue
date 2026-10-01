@@ -38,9 +38,51 @@ export function playerStatus(
 
 /** Non-removed players, alphabetical (case- and accent-insensitive). */
 export function activePlayersByName(players: readonly SessionPlayer[]): SessionPlayer[] {
-  return players
-    .filter((player) => !player.removed)
-    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+  return players.filter((player) => !player.removed).sort(byName);
+}
+
+export type PlayerSort = "name" | "plays" | "status";
+
+export const PLAYER_SORTS: readonly { value: PlayerSort; label: string }[] = [
+  { value: "name", label: "Name" },
+  { value: "plays", label: "Plays" },
+  { value: "status", label: "Status" },
+];
+
+function byName(a: SessionPlayer, b: SessionPlayer): number {
+  return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+}
+
+const STATUS_ORDER: Record<string, number> = {
+  "on-court": 0,
+  "in-lineup": 1,
+  free: 2,
+  "sitting-out": 3,
+};
+
+/**
+ * Orders players for the list.
+ * - name: A→Z.
+ * - plays: fewest Ended matches first, then name.
+ * - status: On court → In lineup (each by court number) → Free → Sitting out, then name.
+ */
+export function sortPlayers(
+  players: readonly SessionPlayer[],
+  stats: ReadonlyMap<string, PlayerStats>,
+  sort: PlayerSort,
+): SessionPlayer[] {
+  const list = [...players];
+  if (sort === "plays") {
+    const played = (player: SessionPlayer) => stats.get(player.id)?.matchesPlayed ?? 0;
+    return list.sort((a, b) => played(a) - played(b) || byName(a, b));
+  }
+  if (sort === "status") {
+    const rank = (player: SessionPlayer) =>
+      STATUS_ORDER[stats.get(player.id)?.status ?? "free"] ?? 2;
+    const court = (player: SessionPlayer) => stats.get(player.id)?.courtNumber ?? 0;
+    return list.sort((a, b) => rank(a) - rank(b) || court(a) - court(b) || byName(a, b));
+  }
+  return list.sort(byName);
 }
 
 /** "12 players · 2 sitting out" (the second part only when someone is sitting out). */

@@ -45,6 +45,7 @@ function buildSession({ sittingOut = [], skills = {}, history = [] }: Tweaks = {
       ],
       freeAtStart: [],
       startedAt: endedAt - 10 * 60_000,
+      target: 21,
       endedAt,
       score: [21, 10],
       status: "ended",
@@ -446,11 +447,16 @@ test.describe("Jump bar", () => {
       "aria-current",
       "true",
     );
+    // Not hidden under the top bar, nor under the jump bar (at the bottom on phones).
     await expect
       .poll(async () => {
+        const topBar = (await page.getByRole("banner").boundingBox())!;
         const navBox = (await nav.boundingBox())!;
         const headingBox = (await heading.boundingBox())!;
-        return headingBox.y >= navBox.y + navBox.height - 1;
+        const navOnTop = navBox.y < topBar.y + topBar.height + 1;
+        const clearTop = navOnTop ? navBox.y + navBox.height : topBar.y + topBar.height;
+        const clearBottom = navOnTop ? Infinity : navBox.y;
+        return headingBox.y >= clearTop - 1 && headingBox.y + headingBox.height <= clearBottom + 1;
       })
       .toBe(true);
   });
