@@ -283,8 +283,8 @@ export function pickDifferentLineup(session: Session, court: Court, env: Env): L
 }
 
 /**
- * Replace only `leavingId` in a Court's Lineup with the best Candidate (rank key, then the
- * split rule), re-splitting the four. Null when there is no Candidate.
+ * Replace only `leavingId` in a Court's Lineup with the best Candidate (rank key, then longest
+ * Wait, then the split rule), re-splitting the four. Null when there is no Candidate.
  */
 export function replaceInLineup(
   session: Session,
@@ -296,7 +296,10 @@ export function replaceInLineup(
   const held = heldPlayerIds(session);
   const candidates = freePlayerIds(session).filter((id) => id !== leavingId && !held.has(id));
   if (candidates.length === 0) return null;
-  const best = selectionPool(candidates, 1, env).pool;
+  // Rank key first, then longest Wait (part of Fairness); the split rule only breaks ties.
+  const tied = selectionPool(candidates, 1, env).pool;
+  const longest = Math.max(...tied.map((id) => waitOf(env, id)));
+  const best = tied.filter((id) => waitOf(env, id) === longest);
   return bestSplitOf(
     best.map((id) => [...rest, id]),
     env,

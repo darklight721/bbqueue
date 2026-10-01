@@ -652,3 +652,37 @@ describe("validateCreateSessionInput", () => {
     ]);
   });
 });
+
+describe("partial replacements prefer the longest Wait", () => {
+  it("picks the longer-waiting of two equally keyed Candidates, even against balance", () => {
+    // Replacing x leaves a1, a2, b1: the beginner Candidate would balance the Teams, but the
+    // advanced one has waited longer and Wait (Fairness) outranks the split rule.
+    const players = [
+      player("a1", "advanced"),
+      player("a2", "advanced"),
+      player("b1", "beginner"),
+      player("x", "intermediate"),
+      player("long", "advanced", T0 - 60 * MIN),
+      player("short", "beginner", T0 - 5 * MIN),
+    ];
+    const base = session({ players });
+    const withLineup: Session = {
+      ...base,
+      courts: [
+        {
+          ...base.courts[0]!,
+          lineup: {
+            teams: [
+              ["a1", "a2"],
+              ["b1", "x"],
+            ],
+          },
+        },
+      ],
+    };
+    for (const seed of seedList(20)) {
+      const next = unwrap(removePlayer(withLineup, "x", makeCtx(seed)));
+      expect(lineupSet(next, 1)).toEqual(["a1", "a2", "b1", "long"]);
+    }
+  });
+});
