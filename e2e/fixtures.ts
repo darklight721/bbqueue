@@ -128,3 +128,9 @@ export async function readStored(page: Page, name: StorageKey): Promise<unknown>
     return raw === null ? null : (JSON.parse(raw) as unknown);
   }, STORAGE_KEYS[name]);
 }
+
+/** Like `readStored` but unwraps the `{ version, data }` envelope; returns null if absent. */
+export async function readStoredData<T>(page: Page, name: StorageKey): Promise<T | null> {
+  const envelope = (await readStored(page, name)) as { data: T } | null;
+  return envelope === null ? null : envelope.data;
+}
