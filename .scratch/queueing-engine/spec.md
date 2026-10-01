@@ -26,18 +26,18 @@ Vocabulary per `GLOSSARY.md`; rule priority per ADR-0003.
 
 ## Rules (soft, strict priority — ADR-0003)
 
-1. **Rest**: avoid players whose Streak ≥ 2.
-2. **Fairness**: fewest Recent count, then fewest Total count.
+1. **Rest**: avoid players whose Streak ≥ 2; graded — longer Streaks rest first.
+2. **Fairness**: fewest Recent count, then fewest Total count, then longest Wait.
 3. **Team balance** ≤ 1.
 4. **New partners**: fewest Partner repeats.
-Then: longest total Wait of the four; then random.
+Then: random.
 
 ## Algorithm: pick a Lineup for one Court
 
-1. Rank Candidates by key `(streak >= 2 ? 1 : 0, recent, total)` (ascending).
+1. Rank Candidates by key `(max(0, streak − 1), recent, total)` (ascending).
 2. If fewer than 4 Candidates → Lineup = null ("Waiting for players").
 3. Let K = key of the 4th-ranked Candidate. Players with key < K are **in**. Players with key == K form the **tie pool**; choose the remaining slots from it.
-4. For each combination from the tie pool (bounded: if the pool is huge, cap via random sampling of ≤ 2 000 combinations using `rng`) and each of the 3 possible splits, score `(balance > 1 ? 1 : 0, partnerRepeats, balance, -sumWait, rngTiebreak)`; pick the minimum.
+4. Cut the tie pool to the **12 longest-waiting** players (Wait desc; ties random). Enumerate every combination of the remaining slots from that cut pool, and each of the 3 possible splits; score `(−sumWait of chosen pool players, balance > 1 ? 1 : 0, partnerRepeats, balance, rngTiebreak)`; pick the minimum. (Wait is part of Fairness, so it outranks balance — ADR-0003.)
 
 Team split for a given 4 (used for Queues' warnings and partial replacements): minimise `(balance > 1 ? 1 : 0, partnerRepeats, balance, rng)` over the 3 splits.
 
@@ -48,16 +48,16 @@ Team split for a given 4 (used for Queues' warnings and partial replacements): m
 | `createSession(input, now, rng)` | Snapshot players; Courts 1..n; fill Lineups (see Fill). |
 | `fill(session)` | For each Idle Court **without** a Lineup, lowest number first: pick a Lineup. Existing Lineups are never changed by Fill. |
 | `rehashCourt(courtId)` | Re-pick that Court's Lineup (its own held players become Candidates again). Result must differ from the current Lineup when any different valid Lineup exists: prefer best-scoring Lineup with a **different set of players**; if none exists (exactly 4 Candidates), choose the best **different split**. |
-| `rehashAll()` | Only when ≥ 2 Idle Courts. Release all Idle Courts' Lineups; select 4k players (k = Idle Courts with enough players) using the same ranking/tie-pool rule; partition into k groups × splits minimising, in order: number of Courts with balance > 1, total partner repeats, total balance, then random. Must differ from the previous arrangement (Court → Teams) when possible. Exact optimum not required for k ≥ 3 — use a seeded randomised local search (e.g. random restarts + pairwise swaps, ≤ 500 iterations). |
+| `rehashAll()` | Only when ≥ 2 Idle Courts. Release all Idle Courts' Lineups; select 4k players (k = Idle Courts with enough players) using the same ranking/tie-pool rule; partition into k groups × splits minimising, in order: number of Courts with balance > 1, total partner repeats, total balance, then random. The 4k selected players are fixed by the ranking rule: the search may only swap **tie-pool** players in or out, never drop an "in" player. "Different" is judged on the **set of Teams regardless of Court** (moving the same Teams to other Courts is not different). Must differ from the previous arrangement when possible. Exact optimum not required for k ≥ 3 — use a seeded randomised local search (e.g. random restarts + pairwise swaps, ≤ 500 iterations). |
 | `startMatch(courtId)` | Court must be Idle with a Lineup. Create Active match (teams from Lineup, `startedAt = now`, `freeAtStart` = Free players not in it), clear Lineup. |
 | `moveQueueToCourt(queueId, courtId)` | Allowed only if Court is Idle, Queue has 4 players, none in an Active match. Queued players who are Sitting out are brought back in. Discard the Court's Lineup; start the Match with the Queue's Teams as set by hand; delete the Queue. Any **other** Court's Lineup containing a queued player: **replace only that player** with the best Candidate (rank key, then the split rule), re-split; if no Candidate → that Lineup becomes null. Then Fill. |
 | `endMatch(matchId, score \| null)` | Status ended, `endedAt = now`, score, `number` = count of Ended matches + 1. Court becomes Idle → Fill (this Court gets a Lineup immediately). |
 | `removeMatch(matchId)` | Delete the Match entirely. Court Idle → Fill. |
 | `addCourt()` | Lowest unused number (max 10 Courts). Fill. |
 | `removeCourt(courtId)` | Rejected if Busy. Lineup players released. Fill. |
-| `addPlayer(player)` | Add (validated unique name). Fill. |
+| `addPlayer(player)` | Add (validated unique name among non-removed players). If a **removed** player has the same name, restore them instead (same id and history; skill updated to the new value; not sitting out). Fill. |
 | `removePlayer(playerId)` | Rejected if in an Active match. Mark removed. If in a Lineup → replace only that player (as above). Clear their Queue slots. Fill. |
-| `setSittingOut(playerId, bool)` | Sitting out: reset Streak; if in a Lineup → replace only that player. Back in: Fill. |
+| `setSittingOut(playerId, bool)` | Sitting out when Free / in a Lineup: reset Streak now; if in a Lineup → replace only that player. Sitting out while **on court**: allowed — the Active match is unaffected and counts normally; the Streak reset happens when that match ends or is removed ("Sitting out after this match"). Back in: Fill. |
 | `endSession()` | Active matches → ended without score. Produce SessionSummary. |
 
 All rejections are returned as typed results (e.g. `{ ok: false, reason: 'player-in-active-match' }`), not thrown.
