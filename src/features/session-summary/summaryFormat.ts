@@ -1,0 +1,50 @@
+import type { TopWinner } from "../../domain/types.ts";
+
+/** "2 h 15 min", "45 min", "1 h"; whole minutes (rounded); under a minute → "Under 1 min". */
+export function formatSessionDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 60_000) return "Under 1 min";
+  const totalMinutes = Math.round(ms / 60_000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours === 0) return `${minutes} min`;
+  if (minutes === 0) return `${hours} h`;
+  return `${hours} h ${minutes} min`;
+}
+
+/** 1 → "1st", 2 → "2nd", 3 → "3rd", 4 → "4th" … */
+export function ordinal(place: number): string {
+  const tens = place % 100;
+  if (tens >= 11 && tens <= 13) return `${place}th`;
+  switch (place % 10) {
+    case 1:
+      return `${place}st`;
+    case 2:
+      return `${place}nd`;
+    case 3:
+      return `${place}rd`;
+    default:
+      return `${place}th`;
+  }
+}
+
+/** Places shared by more than one winner (shown as "Joint 1st"). */
+export function sharedPlaces(winners: readonly TopWinner[]): Set<number> {
+  const counts = new Map<number, number>();
+  for (const winner of winners) counts.set(winner.place, (counts.get(winner.place) ?? 0) + 1);
+  return new Set([...counts].filter(([, count]) => count > 1).map(([place]) => place));
+}
+
+/** "Fri, 2 Oct · 18:00–20:15" in the device locale. */
+export function sessionWhen(startedAt: number, endedAt: number): string {
+  const day = new Intl.DateTimeFormat(undefined, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  }).format(startedAt);
+  const time = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
+  return `${day} · ${time.format(startedAt)}–${time.format(endedAt)}`;
+}
+
+export function countLabel(count: number, one: string, many: string): string {
+  return `${count} ${count === 1 ? one : many}`;
+}

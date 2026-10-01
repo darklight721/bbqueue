@@ -5,7 +5,7 @@ import { ClubsScreen } from "../features/clubs/ClubsScreen.tsx";
 import { HomeScreen } from "../features/home/HomeScreen.tsx";
 import { NewSessionScreen } from "../features/new-session/NewSessionScreen.tsx";
 import { SessionScreen } from "../features/session/SessionScreen.tsx";
-import { PlaceholderScreen } from "./PlaceholderScreen.tsx";
+import { SessionSummaryScreen } from "../features/session-summary/SessionSummaryScreen.tsx";
 
 // Loaded lazily and only where service workers exist, so the PWA virtual module
 // never runs in jsdom tests or unsupported browsers.
@@ -27,9 +27,7 @@ export function App() {
         <Route path="/clubs/:clubId">{(params) => <ClubEditScreen clubId={params.clubId} />}</Route>
         <Route path="/session/new" component={NewSessionScreen} />
         <Route path="/session" component={SessionScreen} />
-        <Route path="/session/summary">
-          <PlaceholderScreen title="Session summary" backTo="/" />
-        </Route>
+        <Route path="/session/summary" component={SessionSummaryScreen} />
         <Route>
           <Redirect to="/" replace />
         </Route>
