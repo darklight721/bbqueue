@@ -1,46 +1,48 @@
+import { lazy, Suspense } from "react";
 import { Redirect, Route, Switch } from "wouter";
+import { HomeScreen } from "../features/home/HomeScreen.tsx";
+import { PlaceholderScreen } from "./PlaceholderScreen.tsx";
 
-function Home() {
-  return <h1>Badminton Queue</h1>;
-}
+// Loaded lazily and only where service workers exist, so the PWA virtual module
+// never runs in jsdom tests or unsupported browsers.
+const UpdatePrompt = lazy(() =>
+  import("../components/UpdatePrompt.tsx").then((module) => ({ default: module.UpdatePrompt })),
+);
 
-function Clubs() {
-  return <h1>Clubs</h1>;
-}
-
-function NewClub() {
-  return <h1>New club</h1>;
-}
-
-function EditClub() {
-  return <h1>Edit club</h1>;
-}
-
-function NewSession() {
-  return <h1>New session</h1>;
-}
-
-function Session() {
-  return <h1>Session</h1>;
-}
-
-function SessionSummary() {
-  return <h1>Session summary</h1>;
-}
+const supportsServiceWorker = typeof navigator !== "undefined" && "serviceWorker" in navigator;
 
 export function App() {
   return (
-    <Switch>
-      <Route path="/" component={Home} />
-      <Route path="/clubs" component={Clubs} />
-      <Route path="/clubs/new" component={NewClub} />
-      <Route path="/clubs/:clubId" component={EditClub} />
-      <Route path="/session/new" component={NewSession} />
-      <Route path="/session" component={Session} />
-      <Route path="/session/summary" component={SessionSummary} />
-      <Route>
-        <Redirect to="/" replace />
-      </Route>
-    </Switch>
+    <>
+      <Switch>
+        <Route path="/" component={HomeScreen} />
+        <Route path="/clubs">
+          <PlaceholderScreen title="Clubs" backTo="/" />
+        </Route>
+        <Route path="/clubs/new">
+          <PlaceholderScreen title="New club" backTo="/clubs" />
+        </Route>
+        <Route path="/clubs/:clubId">
+          <PlaceholderScreen title="Edit club" backTo="/clubs" />
+        </Route>
+        <Route path="/session/new">
+          <PlaceholderScreen title="New session" backTo="/" />
+        </Route>
+        <Route path="/session">
+          <PlaceholderScreen title="Session" backTo="/" />
+        </Route>
+        <Route path="/session/summary">
+          <PlaceholderScreen title="Session summary" backTo="/" />
+        </Route>
+        <Route>
+          <Redirect to="/" replace />
+        </Route>
+      </Switch>
+      {supportsServiceWorker ? (
+        <Suspense fallback={null}>
+          <UpdatePrompt />
+        </Suspense>
+      ) : null}
+    </>
   );
 }

@@ -3,8 +3,8 @@ import react from "@vitejs/plugin-react";
 import { defineConfig, lazyPlugins } from "vite-plus";
 import { VitePWA } from "vite-plugin-pwa";
 
-const themeColor = "#16a34a";
-const backgroundColor = "#ffffff";
+const themeColor = "#0b6b45";
+const backgroundColor = "#f7f9f4";
 
 // https://vite.dev/config/
 export default defineConfig({

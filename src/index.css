@@ -1,6 +1,195 @@
 @import "tailwindcss";
+
+/*
+ * Visual direction: "Court lines".
+ * A deep court-green brand, near-black ink on an off-white "line paint" base for
+ * maximum contrast under bright hall lights, and a volt (shuttle-yellow) accent
+ * used sparingly for the one thing that matters most on a screen.
+ */
+
 @plugin "daisyui" {
-  themes:
-    light --default,
-    dark --prefersdark;
+  themes: false;
+}
+
+@plugin "daisyui/theme" {
+  name: "court";
+  default: true;
+  prefersdark: false;
+  color-scheme: light;
+
+  --color-base-100: #f7f9f4;
+  --color-base-200: #eaefe7;
+  --color-base-300: #d5ddd2;
+  --color-base-content: #14201a;
+  --color-primary: #0b6b45;
+  --color-primary-content: #ffffff;
+  --color-secondary: #14201a;
+  --color-secondary-content: #f7f9f4;
+  --color-accent: #d8f53a;
+  --color-accent-content: #14201a;
+  --color-neutral: #14201a;
+  --color-neutral-content: #f7f9f4;
+  --color-info: #0369a1;
+  --color-info-content: #ffffff;
+  --color-success: #0b6b45;
+  --color-success-content: #ffffff;
+  --color-warning: #f5a524;
+  --color-warning-content: #1f1300;
+  --color-error: #b42318;
+  --color-error-content: #ffffff;
+
+  --radius-selector: 0.5rem;
+  --radius-field: 0.75rem;
+  --radius-box: 1.25rem;
+  /* 0.3rem → 48px tall buttons / inputs at the default size. */
+  --size-selector: 0.3rem;
+  --size-field: 0.3rem;
+  --border: 1.5px;
+  --depth: 1;
+  --noise: 0;
+}
+
+@plugin "daisyui/theme" {
+  name: "court-night";
+  default: false;
+  prefersdark: true;
+  color-scheme: dark;
+
+  --color-base-100: #0d1512;
+  --color-base-200: #131e19;
+  --color-base-300: #1d2b24;
+  --color-base-content: #e8efe9;
+  --color-primary: #3ddc97;
+  --color-primary-content: #04140c;
+  --color-secondary: #e8efe9;
+  --color-secondary-content: #0d1512;
+  --color-accent: #d8f53a;
+  --color-accent-content: #14201a;
+  --color-neutral: #24332c;
+  --color-neutral-content: #e8efe9;
+  --color-info: #56b4e9;
+  --color-info-content: #04121c;
+  --color-success: #3ddc97;
+  --color-success-content: #04140c;
+  --color-warning: #f5a524;
+  --color-warning-content: #1f1300;
+  --color-error: #f87171;
+  --color-error-content: #1a0505;
+
+  --radius-selector: 0.5rem;
+  --radius-field: 0.75rem;
+  --radius-box: 1.25rem;
+  --size-selector: 0.3rem;
+  --size-field: 0.3rem;
+  --border: 1.5px;
+  --depth: 1;
+  --noise: 0;
+}
+
+@theme {
+  /*
+   * Condensed, sporty display face for titles and big numbers. A bundled webfont
+   * (e.g. "Barlow Condensed Variable") is picked up automatically if added later;
+   * otherwise we fall back to good condensed system faces.
+   */
+  --font-display:
+    "Barlow Condensed Variable", "Barlow Condensed", "Avenir Next Condensed", "Bahnschrift",
+    "DIN Alternate", "Roboto Condensed", "Arial Narrow", ui-sans-serif, system-ui, sans-serif;
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+
+  --color-court: #0b6b45;
+  --color-court-deep: #08543a;
+  --color-line: #f7f9f4;
+  --color-volt: #d8f53a;
+
+  /* Skill level colours (Okabe–Ito based; always paired with bars + text). */
+  --color-skill-beginner: #0072b2;
+  --color-skill-intermediate: #b86e00;
+  --color-skill-advanced: #9b3d7a;
+
+  --animate-rise: rise 420ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-court: #0f5c3d;
+    --color-court-deep: #0a3f2b;
+    --color-skill-beginner: #56b4e9;
+    --color-skill-intermediate: #e69f00;
+    --color-skill-advanced: #e48bc0;
+  }
+}
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    min-height: 100dvh;
+    background-color: var(--color-base-100);
+    color: var(--color-base-content);
+    font-family: var(--font-sans);
+    font-size: 1rem;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior-y: none;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    line-height: 1.1;
+  }
+
+  /* iOS zooms into fields with text smaller than 16px. */
+  input,
+  select,
+  textarea {
+    font-size: max(1rem, 16px);
+  }
+
+  :focus-visible {
+    outline: 3px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 1ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 1ms !important;
+    }
+  }
+}
+
+@utility pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+@utility pb-safe {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+}
+
+@utility px-safe {
+  padding-left: max(1rem, env(safe-area-inset-left, 0px));
+  padding-right: max(1rem, env(safe-area-inset-right, 0px));
 }
