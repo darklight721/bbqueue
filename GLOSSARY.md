@@ -31,8 +31,12 @@ One evening of play for one Club, from Start to End. Only one Session exists at 
 _Avoid_: Event, game night
 
 **Point system**:
-The target score for every Match in a Session: 21 or 31. Fixed for the whole Session.
+The Target given to each new Match in a Session: 21 or 31. Can be changed during the Session; Matches already being played keep their Target.
 _Avoid_: Game format, scoring mode
+
+**Target**:
+The score a Match is played to: the Session's Point system at the moment the Match started.
+_Avoid_: Match point system, game length
 
 **Court**:
 A numbered playing area in a Session. Either Idle or Busy (has an Active match).
@@ -56,7 +60,7 @@ A Match discarded as if it never happened. Leaves no trace in history or counts.
 _Avoid_: Cancelled match
 
 **Score**:
-The points each Team reached in an Ended match. The Team with more points wins.
+The points each Team reached in an Ended match, checked against that Match's Target. The Team with more points wins.
 
 ## Queueing
 
@@ -87,7 +91,7 @@ The number of Matches a Session player has played back-to-back without a Rest.
 A Match starting without a Session player while that player was free to play. Resets their Streak to zero.
 
 **Fairness window**:
-The recent stretch of time used to judge who has played least: 15 minutes for a 21-point Session, 30 minutes for a 31-point Session.
+The recent stretch of time used to judge who has played least: 15 minutes while the Session's Point system is 21, 30 minutes while it is 31.
 
 **Team balance**:
 The difference between the two Teams' total Skill values. Balanced means a difference of at most 1.
