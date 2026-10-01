@@ -1,5 +1,12 @@
 import type { Page } from "@playwright/test";
-import type { Club, Court, Session, SessionPlayer, SessionSummary } from "../src/domain/types.ts";
+import type {
+  Club,
+  ClubPlayer,
+  Court,
+  Session,
+  SessionPlayer,
+  SessionSummary,
+} from "../src/domain/types.ts";
 
 /** Mirrors `STORAGE_KEYS` in src/storage/storage.ts (kept literal so e2e never imports app runtime code). */
 export const STORAGE_KEYS = {
@@ -18,6 +25,20 @@ export interface SeedData {
 
 let counter = 0;
 const nextId = (prefix: string) => `${prefix}-${++counter}`;
+
+export function makeClubPlayer(overrides: Partial<ClubPlayer> = {}): ClubPlayer {
+  const id = overrides.id ?? nextId("club-player");
+  return { id, name: `Player ${id}`, skill: "intermediate", ...overrides };
+}
+
+/** Club with `playerCount` generated players (unique names). */
+export function makeClubWithPlayers(
+  playerCount: number,
+  overrides: Partial<Omit<Club, "players">> = {},
+): Club {
+  const players = Array.from({ length: playerCount }, () => makeClubPlayer());
+  return makeClub({ ...overrides, players });
+}
 
 export function makeClub(overrides: Partial<Club> = {}): Club {
   return {

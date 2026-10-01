@@ -1,5 +1,6 @@
 import { lazy, Suspense } from "react";
 import { Redirect, Route, Switch } from "wouter";
+import { ClubsScreen } from "../features/clubs/ClubsScreen.tsx";
 import { HomeScreen } from "../features/home/HomeScreen.tsx";
 import { PlaceholderScreen } from "./PlaceholderScreen.tsx";
 
@@ -16,9 +17,7 @@ export function App() {
     <>
       <Switch>
         <Route path="/" component={HomeScreen} />
-        <Route path="/clubs">
-          <PlaceholderScreen title="Clubs" backTo="/" />
-        </Route>
+        <Route path="/clubs" component={ClubsScreen} />
         <Route path="/clubs/new">
           <PlaceholderScreen title="New club" backTo="/clubs" />
         </Route>
