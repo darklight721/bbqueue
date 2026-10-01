@@ -6,7 +6,17 @@ import { EndSessionSection } from "./end/EndSessionSection.tsx";
 import { HistorySection } from "./history/HistorySection.tsx";
 import { PlayersSection } from "./players/PlayersSection.tsx";
 import { QueuesSection } from "./queues/QueuesSection.tsx";
+import { SECTION_SCROLL_MARGIN, SectionJumpBar, type JumpTarget } from "./SectionJumpBar.tsx";
 import { SessionProvider } from "./SessionProvider.tsx";
+
+/**
+ * Sections shown in the jump bar. Add Queues (ticket 03) and History (ticket 04)
+ * here once they render something, in screen order.
+ */
+const JUMP_TARGETS: readonly JumpTarget[] = [
+  { id: "courts", label: "Courts" },
+  { id: "players", label: "Players" },
+];
 
 /**
  * The courtside screen. Top to bottom: Courts (hero), Queues, Players, History, End session.
@@ -31,10 +41,15 @@ export function SessionScreen() {
           </span>
         }
       >
+        <SectionJumpBar targets={JUMP_TARGETS} />
         <div className="flex flex-col gap-10">
-          <CourtsSection />
+          <div id="courts" className={SECTION_SCROLL_MARGIN}>
+            <CourtsSection />
+          </div>
           <QueuesSection />
-          <PlayersSection />
+          <div id="players" className={SECTION_SCROLL_MARGIN}>
+            <PlayersSection />
+          </div>
           <HistorySection />
           <EndSessionSection />
         </div>

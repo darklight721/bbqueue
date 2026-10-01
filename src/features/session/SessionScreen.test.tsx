@@ -192,7 +192,9 @@ describe("SessionScreen", () => {
     const ended = getSession()!.matches[0]!;
     expect(ended.status).toBe("ended");
     expect(ended.score).toBeNull();
-    expect(screen.getAllByText("1 played")).toHaveLength(4);
+    expect(
+      within(screen.getByRole("region", { name: "Players" })).getAllByText("1 played"),
+    ).toHaveLength(4);
   });
 
   it("cancels the score dialog without changes", async () => {
