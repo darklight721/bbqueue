@@ -3,6 +3,7 @@ import { Redirect, Route, Switch } from "wouter";
 import { ClubEditScreen } from "../features/club-edit/ClubEditScreen.tsx";
 import { ClubsScreen } from "../features/clubs/ClubsScreen.tsx";
 import { HomeScreen } from "../features/home/HomeScreen.tsx";
+import { NewSessionScreen } from "../features/new-session/NewSessionScreen.tsx";
 import { PlaceholderScreen } from "./PlaceholderScreen.tsx";
 
 // Loaded lazily and only where service workers exist, so the PWA virtual module
@@ -23,9 +24,7 @@ export function App() {
           <ClubEditScreen />
         </Route>
         <Route path="/clubs/:clubId">{(params) => <ClubEditScreen clubId={params.clubId} />}</Route>
-        <Route path="/session/new">
-          <PlaceholderScreen title="New session" backTo="/" />
-        </Route>
+        <Route path="/session/new" component={NewSessionScreen} />
         <Route path="/session">
           <PlaceholderScreen title="Session" backTo="/" />
         </Route>
