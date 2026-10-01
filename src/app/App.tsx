@@ -1,5 +1,5 @@
-import { lazy, Suspense } from "react";
-import { Redirect, Route, Switch } from "wouter";
+import { lazy, Suspense, useLayoutEffect, useRef } from "react";
+import { Redirect, Route, Switch, useLocation } from "wouter";
 import { ClubEditScreen } from "../features/club-edit/ClubEditScreen.tsx";
 import { ClubsScreen } from "../features/clubs/ClubsScreen.tsx";
 import { HomeScreen } from "../features/home/HomeScreen.tsx";
@@ -15,7 +15,25 @@ const UpdatePrompt = lazy(() =>
 
 const supportsServiceWorker = typeof navigator !== "undefined" && "serviceWorker" in navigator;
 
+/**
+ * Start each screen at the top. wouter changes the URL without touching scroll, so the
+ * window would otherwise keep the previous screen's scroll position. The first render
+ * is skipped so a page reload keeps the browser's own scroll restoration.
+ */
+function useScrollToTopOnNavigate() {
+  const [location] = useLocation();
+  const first = useRef(true);
+  useLayoutEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    window.scrollTo(0, 0);
+  }, [location]);
+}
+
 export function App() {
+  useScrollToTopOnNavigate();
   return (
     <>
       <Switch>

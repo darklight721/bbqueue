@@ -1,6 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
 import type { Club, Session } from "../src/domain/types.ts";
-import { makeClub, makeClubPlayer, makeSession, readStoredData, seedStorage } from "./fixtures.ts";
+import {
+  makeClub,
+  makeClubPlayer,
+  makeClubWithPlayers,
+  makeSession,
+  readStoredData,
+  seedStorage,
+} from "./fixtures.ts";
 
 const suggestion = (page: Page) => page.getByText(/^Suggested:/);
 
@@ -251,6 +258,23 @@ test.describe("Starting a session", () => {
     await startButton(page).click();
     await expect(page).toHaveURL(/\/session$/);
     expect(await page.evaluate(() => localStorage.getItem("bq:v1:summary"))).toBeNull();
+  });
+
+  test("the Session opens scrolled to the top, even if New session was scrolled down", async ({
+    page,
+  }) => {
+    await seedStorage(page, { clubs: [makeClubWithPlayers(24, { name: "Big Club" })] });
+    await page.goto("/session/new");
+    await page.getByRole("textbox", { name: "Session name" }).fill("Long night");
+    const boxes = page.getByRole("region", { name: "Club players" }).getByRole("checkbox");
+    for (const box of await boxes.all()) await box.check();
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+
+    await startButton(page).click();
+    await expect(page).toHaveURL(/\/session$/);
+    await expect(page.getByRole("heading", { level: 1, name: "Long night" })).toBeVisible();
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
   });
 });
 
