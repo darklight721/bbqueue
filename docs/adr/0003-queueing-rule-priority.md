@@ -1,0 +1,3 @@
+# Queueing rule priority: Rest before fairness
+
+Hard rules: a Match has exactly four Session players in two Teams of two, and nobody is on two Courts at once. Soft rules are applied in strict priority order — **Rest** (no third back-to-back Match) → **Fairness** (fewest Matches in the Fairness window, then fewest overall, then longest wait) → **Team balance** (Skill totals differ by ≤ 1) → **New partners**. Players are chosen using the first two; the three possible Team splits of those four are then ranked by the last two. Rest outranks fairness deliberately: a tired player going on a third time in a row feels worse courtside than a small imbalance in who has played most recently.

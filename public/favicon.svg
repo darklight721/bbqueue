@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="112" fill="#16a34a"/>
+  <g transform="rotate(-35 256 256)">
+    <!-- feather skirt -->
+    <path d="M196 96 L316 96 L352 292 L160 292 Z" fill="#ffffff"/>
+    <g stroke="#16a34a" stroke-width="10" stroke-linecap="round">
+      <path d="M226 96 L212 292"/>
+      <path d="M256 96 L256 292"/>
+      <path d="M286 96 L300 292"/>
+    </g>
+    <path d="M190 128 H322" stroke="#16a34a" stroke-width="10" stroke-linecap="round"/>
+    <!-- cork -->
+    <path d="M160 292 Q256 262 352 292 L340 336 A84 70 0 0 1 172 336 Z" fill="#fde68a"/>
+  </g>
+</svg>
