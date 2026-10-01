@@ -1,6 +1,6 @@
 # Spec: Home screen
 
-Status: ready-for-agent
+Status: done
 Depends on: foundation
 
 Route: `/`

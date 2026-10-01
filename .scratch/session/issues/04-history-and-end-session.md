@@ -1,6 +1,6 @@
 # 04 — History + End session
 
-Status: ready-for-agent
+Status: done
 Blocked by: 01
 Spec: ../spec.md (sections 5, 6)
 

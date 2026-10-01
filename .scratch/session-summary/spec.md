@@ -1,6 +1,6 @@
 # Spec: Session summary screen
 
-Status: ready-for-agent
+Status: done
 Depends on: session
 
 Route: `/session/summary` (no saved SessionSummary → redirect `/`)

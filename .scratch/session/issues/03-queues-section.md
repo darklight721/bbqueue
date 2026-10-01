@@ -1,6 +1,6 @@
 # 03 — Queues section
 
-Status: ready-for-agent
+Status: done
 Blocked by: 01
 Spec: ../spec.md (section 3)
 

@@ -1,6 +1,6 @@
 # Spec: Queueing engine
 
-Status: ready-for-agent
+Status: done
 Depends on: foundation (data model)
 
 A **pure TypeScript module** (`src/domain/engine/`), no React, no storage, no `Date.now()` or `Math.random()` inside. Every function takes the Session state plus `now: number` and an injected `rng: () => number` (seedable, e.g. mulberry32) and returns a **new** Session state. Fully unit-tested with Vitest before the Session screen uses it.

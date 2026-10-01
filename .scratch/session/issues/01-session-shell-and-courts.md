@@ -1,6 +1,6 @@
 # 01 — Session shell + Courts
 
-Status: ready-for-agent
+Status: done
 Spec: ../spec.md (sections 1, 2, Score dialog, Player display rule)
 
 ## Scope

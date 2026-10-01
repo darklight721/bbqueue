@@ -1,6 +1,6 @@
 # Spec: Clubs screen
 
-Status: ready-for-agent
+Status: done
 Depends on: foundation
 
 Route: `/clubs`

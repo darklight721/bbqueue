@@ -1,6 +1,6 @@
 # Spec: Session screen
 
-Status: ready-for-agent
+Status: done
 Depends on: foundation, new-session, queueing-engine
 
 Route: `/session` (no saved Session → redirect `/`). Also reached via Home → Resume session.

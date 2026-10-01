@@ -1,6 +1,6 @@
 # Spec: Foundation — data model, storage, shared components
 
-Status: ready-for-agent
+Status: done
 
 Cross-cutting pieces every screen relies on. Vocabulary per `GLOSSARY.md`. Decisions: ADR-0001 (local-only storage), ADR-0002 (Session players are snapshots).
 

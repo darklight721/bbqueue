@@ -1,6 +1,6 @@
 # Spec: New session screen
 
-Status: ready-for-agent
+Status: done
 Depends on: foundation, club-edit (shared player component)
 
 Route: `/session/new`

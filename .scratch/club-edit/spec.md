@@ -1,6 +1,6 @@
 # Spec: New club / Edit club screen
 
-Status: ready-for-agent
+Status: done
 Depends on: foundation, clubs
 
 Routes: `/clubs/new`, `/clubs/:clubId` (unknown id → redirect `/clubs`)
