@@ -11,12 +11,8 @@ import { useSessionActions, useSessionView } from "../context.ts";
 import { SessionPlayerChip } from "../PlayerViews.tsx";
 import { messageForReason } from "../reasons.ts";
 import { SectionHeader } from "../SectionHeader.tsx";
-import {
-  activePlayersByName,
-  playerStatus,
-  playersSummary,
-  type StatusTone,
-} from "./playerStatus.ts";
+import { activePlayersByName, playerStatus, playersSummary } from "./playerStatus.ts";
+import { STATUS_TONE_CLASS } from "./statusTone.ts";
 
 const PLAYERS_HEADING_ID = "session-players";
 
@@ -62,13 +58,6 @@ export function PlayersSection() {
   );
 }
 
-const TONE_CLASS: Record<StatusTone, string> = {
-  "on-court": "bg-primary text-primary-content border-primary",
-  "in-lineup": "bg-primary/10 text-primary border-primary/35",
-  "sitting-out": "border-dashed border-base-content/35 text-base-content/75",
-  free: "bg-base-200 text-base-content/75 border-transparent",
-};
-
 function PlayerRow({ player, onRemove }: { player: SessionPlayer; onRemove: () => void }) {
   const { stats } = useSessionView();
   const actions = useSessionActions();
@@ -83,7 +72,7 @@ function PlayerRow({ player, onRemove }: { player: SessionPlayer; onRemove: () =
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
           <span
-            className={`rounded-full border-[1.5px] px-2 py-px text-xs font-semibold whitespace-nowrap ${TONE_CLASS[status.tone]}`}
+            className={`rounded-full border-[1.5px] px-2 py-px text-xs font-semibold whitespace-nowrap ${STATUS_TONE_CLASS[status.tone]}`}
           >
             {status.label}
           </span>
@@ -110,7 +99,7 @@ function PlayerRow({ player, onRemove }: { player: SessionPlayer; onRemove: () =
       <button
         type="button"
         className={`btn btn-ghost btn-square shrink-0 ${
-          onCourt ? "text-base-content/30" : "text-base-content/70 hover:text-error"
+          onCourt ? "text-base-content/30 pointer-events-auto!" : "text-base-content/70 hover:text-error"
         }`}
         aria-label={`Remove ${player.name}`}
         aria-disabled={onCourt ? true : undefined}

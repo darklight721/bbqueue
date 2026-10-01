@@ -1,65 +1,18 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
-import type { Session } from "../src/domain/types.ts";
-import { makeMidMatchSession, readStoredData, seedStorage } from "./fixtures.ts";
-
-const NAMES = ["Ana", "Ben", "Cat", "Dan", "Eve", "Fay", "Gus", "Hal"];
-
-/** Start a session through the real New session screen. */
-async function startSession(page: Page, options: { players?: number; courts?: number } = {}) {
-  const { players = 8, courts = 2 } = options;
-  await page.goto("/session/new");
-  await page.getByRole("textbox", { name: "Session name" }).fill("Courtside");
-  for (const name of NAMES.slice(0, players)) {
-    await page.getByRole("textbox", { name: "Player name" }).fill(name);
-    await page.getByRole("button", { name: "Add guest" }).click();
-    await expect(page.getByRole("button", { name: `Remove ${name}` })).toBeVisible();
-  }
-  for (let i = 1; i < courts; i++) {
-    await page.getByRole("button", { name: "Increase Courts" }).click();
-  }
-  await expect(page.getByRole("spinbutton", { name: "Courts" })).toHaveValue(String(courts));
-  await page.getByRole("button", { name: "Start session" }).click();
-  await expect(page).toHaveURL(/\/session$/);
-  await expect(page.getByRole("heading", { level: 1, name: "Courtside" })).toBeVisible();
-}
-
-const court = (page: Page, number: number) =>
-  page.getByRole("region", { name: `Court ${number}`, exact: true });
-
-interface Lineup {
-  a: string[];
-  b: string[];
-}
-
-async function lineupOf(region: Locator): Promise<Lineup> {
-  const names = async (label: "Team A" | "Team B") => {
-    const items = region.getByRole("list", { name: label }).getByRole("listitem");
-    await expect(items).toHaveCount(2);
-    return (await items.allInnerTexts()).map((text) => text.split("\n")[0]!.trim());
-  };
-  return { a: await names("Team A"), b: await names("Team B") };
-}
-
-/** Which two pairs play, ignoring which side is Team A. */
-const splitKey = (lineup: Lineup) =>
-  [[...lineup.a].sort().join("+"), [...lineup.b].sort().join("+")].sort().join(" | ");
-const playersOf = (lineup: Lineup) => [...lineup.a, ...lineup.b].sort();
-
-const storedSession = async (page: Page) => (await readStoredData<Session>(page, "session"))!;
-
-const idNames = (session: Session) => new Map(session.players.map((p) => [p.id, p.name]));
-
-function parseTimer(text: string): number {
-  const parts = text.split(":").map(Number);
-  return parts.reduce((total, part) => total * 60 + part, 0);
-}
-
-async function openScoreDialog(page: Page, number: number) {
-  await court(page, number).getByRole("button", { name: "End match" }).click();
-  const dialog = page.getByRole("dialog", { name: `End match — Court ${number}` });
-  await expect(dialog).toBeVisible();
-  return dialog;
-}
+import { expect, test, type Page } from "@playwright/test";
+import { makeMidMatchSession, seedStorage } from "./fixtures.ts";
+import {
+  court,
+  idNames,
+  lineupOf,
+  NAMES,
+  openScoreDialog,
+  parseTimer,
+  playersOf,
+  splitKey,
+  startSession,
+  storedSession,
+  type Lineup,
+} from "./session-helpers.ts";
 
 test.describe("Session shell", () => {
   test("shows the name, point system and Courts heading; Back goes Home with Resume", async ({
