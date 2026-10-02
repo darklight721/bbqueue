@@ -8,6 +8,8 @@ const backgroundColor = "#f7f9f4";
 
 // https://vite.dev/config/
 export default defineConfig({
+  // GitHub Pages serves the app from /<repo>/; the deploy workflow sets BASE_PATH.
+  base: process.env.BASE_PATH ?? "/",
   fmt: {
     ignorePatterns: [
       "dist/**",
@@ -68,7 +70,6 @@ export default defineConfig({
         theme_color: themeColor,
         background_color: backgroundColor,
         display: "standalone",
-        start_url: "/",
         icons: [
           { src: "pwa-64x64.png", sizes: "64x64", type: "image/png" },
           { src: "pwa-192x192.png", sizes: "192x192", type: "image/png" },
@@ -82,7 +83,6 @@ export default defineConfig({
         ],
       },
       workbox: {
-        navigateFallback: "/index.html",
         globPatterns: ["**/*.{js,css,html,svg,png,ico,woff2}"],
       },
     }),
