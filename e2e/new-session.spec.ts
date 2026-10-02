@@ -12,6 +12,16 @@ import {
 
 const suggestion = (page: Page) => page.getByText(/^Suggested:/);
 
+/**
+ * Tap the visible 21 / 31 button. The radio inside is visually hidden (1px), so a forced
+ * click on it can land under the sticky footer; clicking the label is what a user does.
+ */
+const pickPoints = (page: Page, points: 21 | 31) =>
+  page
+    .locator("label")
+    .filter({ has: page.getByRole("radio", { name: `${points} points` }) })
+    .click();
+
 function friday(): Club {
   return makeClub({
     name: "Friday Club",
@@ -278,7 +288,7 @@ test.describe("Save to club", () => {
     await page.goto("/sessions/new");
 
     await addGuest(page, "Saved Sam", { skill: "Advanced", saveToClub: true });
-    await expect(page.getByText("Will be saved to the club")).toBeVisible();
+    await expect(page.getByText("Saves to club")).toBeVisible();
     await addGuest(page, "Temp Tina");
     await page.getByRole("checkbox", { name: "Amy" }).check();
     await page.getByRole("checkbox", { name: "Ben" }).check();
@@ -376,7 +386,7 @@ test.describe("Steppers and point system", () => {
     await addGuests(page, ["Ann", "Bo", "Cy", "Di"]);
     await expect(page.getByRole("button", { name: "Use suggestion" })).toHaveCount(0);
 
-    await page.getByRole("radio", { name: "31 points" }).check({ force: true });
+    await pickPoints(page, 31);
     await expect(page.getByRole("radio", { name: "31 points" })).toBeChecked();
     await expect(page.getByRole("button", { name: "Use suggestion" })).toBeVisible();
 
@@ -392,7 +402,7 @@ test.describe("Steppers and point system", () => {
     await expect(page.getByRole("button", { name: "Use suggestion" })).toHaveCount(0);
 
     // The chosen system is what gets saved.
-    await page.getByRole("radio", { name: "31 points" }).check({ force: true });
+    await pickPoints(page, 31);
     await startButton(page).click();
     await expect(page).toHaveURL(/\/sessions\/(?!new$)[^/]+$/);
     expect((await readStoredData<Session>(page, "session"))!.pointSystem).toBe(31);

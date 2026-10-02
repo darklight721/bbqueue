@@ -93,11 +93,17 @@ describe("NewSessionScreen", () => {
     expect(clubSelect()).toHaveValue("c1");
     const list = within(screen.getByRole("region", { name: "Club players" }));
     const boxes = list.getAllByRole("checkbox");
-    expect(boxes.map((box) => box.closest("label")?.textContent)).toEqual([
-      "amyBeginner",
-      "BobIntermediate",
-      "CatIntermediate",
-      "ZedAdvanced",
+    // Each tile: full name (tooltip) and Skill level (screen-reader text behind BEG / INT / ADV).
+    const tiles = boxes.map((box) => {
+      const tile = box.closest("label")!;
+      const skill = within(tile).getByText(/^(Beginner|Intermediate|Advanced)$/).textContent;
+      return `${tile.title} · ${skill}`;
+    });
+    expect(tiles).toEqual([
+      "amy · Beginner",
+      "Bob · Intermediate",
+      "Cat · Intermediate",
+      "Zed · Advanced",
     ]);
     expect(boxes.every((box) => !(box as HTMLInputElement).checked)).toBe(true);
   });
@@ -149,7 +155,7 @@ describe("NewSessionScreen", () => {
     await u.selectOptions(clubSelect(), "c1");
     await u.click(checkbox("Bob"));
     await addGuest("Dana", { saveToClub: true });
-    expect(screen.getByText("Will be saved to the club")).toBeInTheDocument();
+    expect(screen.getByText("Saves to club")).toBeInTheDocument();
 
     await u.selectOptions(clubSelect(), "c2");
     expect(checkbox("Kim")).not.toBeChecked();
@@ -157,7 +163,7 @@ describe("NewSessionScreen", () => {
 
     await u.selectOptions(clubSelect(), "none");
     expect(screen.getByText("Dana")).toBeInTheDocument();
-    expect(screen.queryByText("Will be saved to the club")).not.toBeInTheDocument();
+    expect(screen.queryByText("Saves to club")).not.toBeInTheDocument();
     expect(screen.queryByRole("checkbox", { name: "Save to club" })).not.toBeInTheDocument();
   });
 
@@ -173,6 +179,22 @@ describe("NewSessionScreen", () => {
     expect(screen.getByText("Name already used")).toBeInTheDocument();
     await user().click(screen.getByRole("button", { name: "Remove Dana" }));
     expect(screen.queryByText("Dana")).not.toBeInTheDocument();
+  });
+
+  it("flags a Guest whose name matches a Club player as 'Name taken' and blocks Start", async () => {
+    setClubs([riverside]);
+    renderScreen();
+    const u = user();
+    await u.selectOptions(clubSelect(), "none");
+    await addGuest("Bob");
+    expect(screen.queryByText("Name taken")).not.toBeInTheDocument();
+
+    await u.selectOptions(clubSelect(), "c1");
+    expect(screen.getByText("Name taken")).toBeInTheDocument();
+    expect(screen.getByText("Name already used by a Club player")).toBeInTheDocument();
+    await u.click(screen.getByRole("button", { name: "Select all" }));
+    expect(screen.getByText("Two players have the same name")).toBeInTheDocument();
+    expect(startButton()).toBeDisabled();
   });
 
   it("keeps Courts and Hours within bounds", async () => {

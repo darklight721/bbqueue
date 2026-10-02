@@ -220,10 +220,12 @@ export function NewSessionScreen() {
           ) : clubPlayers.length === 0 ? (
             <EmptyNote>This club has no players yet. Add guests below.</EmptyNote>
           ) : (
-            <ul className="overflow-hidden rounded-box border-[1.5px] border-base-300 bg-base-100">
+            // Row-major (left to right, then down) so A–Z neighbours stay on screen together,
+            // and visual order = DOM order = focus / screen-reader order.
+            <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {clubPlayers.map((player) => (
-                <li key={player.id} className="border-b border-base-300 last:border-b-0">
-                  <ClubPlayerRow
+                <li key={player.id} className="min-w-0">
+                  <ClubPlayerTile
                     name={player.name}
                     skill={player.skill}
                     checked={checked.has(player.id)}
@@ -238,10 +240,10 @@ export function NewSessionScreen() {
 
       <Section title="Guests" aside={guests.length > 0 ? <Count n={guests.length} /> : null}>
         {guests.length > 0 ? (
-          <ul className="flex flex-col gap-2">
+          <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {guests.map((guest) => (
-              <li key={guest.id}>
-                <GuestRow
+              <li key={guest.id} className="min-w-0">
+                <GuestTile
                   guest={guest}
                   clash={clashes.has(guest.id)}
                   onRemove={() =>
@@ -340,7 +342,11 @@ function EmptyNote({ children }: { children: ReactNode }) {
   );
 }
 
-function ClubPlayerRow({
+/**
+ * One Club player in the two-column picker: the whole tile toggles the checkbox.
+ * Name on top (truncated; full name in `title` and the checkbox's accessible name), compact Skill below.
+ */
+function ClubPlayerTile({
   name,
   skill,
   checked,
@@ -354,26 +360,33 @@ function ClubPlayerRow({
   const nameId = useId();
   return (
     <label
-      className={`flex min-h-14 cursor-pointer items-center gap-3 px-4 py-2 transition-colors ${
-        checked ? "bg-primary/10" : "active:bg-base-200"
+      title={name}
+      className={`flex min-h-14 cursor-pointer items-center gap-2.5 rounded-box border-[1.5px] py-2 pr-2 pl-2.5 transition-colors select-none has-[:focus-visible]:outline-3 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary ${
+        checked ? "border-primary bg-primary/10" : "border-base-300 bg-base-100 active:bg-base-200"
       }`}
     >
       <input
         type="checkbox"
-        className="checkbox checkbox-primary"
+        className="checkbox shrink-0 checkbox-primary"
         checked={checked}
         aria-labelledby={nameId}
         onChange={onToggle}
       />
-      <span id={nameId} className="min-w-0 flex-1 truncate text-lg font-semibold">
-        {name}
+      <span className="flex min-w-0 flex-1 flex-col items-start gap-1">
+        <span id={nameId} className="max-w-full truncate leading-tight font-semibold">
+          {name}
+        </span>
+        <SkillBadge skill={skill} compact size="sm" />
       </span>
-      <SkillBadge skill={skill} />
     </label>
   );
 }
 
-function GuestRow({
+/**
+ * One Guest in the same two-column grid as Club players: name, compact Skill, an optional status
+ * line ("Name taken" / "Saves to club") and a remove ✕ in the top-right corner (44px target).
+ */
+function GuestTile({
   guest,
   clash,
   onRemove,
@@ -384,26 +397,30 @@ function GuestRow({
 }) {
   return (
     <div
-      className={`flex min-h-14 items-center gap-3 rounded-box border-[1.5px] bg-base-100 py-1 pr-1 pl-4 ${
+      className={`relative flex h-full min-h-14 flex-col items-start gap-1 rounded-box border-[1.5px] bg-base-100 py-2 pl-3 ${
         clash ? "border-error" : "border-base-300"
       }`}
     >
-      <div className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-lg font-semibold">{guest.name}</span>
-        {clash ? (
-          <span className="text-sm font-semibold text-error">{NAME_ERROR_MESSAGE.duplicate}</span>
-        ) : guest.saveToClub ? (
-          <span className="text-sm text-base-content/65">Will be saved to the club</span>
-        ) : null}
-      </div>
-      <SkillBadge skill={guest.skill} />
+      {/* pr keeps the name clear of the ✕; the lines below run under it (the ✕ is only 44px tall). */}
+      <span title={guest.name} className="max-w-full truncate pr-11 leading-tight font-semibold">
+        {guest.name}
+      </span>
+      <SkillBadge skill={guest.skill} compact size="sm" />
+      {clash ? (
+        <span className="pr-2 text-xs leading-tight font-semibold text-error">
+          <span aria-hidden="true">Name taken</span>
+          <span className="sr-only">Name already used by a Club player</span>
+        </span>
+      ) : guest.saveToClub ? (
+        <span className="pr-2 text-xs leading-tight text-base-content/65">Saves to club</span>
+      ) : null}
       <button
         type="button"
-        className="btn btn-ghost btn-square shrink-0 text-base-content/70 hover:text-error"
+        className="btn absolute top-0 right-0 size-11 rounded-box btn-ghost p-0 text-base-content/70 btn-square hover:text-error"
         aria-label={`Remove ${guest.name}`}
         onClick={onRemove}
       >
-        <CloseIcon className="size-6" />
+        <CloseIcon className="size-5" />
       </button>
     </div>
   );

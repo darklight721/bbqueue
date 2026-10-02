@@ -61,62 +61,72 @@ export function AddPlayerForm({
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-col gap-1">
-        <label htmlFor={nameId} className="text-sm font-semibold text-base-content/80">
-          Player name
-        </label>
-        <input
-          ref={nameRef}
-          id={nameId}
-          type="text"
-          className={`input w-full text-base ${error ? "input-error" : ""}`}
-          value={name}
-          autoComplete="off"
-          autoCapitalize="words"
-          enterKeyHint="done"
-          // oxlint-disable-next-line jsx-a11y/no-autofocus -- caller opts in
-          autoFocus={autoFocus}
-          aria-invalid={error ? true : undefined}
-          aria-describedby={error ? errorId : undefined}
-          onChange={(event) => setName(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.nativeEvent.isComposing) {
-              event.preventDefault();
-              submit();
-            }
-          }}
-        />
-        {error ? (
-          <p id={errorId} className="pl-1 text-sm font-semibold text-error">
-            {NAME_ERROR_MESSAGE[error]}
-          </p>
-        ) : null}
+    // Container query: below 18rem (a 320px phone inside a padded box) the Add button drops its
+    // icon so "Save to club" and the button share row 2 without wrapping.
+    <div className="@container flex flex-col gap-3">
+      {/* Row 1: name (takes the spare width) + Skill level (sized to fit "Intermediate"). */}
+      <div className="flex items-start gap-2">
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <label htmlFor={nameId} className="text-sm font-semibold text-base-content/80">
+            Player name
+          </label>
+          <input
+            ref={nameRef}
+            id={nameId}
+            type="text"
+            className={`input w-full text-base ${error ? "input-error" : ""}`}
+            value={name}
+            autoComplete="off"
+            autoCapitalize="words"
+            enterKeyHint="done"
+            // oxlint-disable-next-line jsx-a11y/no-autofocus -- caller opts in
+            autoFocus={autoFocus}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error ? errorId : undefined}
+            onChange={(event) => setName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                event.preventDefault();
+                submit();
+              }
+            }}
+          />
+          {error ? (
+            <p id={errorId} className="pl-1 text-sm font-semibold text-error">
+              {NAME_ERROR_MESSAGE[error]}
+            </p>
+          ) : null}
+        </div>
+        <SkillSelect className="w-[8.75rem] shrink-0" value={skill} onChange={setSkill} />
       </div>
 
-      <div className="flex items-end gap-2">
-        <SkillSelect className="min-w-0 flex-1" value={skill} onChange={setSkill} />
-        <button type="button" className="btn btn-primary min-w-28 shrink-0" onClick={submit}>
-          <PlusIcon className="size-5" />
+      {/* Row 2: Save to club (when there is a Club) on the left, Add always on the right. */}
+      {/* flex-wrap is only a fallback for wider-than-expected fonts: Add then drops below, still right. */}
+      <div className="flex flex-wrap items-center gap-2">
+        {showSaveToClub ? (
+          <label
+            htmlFor={saveId}
+            className="-ml-2 flex min-h-11 cursor-pointer items-center gap-2 rounded-field pr-1 pl-2 whitespace-nowrap"
+          >
+            <input
+              id={saveId}
+              type="checkbox"
+              className="checkbox shrink-0 checkbox-primary"
+              checked={saveToClub}
+              onChange={(event) => setSaveToClub(event.target.checked)}
+            />
+            <span className="text-base">Save to club</span>
+          </label>
+        ) : null}
+        <button
+          type="button"
+          className="btn ml-auto min-w-28 shrink-0 btn-primary"
+          onClick={submit}
+        >
+          <PlusIcon className="hidden size-5 @min-[18rem]:block" />
           {addLabel}
         </button>
       </div>
-
-      {showSaveToClub ? (
-        <label
-          htmlFor={saveId}
-          className="-mx-2 flex min-h-11 cursor-pointer items-center gap-3 rounded-field px-2"
-        >
-          <input
-            id={saveId}
-            type="checkbox"
-            className="checkbox checkbox-primary"
-            checked={saveToClub}
-            onChange={(event) => setSaveToClub(event.target.checked)}
-          />
-          <span className="text-base">Save to club</span>
-        </label>
-      ) : null}
     </div>
   );
 }
