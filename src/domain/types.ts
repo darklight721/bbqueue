@@ -97,7 +97,8 @@ export interface Session {
   streakResetAt: Record<string, number>;
 }
 
-export interface TopWinner {
+/** One row of an Ended session's Standings: a player who played at least one match, with their place. */
+export interface StandingsEntry {
   place: number;
   name: string;
   skill: SkillLevel;
@@ -105,6 +106,9 @@ export interface TopWinner {
   losses: number;
   played: number;
 }
+
+/** A Standings entry on the Top winners podium (place 3 or better, at least one win). */
+export type TopWinner = StandingsEntry;
 
 /** A Session player kept in an Ended session (ADR-0005). */
 export interface EndedSessionPlayer {

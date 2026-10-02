@@ -96,25 +96,58 @@ describe("past sessions routes", () => {
     expect(location.current()).toBe("/sessions/old");
   });
 
-  it("shows the details: when, totals, Top winners and matches oldest first", async () => {
-    addEndedSession(ended("old", "Old night", 1_000_000_000_000));
+  it("shows the details: when, totals, Standings and matches oldest first", async () => {
+    const session = ended("old", "Old night", 1_000_000_000_000);
+    // E is in the Session but never played: left out of the Standings.
+    session.players.push({ id: "e", name: "E", skill: "beginner" });
+    addEndedSession(session);
     const location = renderAt("/sessions/old");
     expect(screen.getByRole("heading", { level: 1, name: "Old night" })).toBeInTheDocument();
     const start = 1_000_000_000_000 - 3_600_000;
     expect(screen.getByText(sessionDay(start))).toBeInTheDocument();
     expect(screen.getByText(sessionTimes(start, 1_000_000_000_000))).toBeInTheDocument();
     expect(stat("Matches played")).toHaveTextContent("2");
-    expect(stat("Players")).toHaveTextContent("4");
+    expect(stat("Players")).toHaveTextContent("5");
     expect(stat("Duration")).toHaveTextContent("1 h");
 
-    const winners = within(screen.getByRole("region", { name: "Top winners" })).getAllByRole(
-      "listitem",
-    );
-    expect(winners.map((row) => row.textContent)).toEqual([
-      expect.stringContaining("A"),
-      expect.stringContaining("B"),
+    // Standings: open, every player who played, 0-win players included.
+    expect(screen.queryByRole("region", { name: "Top winners" })).not.toBeInTheDocument();
+    const standings = screen.getByRole("region", { name: "Standings" });
+    expect(within(standings).getByText("4 players")).toBeInTheDocument();
+    const hideStandings = within(standings).getByRole("button", { name: "Hide standings" });
+    expect(hideStandings).toHaveAttribute("aria-expanded", "true");
+    const rows = within(standings).getAllByRole("listitem");
+    expect(rows.map((row) => within(row).getByText(/^[A-E]$/).textContent)).toEqual([
+      "A",
+      "B",
+      "C",
+      "D",
     ]);
-    expect(winners[0]).toHaveTextContent("Joint 1st");
+    expect(rows[0]).toHaveTextContent("Joint 1st · 2 matches played · 0 losses");
+    expect(rows[0]).toHaveTextContent("1win");
+    expect(rows[2]).toHaveTextContent("Joint 3rd · 2 matches played · 1 loss");
+    expect(rows[2]).toHaveTextContent("0wins");
+
+    await userEvent.click(hideStandings);
+    expect(within(standings).queryByRole("listitem")).not.toBeInTheDocument();
+    expect(within(standings).getByRole("button", { name: "Show standings" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+
+    // Matches: closed until its toggle is used.
+    const matchesSection = screen.getByRole("region", { name: "Matches" });
+    expect(within(matchesSection).getByText("2 matches")).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Matches" })).not.toBeInTheDocument();
+    const showMatches = within(matchesSection).getByRole("button", { name: "Show matches" });
+    expect(showMatches).toHaveAttribute("aria-expanded", "false");
+    await userEvent.click(showMatches);
+    expect(showMatches).toHaveAccessibleName("Hide matches");
+    expect(showMatches).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("list", { name: "Matches" })).toHaveAttribute(
+      "id",
+      showMatches.getAttribute("aria-controls"),
+    );
 
     const matches = within(screen.getByRole("list", { name: "Matches" })).getAllByRole("listitem");
     expect(matches).toHaveLength(2);
@@ -150,11 +183,12 @@ describe("past sessions routes", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Old night" })).toBeInTheDocument();
   });
 
-  it("shows each match's Target when both 21 and 31 were used", () => {
+  it("shows each match's Target when both 21 and 31 were used", async () => {
     const session = ended("mixed", "Mixed night", 1_000_000_000_000);
     session.matches[1]!.target = 31;
     addEndedSession(session);
     renderAt("/sessions/mixed");
+    await userEvent.click(screen.getByRole("button", { name: "Show matches" }));
     const matches = within(screen.getByRole("list", { name: "Matches" })).getAllByRole("listitem");
     expect(matches[0]).toHaveTextContent("21 pts");
     expect(matches[1]).toHaveTextContent("31 pts");

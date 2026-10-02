@@ -227,6 +227,14 @@ describe("SessionSummaryScreen", () => {
       expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Session summary");
     });
 
+    it("ends the shared image with a text-only footer (no logo)", () => {
+      renderAt();
+      const footer = document.querySelector("[data-share-only]")!;
+      expect(footer).not.toBeNull();
+      expect(footer).toHaveTextContent("Made with BBQueue");
+      expect(footer.querySelector("svg, img")).toBeNull();
+    });
+
     it("keeps the Share button and Home link out of the captured area", () => {
       renderAt();
       const capture = document.querySelector("[data-summary-capture]")!;

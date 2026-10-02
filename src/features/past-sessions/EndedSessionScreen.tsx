@@ -4,18 +4,15 @@ import { ChevronRightIcon, ShareIcon } from "../../components/icons.tsx";
 import { MatchList, MatchRow } from "../../components/MatchRow.tsx";
 import { usesMixedTargets } from "../../components/matchTargets.ts";
 import { Screen } from "../../components/Screen.tsx";
-import { buildSummary } from "../../domain/engine/index.ts";
+import { buildSummary, rankStandings } from "../../domain/engine/index.ts";
 import type { EndedSession } from "../../domain/types.ts";
 import { useEndedSessions } from "../../storage/store.ts";
 import { CourtLines } from "../home/CourtLines.tsx";
 import { formatDuration } from "../session/clock.ts";
-import { SectionHeader } from "../session/SectionHeader.tsx";
-import { rise, sessionDay, sessionTimes } from "../session-summary/summaryFormat.ts";
-import { TopWinners, Totals } from "../session-summary/SummaryParts.tsx";
+import { countLabel, rise, sessionDay, sessionTimes } from "../session-summary/summaryFormat.ts";
+import { CollapsibleSection, Standings, Totals } from "../session-summary/SummaryParts.tsx";
 
-const MATCHES_HEADING_ID = "ended-session-matches";
-
-/** Read-only look back at one Ended session: when, totals, Top winners and every match. */
+/** Read-only look back at one Ended session: when, totals, Standings and every match. */
 export function EndedSessionScreen({ sessionId }: { sessionId: string }) {
   const ended = useEndedSessions().find((candidate) => candidate.id === sessionId);
   if (!ended) return <Redirect to="/sessions" replace />;
@@ -24,6 +21,7 @@ export function EndedSessionScreen({ sessionId }: { sessionId: string }) {
 
 function Details({ ended }: { ended: EndedSession }) {
   const summary = useMemo(() => buildSummary(ended), [ended]);
+  const standings = useMemo(() => rankStandings(ended), [ended]);
   const playerById = useMemo(
     () => new Map(ended.players.map((player) => [player.id, player])),
     [ended.players],
@@ -35,26 +33,30 @@ function Details({ ended }: { ended: EndedSession }) {
       <WhenBanner ended={ended} />
       <SummaryLink sessionId={ended.id} />
       <Totals summary={summary} />
-      <TopWinners winners={summary.topWinners} />
+      <Standings standings={standings} style={rise(3.5)} />
 
-      <section
-        aria-labelledby={MATCHES_HEADING_ID}
-        className="animate-rise flex flex-col gap-3"
-        style={rise(6)}
+      <CollapsibleSection
+        title="Matches"
+        detail={countLabel(ended.matches.length, "match", "matches")}
+        showLabel="Show matches"
+        hideLabel="Hide matches"
+        style={rise(5.5)}
       >
-        <SectionHeader id={MATCHES_HEADING_ID} title="Matches" detail="Oldest first" />
-        <MatchList label="Matches">
-          {ended.matches.map((match) => (
-            <MatchRow
-              key={match.number}
-              match={match}
-              duration={formatDuration(match.endedAt - match.startedAt)}
-              showTarget={showTarget}
-              playerById={playerById}
-            />
-          ))}
-        </MatchList>
-      </section>
+        {(listId) => (
+          // Oldest first, as played.
+          <MatchList id={listId} label="Matches">
+            {ended.matches.map((match) => (
+              <MatchRow
+                key={match.number}
+                match={match}
+                duration={formatDuration(match.endedAt - match.startedAt)}
+                showTarget={showTarget}
+                playerById={playerById}
+              />
+            ))}
+          </MatchList>
+        )}
+      </CollapsibleSection>
     </Screen>
   );
 }

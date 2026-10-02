@@ -70,8 +70,12 @@ _Avoid_: Cancelled match
 **Score**:
 The points each Team reached in an Ended match, checked against that Match's Target. The Team with more points wins.
 
+**Standings**:
+Every Session player who played at least one Ended match in a Session, in place order. Ranked by most wins, then fewest losses, then most Ended matches played. Players level on all three share a place. Only Ended matches with a Score produce a win or a loss. Session players who never played are not in the Standings.
+_Avoid_: Rankings, leaderboard, table
+
 **Top winners**:
-The Session players in 1st to 3rd place for a Session. Ranked by most wins, then fewest losses, then most Ended matches played. Players level on all three share a place. Only Ended matches with a Score produce a win or a loss.
+The Session players in 1st to 3rd place in a Session's Standings who have at least one win.
 _Avoid_: Leaderboard, champions
 
 ## Queueing

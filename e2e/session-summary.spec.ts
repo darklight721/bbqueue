@@ -323,7 +323,7 @@ test.describe("Full journey", () => {
     await expect(row).toContainText("2 matches · 8 players");
     await expect(row).toHaveAccessibleDescription(/ · .+–.+ 2 matches · 8 players$/);
 
-    // 8. The details: when, totals, Top winners and the matches oldest first.
+    // 8. The details: when, totals, Standings (open) and the matches (collapsed) oldest first.
     await row.click();
     await expect(page).toHaveURL(new RegExp(`/sessions/${sessionId}$`));
     await expect(page.getByRole("heading", { level: 1, name: "Journey night" })).toBeVisible();
@@ -331,10 +331,16 @@ test.describe("Full journey", () => {
     await expect(page.getByText(/^.+–.+$/).first()).toBeVisible(); // "18:00–20:15"
     await expect(stat(page, /^Matches played$/)).toHaveText("2");
     await expect(stat(page, /^Players$/)).toHaveText("8");
-    const detailWinners = page.getByRole("region", { name: "Top winners" }).getByRole("listitem");
-    await expect(detailWinners).toHaveCount(2);
-    await expect(detailWinners.nth(0)).toContainText("Joint 1st");
+    // Everyone who played is in the Standings, not just the winners.
+    const standings = page.getByRole("region", { name: "Standings" }).getByRole("listitem");
+    await expect(standings).toHaveCount(8);
+    await expect(standings.nth(0)).toContainText("Joint 1st");
+    await expect(standings.nth(7)).toContainText("1 loss");
 
+    const showMatches = page.getByRole("button", { name: "Show matches" });
+    await expect(showMatches).toHaveAttribute("aria-expanded", "false");
+    await expect(page.getByRole("list", { name: "Matches" })).toHaveCount(0);
+    await showMatches.click();
     const matches = page.getByRole("list", { name: "Matches" }).getByRole("listitem");
     await expect(matches).toHaveCount(2);
     await expect(matches.nth(0)).toContainText("Match #1 · Court 1");
@@ -349,6 +355,7 @@ test.describe("Full journey", () => {
 
     // 9. A reload keeps the details; Back goes to the list.
     await page.reload();
+    await page.getByRole("button", { name: "Show matches" }).click();
     await expect(page.getByRole("list", { name: "Matches" }).getByRole("listitem")).toHaveCount(2);
     await page.getByRole("button", { name: "Back" }).click();
     await expect(page).toHaveURL(/\/sessions$/);

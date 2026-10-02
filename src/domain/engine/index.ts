@@ -49,5 +49,5 @@ export type {
   TimeLeftSuggestionInput,
 } from "./scoring.ts";
 export { toEndedSession } from "./endedSession.ts";
-export { buildSummary } from "./summary.ts";
+export { buildSummary, rankStandings } from "./summary.ts";
 export { fairnessWindowMs } from "./stats.ts";

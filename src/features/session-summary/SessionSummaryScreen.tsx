@@ -150,17 +150,14 @@ function ShareFooter() {
       aria-hidden="true"
       className="px-safe mx-auto mt-10 w-full max-w-2xl"
     >
-      <div className="flex items-center gap-3 border-t-[1.5px] border-base-300 pt-5">
-        <span className="shrink-0 rounded-full ring-2 ring-court">
-          <BrandMark className="block size-10" />
+      {/* Text only: a short court-green rule ties it to the hero without a second logo. */}
+      <div className="flex flex-col items-center gap-1.5 border-t-[1.5px] border-base-300 pt-6 text-center">
+        <span aria-hidden="true" className="mb-1.5 h-1 w-10 rounded-full bg-court" />
+        <span className="text-[0.6875rem] leading-none font-bold tracking-[0.2em] text-base-content/55 uppercase">
+          Made with BBQueue
         </span>
-        <span className="flex min-w-0 flex-col gap-0.5">
-          <span className="text-[0.6875rem] leading-none font-bold tracking-[0.16em] text-base-content/55 uppercase">
-            Made with BBQueue
-          </span>
-          <span className="font-display text-xl leading-tight font-bold text-primary">
-            {APP_URL_LABEL}
-          </span>
+        <span className="font-display text-2xl leading-tight font-bold text-primary">
+          {APP_URL_LABEL}
         </span>
       </div>
     </div>

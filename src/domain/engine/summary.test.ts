@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { EndedSession, EndedSessionMatch, Team } from "../types.ts";
-import { buildSummary, rankWinners } from "./summary.ts";
+import { buildSummary, rankStandings } from "./summary.ts";
 import { MIN, T0 } from "./test-utils.ts";
 
 type Row = [Team, Team, [number, number] | null];
@@ -31,8 +31,8 @@ function ended(rows: Row[], playerCount = 8): EndedSession {
   };
 }
 
-const board = (rows: Row[]) =>
-  rankWinners(ended(rows)).map((w) => [w.place, w.name, w.wins, w.losses, w.played]);
+const board = (rows: Row[], playerCount = 8) =>
+  rankStandings(ended(rows, playerCount)).map((w) => [w.place, w.name, w.wins, w.losses, w.played]);
 
 describe("buildSummary", () => {
   it("counts Ended matches and the stored players", () => {
@@ -75,6 +75,8 @@ describe("buildSummary", () => {
       [1, "p5", 1, 0, 1],
       [3, "p2", 1, 1, 2],
       [3, "p3", 1, 1, 2],
+      [5, "p4", 0, 1, 1],
+      [5, "p6", 0, 1, 1],
     ]);
   });
 
@@ -91,6 +93,11 @@ describe("buildSummary", () => {
     ).toEqual([
       [1, "p1", 1, 0, 2],
       [2, "p2", 1, 0, 1],
+      [3, "p5", 0, 0, 1],
+      [3, "p6", 0, 0, 1],
+      [3, "p7", 0, 0, 1],
+      [6, "p3", 0, 1, 1],
+      [6, "p4", 0, 1, 1],
     ]);
   });
 
@@ -118,7 +125,104 @@ describe("buildSummary", () => {
       [1, "p2", 2, 0, 2],
       [3, "p7", 1, 0, 1],
       [3, "p8", 1, 0, 1],
+      [5, "p4", 0, 1, 1],
+      [5, "p6", 0, 1, 1],
+      [7, "p3", 0, 2, 2],
+      [7, "p5", 0, 2, 2],
     ]);
+  });
+
+  it("includes players with no wins, ranked by losses", () => {
+    expect(
+      board([
+        [
+          ["p1", "p2"],
+          ["p3", "p4"],
+          [21, 10],
+        ],
+        [
+          ["p5", "p6"],
+          ["p3", "p7"],
+          [21, 10],
+        ],
+      ]),
+    ).toEqual([
+      [1, "p1", 1, 0, 1],
+      [1, "p2", 1, 0, 1],
+      [1, "p5", 1, 0, 1],
+      [1, "p6", 1, 0, 1],
+      [5, "p4", 0, 1, 1],
+      [5, "p7", 0, 1, 1],
+      [7, "p3", 0, 2, 2],
+    ]);
+  });
+
+  it("includes players who only played unscored matches, ranking 0–0 above 0–3", () => {
+    expect(
+      board(
+        [
+          [["p1", "p2"], ["p3", "p4"], null],
+          [
+            ["p5", "p6"],
+            ["p3", "p4"],
+            [21, 10],
+          ],
+          [
+            ["p5", "p6"],
+            ["p3", "p4"],
+            [21, 10],
+          ],
+          [
+            ["p5", "p6"],
+            ["p3", "p4"],
+            [21, 10],
+          ],
+        ],
+        8,
+      ),
+    ).toEqual([
+      [1, "p5", 3, 0, 3],
+      [1, "p6", 3, 0, 3],
+      [3, "p1", 0, 0, 1],
+      [3, "p2", 0, 0, 1],
+      [5, "p3", 0, 3, 4],
+      [5, "p4", 0, 3, 4],
+    ]);
+  });
+
+  it("leaves out players who never played", () => {
+    const names = board([[["p1", "p2"], ["p3", "p4"], null]]).map((row) => row[1]);
+    expect(names).toEqual(["p1", "p2", "p3", "p4"]);
+  });
+
+  it("produces Standings when no match was scored, ranked by played with shared places", () => {
+    expect(
+      board([
+        [["p1", "p2"], ["p3", "p4"], null],
+        [["p1", "p5"], ["p6", "p7"], null],
+      ]),
+    ).toEqual([
+      [1, "p1", 0, 0, 2],
+      [2, "p2", 0, 0, 1],
+      [2, "p3", 0, 0, 1],
+      [2, "p4", 0, 0, 1],
+      [2, "p5", 0, 0, 1],
+      [2, "p6", 0, 0, 1],
+      [2, "p7", 0, 0, 1],
+    ]);
+  });
+
+  it("keeps Top winners to place 3 or better with at least one win", () => {
+    const rows: Row[] = [
+      [
+        ["p1", "p2"],
+        ["p3", "p4"],
+        [21, 10],
+      ],
+    ];
+    // Standings place p3 and p4 third, but without a win they are not Top winners.
+    expect(board(rows).map((row) => row[0])).toEqual([1, 1, 3, 3]);
+    expect(buildSummary(ended(rows)).topWinners.map((w) => w.name)).toEqual(["p1", "p2"]);
   });
 
   it("drops anyone below third place and ignores players without wins", () => {

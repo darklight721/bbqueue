@@ -1,4 +1,4 @@
-import type { EndedSession, EndedSessionMatch, SessionSummary, TopWinner } from "../types.ts";
+import type { EndedSession, EndedSessionMatch, SessionSummary, StandingsEntry } from "../types.ts";
 import { matchPlayerIds } from "./stats.ts";
 
 /** Winning and losing Team of a scored match; empty for unscored or level matches. */
@@ -15,10 +15,11 @@ function bump(counts: Map<string, number>, id: string): void {
 }
 
 /**
- * Every player with at least one win, ranked: wins desc, losses asc, played desc (name only
- * orders the display). Level on all three share a place (competition ranking: 1, 1, 3).
+ * Standings: every player who played at least one match (scored or not), ranked: wins desc,
+ * losses asc, played desc (name only orders the display). Level on all three share a place
+ * (competition ranking: 1, 1, 3). Players who never played are left out.
  */
-export function rankWinners(ended: EndedSession): TopWinner[] {
+export function rankStandings(ended: EndedSession): StandingsEntry[] {
   const wins = new Map<string, number>();
   const losses = new Map<string, number>();
   const played = new Map<string, number>();
@@ -30,11 +31,11 @@ export function rankWinners(ended: EndedSession): TopWinner[] {
   }
 
   const ranked = ended.players
-    .filter((player) => (wins.get(player.id) ?? 0) >= 1)
+    .filter((player) => (played.get(player.id) ?? 0) >= 1)
     .map((player) => ({
       name: player.name,
       skill: player.skill,
-      wins: wins.get(player.id)!,
+      wins: wins.get(player.id) ?? 0,
       losses: losses.get(player.id) ?? 0,
       played: played.get(player.id) ?? 0,
     }))
@@ -63,9 +64,12 @@ export function rankWinners(ended: EndedSession): TopWinner[] {
   });
 }
 
-/** Summary derived from a stored Ended session. Top winners: everyone placed 3rd or better. */
+/**
+ * Summary derived from a stored Ended session. Top winners: Standings entries placed 3rd or
+ * better with at least one win.
+ */
 export function buildSummary(ended: EndedSession): SessionSummary {
-  const topWinners = rankWinners(ended).filter((entry) => entry.place <= 3);
+  const topWinners = rankStandings(ended).filter((entry) => entry.place <= 3 && entry.wins >= 1);
   return {
     sessionName: ended.name,
     totalMatches: ended.matches.length,
