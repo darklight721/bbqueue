@@ -1,12 +1,15 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { Router } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
 import { App } from "../../app/App.tsx";
 import type { EndedSession, EndedSessionMatch, SkillLevel } from "../../domain/types.ts";
 import { getEndedSessions, resetStoreForTests, addEndedSession } from "../../storage/store.ts";
 import { formatSessionDuration, ordinal } from "./summaryFormat.ts";
+
+const domToBlob = vi.hoisted(() => vi.fn());
+vi.mock("modern-screenshot", () => ({ domToBlob }));
 
 const START = Date.UTC(2026, 9, 2, 18, 0, 0);
 const MIN = 60_000;
@@ -198,5 +201,63 @@ describe("SessionSummaryScreen", () => {
     expect(location.current()).toBe("/");
     expect(screen.getByRole("heading", { level: 1, name: "BBQueue" })).toBeInTheDocument();
     expect(getEndedSessions()).toHaveLength(1);
+  });
+
+  describe("branding and sharing", () => {
+    function setNavigator(props: { canShare?: unknown; share?: unknown }) {
+      Object.defineProperty(navigator, "canShare", { value: props.canShare, configurable: true });
+      Object.defineProperty(navigator, "share", { value: props.share, configurable: true });
+    }
+
+    beforeEach(() => {
+      domToBlob.mockReset();
+      domToBlob.mockResolvedValue(new Blob(["png"], { type: "image/png" }));
+      addEndedSession(jointSession());
+    });
+
+    afterEach(() => {
+      setNavigator({});
+    });
+
+    it("shows the BBQueue brand in the hero without a level-1 BBQueue heading", () => {
+      renderAt();
+      const hero = screen.getByRole("banner");
+      expect(within(hero).getByText("BBQueue")).toBeInTheDocument();
+      expect(screen.queryByRole("heading", { level: 1, name: "BBQueue" })).not.toBeInTheDocument();
+      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Session summary");
+    });
+
+    it("keeps the Share button and Home link out of the captured area", () => {
+      renderAt();
+      const capture = document.querySelector("[data-summary-capture]")!;
+      expect(capture).not.toBeNull();
+      const share = screen.getByRole("button", { name: "Share summary" });
+      const home = screen.getByRole("link", { name: "Home" });
+      expect(capture.contains(share)).toBe(false);
+      expect(capture.contains(home)).toBe(false);
+      expect(capture).toContainElement(screen.getByRole("heading", { level: 1 }));
+    });
+
+    it("shares one PNG file when the share sheet is available", async () => {
+      const share = vi.fn().mockResolvedValue(undefined);
+      setNavigator({ canShare: () => true, share });
+      renderAt();
+      await userEvent.click(screen.getByRole("button", { name: "Share summary" }));
+
+      await vi.waitFor(() => expect(share).toHaveBeenCalledTimes(1));
+      const arg = share.mock.calls[0]![0] as { files: File[] };
+      expect(arg.files).toHaveLength(1);
+      expect(arg.files[0]!.type).toBe("image/png");
+      expect(arg.files[0]!.name).toMatch(/^bbqueue-thursday-smash-\d{4}-\d{2}-\d{2}\.png$/);
+      expect(screen.queryByText("Couldn't create the image")).not.toBeInTheDocument();
+    });
+
+    it("shows a short error when the image can't be created", async () => {
+      domToBlob.mockRejectedValue(new Error("boom"));
+      renderAt();
+      await userEvent.click(screen.getByRole("button", { name: "Share summary" }));
+      expect(await screen.findByText("Couldn't create the image")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Share summary" })).toBeEnabled();
+    });
   });
 });

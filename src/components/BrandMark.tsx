@@ -1,9 +1,9 @@
 import type { CSSProperties } from "react";
 
 /**
- * BBQueue brand mark for the home hero: three shuttlecocks on a skewer, on an
- * off-white disc. Same artwork as the app icon (public/favicon.svg), drawn with
- * theme colours so it follows the dark-mode court green. Purely decorative.
+ * BBQueue brand mark (home hero, Session summary hero): three shuttlecocks on a
+ * skewer, on an off-white disc. Same artwork as the app icon (public/favicon.svg),
+ * drawn with theme colours so it follows the dark-mode court green. Purely decorative.
  */
 
 // One shuttle, cork at x = 0..36, feathers at x = -78..0 (flipped below so the
@@ -60,5 +60,18 @@ export function BrandMark({
         ))}
       </g>
     </svg>
+  );
+}
+
+/**
+ * The "BBQueue" wordmark letters: volt "BBQ" + line-coloured "ueue". Meant for a
+ * court-green background; the caller sets the font size and the wrapping element.
+ */
+export function Wordmark() {
+  return (
+    <>
+      <span className="text-volt">BBQ</span>
+      <span className="text-line">ueue</span>
+    </>
   );
 }

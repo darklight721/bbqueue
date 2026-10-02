@@ -1,5 +1,6 @@
 import { useId, type CSSProperties, type ReactNode } from "react";
 import { Link } from "wouter";
+import { BrandMark, Wordmark } from "../../components/BrandMark.tsx";
 import {
   ChevronRightIcon,
   HistoryIcon,
@@ -9,7 +10,6 @@ import {
 } from "../../components/icons.tsx";
 import { useClubs, useEndedSessions, useSession } from "../../storage/store.ts";
 import { countLabel } from "../session-summary/summaryFormat.ts";
-import { BrandMark } from "./BrandMark.tsx";
 import { CourtLines } from "./CourtLines.tsx";
 
 /** Start screen: resume the current Session, start a new one, manage Clubs or look back. */
@@ -95,8 +95,7 @@ function Hero() {
             className="animate-rise font-display text-[clamp(4.5rem,25vw,10rem)] leading-[0.8] font-extrabold tracking-[-0.02em]"
             style={{ animationDelay: "60ms" }}
           >
-            <span className="text-volt">BBQ</span>
-            <span className="text-line">ueue</span>
+            <Wordmark />
           </h1>
           <p
             className="animate-rise mt-3 text-lg font-medium text-line sm:text-xl"

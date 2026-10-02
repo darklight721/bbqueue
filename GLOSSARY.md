@@ -34,6 +34,10 @@ _Avoid_: Event, game night
 A Session that has been ended and kept, with its Session players and Ended matches, for looking back on. A Session ended without any Ended match is not kept. Only the 50 most recently ended are kept; older ones are dropped.
 _Avoid_: Past session, archived session, old session
 
+**Session summary**:
+The recap of one Ended session: its totals and Top winners. Can be shared as an image.
+_Avoid_: Recap, results, report
+
 **Point system**:
 The Target given to each new Match in a Session: 21 or 31. Can be changed during the Session; Matches already being played keep their Target.
 _Avoid_: Game format, scoring mode
