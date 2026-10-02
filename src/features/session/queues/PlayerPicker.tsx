@@ -1,5 +1,6 @@
 import { type RefObject, useId, useMemo, useRef, useState } from "react";
 import { SearchIcon } from "../../../components/icons.tsx";
+import { blurOnEnter } from "../../../components/keyboard.ts";
 import { Modal } from "../../../components/Modal.tsx";
 import { useSessionView } from "../context.ts";
 import { SessionPlayerChip } from "../PlayerViews.tsx";
@@ -66,6 +67,7 @@ function PickerBody({
           enterKeyHint="search"
           value={filter}
           onChange={(event) => setFilter(event.target.value)}
+          onKeyDown={blurOnEnter}
         />
       </label>
 

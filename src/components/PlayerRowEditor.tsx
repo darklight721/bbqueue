@@ -15,6 +15,8 @@ export interface PlayerRowEditorProps {
   onRemove: () => void;
   error?: NameErrorCode | null;
   autoFocus?: boolean;
+  /** Enter in the name field (e.g. move on to the next player). */
+  onEnter?: () => void;
 }
 
 /** One editable player: name + Skill level + Remove. Used for Club rosters. */
@@ -24,6 +26,7 @@ export function PlayerRowEditor({
   onRemove,
   error = null,
   autoFocus = false,
+  onEnter,
 }: PlayerRowEditorProps) {
   const nameId = useId();
   const errorId = useId();
@@ -49,6 +52,12 @@ export function PlayerRowEditor({
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? errorId : undefined}
           onChange={(event) => onChange({ ...value, name: event.target.value })}
+          onKeyDown={(event) => {
+            if (onEnter && event.key === "Enter" && !event.nativeEvent.isComposing) {
+              event.preventDefault();
+              onEnter();
+            }
+          }}
         />
         <SkillSelect
           className="w-[8.75rem] shrink-0"

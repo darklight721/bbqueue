@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Redirect, useLocation } from "wouter";
 import { ConfirmDialog } from "../../components/ConfirmDialog.tsx";
 import { PlusIcon } from "../../components/icons.tsx";
+import { blurOnEnter } from "../../components/keyboard.ts";
 import { NAME_ERROR_MESSAGE } from "../../components/nameErrors.ts";
 import { PlayerRowEditor } from "../../components/PlayerRowEditor.tsx";
 import { Screen } from "../../components/Screen.tsx";
@@ -97,6 +98,20 @@ function ClubEditor({ club }: { club: Club | null }) {
     setFocusRowId(id);
   }
 
+  /** Enter in a name: go to the next row's name, or add a new row from the last one. */
+  function enterFromRow(index: number) {
+    if (form.rows[index]?.name.trim() === "") return;
+    const next = form.rows[index + 1];
+    if (!next) {
+      addRow();
+      return;
+    }
+    const nextRow = Array.from(
+      formRef.current?.querySelectorAll<HTMLElement>("[data-row-id]") ?? [],
+    ).find((element) => element.dataset.rowId === next.id);
+    nextRow?.querySelector<HTMLInputElement>('input[type="text"]')?.focus();
+  }
+
   function save() {
     if (invalid) {
       setAttempted(true);
@@ -179,6 +194,7 @@ function ClubEditor({ club }: { club: Club | null }) {
             aria-invalid={shown?.name ? true : undefined}
             aria-describedby={shown?.name ? nameErrorId : undefined}
             onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+            onKeyDown={blurOnEnter}
           />
           {shown?.name ? (
             <p id={nameErrorId} className="pl-1 text-sm font-semibold text-error">
@@ -211,6 +227,7 @@ function ClubEditor({ club }: { club: Club | null }) {
                     onRemove={() => removeRow(row.id)}
                     error={shown?.players[index] ?? null}
                     autoFocus={row.id === focusRowId}
+                    onEnter={() => enterFromRow(index)}
                   />
                 </li>
               ))}

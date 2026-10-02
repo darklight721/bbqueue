@@ -115,7 +115,9 @@ describe("QueuesSection", () => {
     await userEvent.type(filter, "x");
     expect(within(dialog).getByText("No players match.")).toBeInTheDocument();
     await userEvent.clear(filter);
-    await userEvent.type(filter, "hal");
+    await userEvent.type(filter, "hal{Enter}");
+    expect(filter).not.toHaveFocus(); // Search key dismisses the iOS keyboard
+    expect(filter).toHaveValue("hal");
     await userEvent.click(within(dialog).getByRole("button", { name: "Hal" }));
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();

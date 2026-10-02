@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { AddPlayerForm, type NewPlayer } from "../../components/AddPlayerForm.tsx";
 import { ConfirmDialog } from "../../components/ConfirmDialog.tsx";
 import { CloseIcon } from "../../components/icons.tsx";
+import { blurOnEnter } from "../../components/keyboard.ts";
 import { NAME_ERROR_MESSAGE } from "../../components/nameErrors.ts";
 import { NumberStepper } from "../../components/NumberStepper.tsx";
 import { Screen } from "../../components/Screen.tsx";
@@ -171,6 +172,7 @@ export function NewSessionScreen() {
           aria-invalid={nameMissing ? true : undefined}
           aria-describedby={nameMissing ? nameErrorId : undefined}
           onChange={(event) => setName(event.target.value)}
+          onKeyDown={blurOnEnter}
         />
         {nameMissing ? (
           <p id={nameErrorId} className="pl-1 text-sm font-semibold text-error">

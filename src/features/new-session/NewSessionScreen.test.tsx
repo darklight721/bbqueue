@@ -55,6 +55,22 @@ function renderScreen() {
 }
 
 const user = () => userEvent.setup();
+
+describe("NewSessionScreen keyboard", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetStoreForTests();
+  });
+
+  it("Enter in the session name dismisses the keyboard without starting", async () => {
+    const location = renderScreen();
+    const sessionName = screen.getByRole("textbox", { name: "Session name" });
+    await user().type(sessionName, "{Enter}");
+    expect(sessionName).not.toHaveFocus();
+    expect(location.current()).toBe("/sessions/new");
+    expect(getSession()).toBeNull();
+  });
+});
 const clubSelect = () => screen.getByRole("combobox", { name: "Club" });
 const startButton = () => screen.getByRole("button", { name: "Start session" });
 const checkbox = (name: string) => screen.getByRole("checkbox", { name });

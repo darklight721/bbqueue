@@ -64,6 +64,34 @@ describe("ClubEditScreen", () => {
     expect(names()).toEqual(["alice", "Bob", "Zed", "Aaron"]);
   });
 
+  it("Enter in the Club name dismisses the keyboard without saving", async () => {
+    const location = renderAt("/clubs/new");
+    const clubName = screen.getByRole("textbox", { name: "Club name" });
+    await userEvent.type(clubName, "Beacon{Enter}");
+    expect(clubName).not.toHaveFocus();
+    expect(clubName).toHaveValue("Beacon");
+    expect(location.current()).toBe("/clubs/new");
+    expect(getClubs()).toEqual([]);
+  });
+
+  it("Enter in a player name adds the next row, or moves to it", async () => {
+    setClubs([riverside]);
+    renderAt("/clubs/c1");
+    await userEvent.type(nameInputs()[0]!, "{Enter}");
+    expect(nameInputs()[1]).toHaveFocus();
+
+    await userEvent.type(nameInputs()[2]!, "{Enter}");
+    expect(nameInputs()).toHaveLength(4);
+    expect(nameInputs()[3]).toHaveFocus();
+
+    await userEvent.type(nameInputs()[3]!, "{Enter}");
+    expect(nameInputs()).toHaveLength(4);
+
+    await userEvent.type(nameInputs()[3]!, "Aaron{Enter}");
+    expect(names()).toEqual(["alice", "Bob", "Zed", "Aaron", ""]);
+    expect(nameInputs()[4]).toHaveFocus();
+  });
+
   it("blocks Save on empty or duplicate Club names", async () => {
     setClubs([riverside]);
     const location = renderAt("/clubs/new");
