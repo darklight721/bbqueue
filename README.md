@@ -1,6 +1,6 @@
 # BBQueue
 
-**Better Badminton Queue**: an offline-first PWA for running badminton doubles at a club night. It decides who plays on which court, with whom, and when, keeping rotation fair and teams balanced.
+**Balanced Badminton Queue**: an offline-first PWA for running badminton doubles at a club night. It decides who plays on which court, with whom, and when, keeping rotation fair and teams balanced.
 
 ## Features
 

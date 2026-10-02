@@ -101,7 +101,7 @@ function Hero() {
             className="animate-rise mt-3 text-lg font-medium text-line sm:text-xl"
             style={{ animationDelay: "140ms" }}
           >
-            Better Badminton Queue.
+            Balanced Badminton Queue.
           </p>
         </div>
       </div>

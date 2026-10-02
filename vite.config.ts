@@ -66,7 +66,7 @@ export default defineConfig({
       manifest: {
         name: "BBQueue",
         short_name: "BBQueue",
-        description: "Better Badminton Queue",
+        description: "Balanced Badminton Queue",
         theme_color: themeColor,
         background_color: backgroundColor,
         display: "standalone",
