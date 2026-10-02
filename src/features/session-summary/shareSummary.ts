@@ -41,6 +41,21 @@ function opaqueBackground(): string {
 }
 
 /**
+ * Makes the snapshot SVG natively CAPTURE_SCALE× larger (CSS `zoom` on its content) so the
+ * canvas draws it 1:1. WebKit (Safari, every iOS browser) clips box-shadows, e.g. the 1st-place
+ * winner's `ring` border, when a foreignObject SVG is drawn scaled.
+ */
+function upscaleSvg(svg: SVGSVGElement, width: number, height: number): void {
+  svg.setAttribute("width", String(width * CAPTURE_SCALE));
+  svg.setAttribute("height", String(height * CAPTURE_SCALE));
+  svg.removeAttribute("viewBox");
+  const content = svg.querySelector("foreignObject")?.firstElementChild;
+  if (content instanceof HTMLElement || content instanceof SVGElement) {
+    content.style.setProperty("zoom", String(CAPTURE_SCALE));
+  }
+}
+
+/**
  * Rasterizes a clone of `target` laid out at phone width (offscreen, so the live page is
  * untouched), with entrance animations disabled and `data-share-exclude` subtrees removed.
  */
@@ -73,13 +88,15 @@ async function renderPng(target: HTMLElement): Promise<Blob> {
   document.body.append(stage);
   try {
     await document.fonts?.ready;
+    const height = Math.ceil(clone.getBoundingClientRect().height);
     const blob = await domToBlob(clone, {
       type: "image/png",
       scale: CAPTURE_SCALE,
       width: CAPTURE_WIDTH,
-      height: Math.ceil(clone.getBoundingClientRect().height),
+      height,
       backgroundColor: opaqueBackground(),
       filter: (node) => !(node instanceof Element && node.hasAttribute(EXCLUDE_ATTRIBUTE)),
+      onCreateForeignObjectSvg: (svg) => upscaleSvg(svg, CAPTURE_WIDTH, height),
     });
     if (!blob) throw new Error("Image rendering produced no data");
     return blob;
