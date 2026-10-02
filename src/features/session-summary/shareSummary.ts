@@ -7,6 +7,13 @@ const CAPTURE_SCALE = 3;
 const ERROR_RESET_MS = 4000;
 const SHARE_TITLE = "BBQueue session summary";
 const EXCLUDE_ATTRIBUTE = "data-share-exclude";
+/** Elements kept hidden on the page and shown only in the image (e.g. the app-link footer). */
+const SHARE_ONLY_ATTRIBUTE = "data-share-only";
+
+/** Where people who see a shared image can find the app. */
+export const APP_URL = "https://darklight721.github.io/bbqueue/";
+/** APP_URL as printed in the image: no protocol, no trailing slash. */
+export const APP_URL_LABEL = APP_URL.replace(/^https?:\/\//, "").replace(/\/$/, "");
 
 export type ShareStatus = "idle" | "busy" | "error";
 
@@ -46,6 +53,10 @@ async function renderPng(target: HTMLElement): Promise<Blob> {
   clone.style.maxWidth = "none";
   clone.style.boxSizing = "border-box";
   for (const el of clone.querySelectorAll(`[${EXCLUDE_ATTRIBUTE}]`)) el.remove();
+  // Image-only parts are `hidden` on the page; reveal them in the clone (before measuring).
+  for (const el of clone.querySelectorAll<HTMLElement>(`[${SHARE_ONLY_ATTRIBUTE}]`)) {
+    el.hidden = false;
+  }
   for (const el of [clone, ...clone.querySelectorAll<HTMLElement>(".animate-rise")]) {
     if (el === clone && !el.classList.contains("animate-rise")) continue;
     el.style.animation = "none";

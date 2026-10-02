@@ -238,6 +238,24 @@ describe("SessionSummaryScreen", () => {
       expect(capture).toContainElement(screen.getByRole("heading", { level: 1 }));
     });
 
+    it("offers Home, not Back, when opened without ?from=details", () => {
+      renderAt();
+      expect(screen.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/");
+      expect(screen.queryByRole("link", { name: "Back" })).not.toBeInTheDocument();
+    });
+
+    it("offers Back to the details instead of Home when opened from the details", async () => {
+      const location = renderAt("/sessions/s1/summary?from=details");
+      const back = screen.getByRole("link", { name: "Back" });
+      expect(back).toHaveAttribute("href", "/sessions/s1");
+      expect(screen.queryByRole("link", { name: "Home" })).not.toBeInTheDocument();
+      expect(document.querySelector("[data-summary-capture]")).not.toContainElement(back);
+
+      await userEvent.click(back);
+      expect(location.current()).toBe("/sessions/s1");
+      expect(screen.getByRole("heading", { level: 1, name: "Thursday Smash" })).toBeInTheDocument();
+    });
+
     it("shares one PNG file when the share sheet is available", async () => {
       const share = vi.fn().mockResolvedValue(undefined);
       setNavigator({ canShare: () => true, share });

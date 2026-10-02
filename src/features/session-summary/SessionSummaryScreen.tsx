@@ -1,12 +1,12 @@
-import { useMemo, useRef, type SVGProps } from "react";
-import { Link, Redirect } from "wouter";
+import { useMemo, useRef } from "react";
+import { Link, Redirect, useSearch } from "wouter";
 import { BrandMark, Wordmark } from "../../components/BrandMark.tsx";
-import { WarningIcon } from "../../components/icons.tsx";
+import { ShareIcon, WarningIcon } from "../../components/icons.tsx";
 import type { SessionSummary } from "../../domain/types.ts";
 import { buildSummary } from "../../domain/engine/index.ts";
 import { useEndedSessions } from "../../storage/store.ts";
 import { CourtLines } from "../home/CourtLines.tsx";
-import { summaryFileName, useShareSummary } from "./shareSummary.ts";
+import { APP_URL_LABEL, summaryFileName, useShareSummary } from "./shareSummary.ts";
 import { rise, sessionWhen } from "./summaryFormat.ts";
 import { TopWinners, Totals } from "./SummaryParts.tsx";
 
@@ -15,10 +15,12 @@ export function SessionSummaryScreen({ sessionId }: { sessionId: string }) {
   const ended = useEndedSessions().find((candidate) => candidate.id === sessionId);
   const summary = useMemo(() => (ended ? buildSummary(ended) : null), [ended]);
   if (!summary) return <Redirect to="/sessions" replace />;
-  return <Summary summary={summary} />;
+  return <Summary sessionId={sessionId} summary={summary} />;
 }
 
-function Summary({ summary }: { summary: SessionSummary }) {
+function Summary({ sessionId, summary }: { sessionId: string; summary: SessionSummary }) {
+  // Opened from the Ended session details page: go back there instead of Home.
+  const fromDetails = new URLSearchParams(useSearch()).get("from") === "details";
   const captureRef = useRef<HTMLDivElement>(null);
   const { share, status } = useShareSummary(
     captureRef,
@@ -42,6 +44,8 @@ function Summary({ summary }: { summary: SessionSummary }) {
           <Totals summary={summary} />
           <TopWinners winners={summary.topWinners} />
         </main>
+
+        <ShareFooter />
       </div>
 
       <div className="px-safe mx-auto mt-auto flex w-full max-w-2xl flex-col pb-[max(1.5rem,env(safe-area-inset-bottom))]">
@@ -75,11 +79,11 @@ function Summary({ summary }: { summary: SessionSummary }) {
         </button>
 
         <Link
-          href="/"
+          href={fromDetails ? `/sessions/${sessionId}` : "/"}
           className="btn btn-lg btn-outline animate-rise mt-3 w-full border-base-300 bg-base-100"
           style={rise(6.5)}
         >
-          Home
+          {fromDetails ? "Back" : "Home"}
         </Link>
       </div>
     </div>
@@ -134,24 +138,31 @@ function Hero({ summary }: { summary: SessionSummary }) {
   );
 }
 
-/** Box with an arrow leaving it: the usual "share" glyph. */
-function ShareIcon(props: SVGProps<SVGSVGElement>) {
+/**
+ * App link at the bottom of the shared image. Hidden on the page (and from screen
+ * readers); the capture reveals `[data-share-only]` in its clone.
+ */
+function ShareFooter() {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      width="24"
-      height="24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2.25}
-      strokeLinecap="round"
-      strokeLinejoin="round"
+    <div
+      data-share-only
+      hidden
       aria-hidden="true"
-      focusable="false"
-      {...props}
+      className="px-safe mx-auto mt-10 w-full max-w-2xl"
     >
-      <path d="M12 3.5v11M7.75 7.5 12 3.25l4.25 4.25" />
-      <path d="M8 10.5H6.5A1.5 1.5 0 0 0 5 12v7a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19v-7a1.5 1.5 0 0 0-1.5-1.5H16" />
-    </svg>
+      <div className="flex items-center gap-3 border-t-[1.5px] border-base-300 pt-5">
+        <span className="shrink-0 rounded-full ring-2 ring-court">
+          <BrandMark className="block size-10" />
+        </span>
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span className="text-[0.6875rem] leading-none font-bold tracking-[0.16em] text-base-content/55 uppercase">
+            Made with BBQueue
+          </span>
+          <span className="font-display text-xl leading-tight font-bold text-primary">
+            {APP_URL_LABEL}
+          </span>
+        </span>
+      </div>
+    </div>
   );
 }

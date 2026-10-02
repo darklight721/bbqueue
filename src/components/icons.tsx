@@ -137,6 +137,16 @@ export function SearchIcon(props: IconProps) {
   );
 }
 
+/** Box with an arrow leaving it: the usual "share" glyph. */
+export function ShareIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 3.5v11M7.75 7.5 12 3.25l4.25 4.25" />
+      <path d="M8 10.5H6.5A1.5 1.5 0 0 0 5 12v7a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19v-7a1.5 1.5 0 0 0-1.5-1.5H16" />
+    </Icon>
+  );
+}
+
 /** Clock with a back-turning arrow: looking back on earlier Sessions. */
 export function HistoryIcon(props: IconProps) {
   return (

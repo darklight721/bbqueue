@@ -126,12 +126,28 @@ describe("past sessions routes", () => {
     // One Target only: not shown.
     expect(screen.queryByText("21 pts")).not.toBeInTheDocument();
 
-    // Read-only: no summary link, no delete.
-    expect(screen.queryByRole("link", { name: /summary/i })).not.toBeInTheDocument();
+    // Read-only: no delete.
     expect(screen.queryByRole("button", { name: /delete|remove/i })).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(location.current()).toBe("/sessions");
+  });
+
+  it("links to the summary, which opens with a way back to the details", async () => {
+    addEndedSession(ended("old", "Old night", 1_000_000_000_000));
+    const location = renderAt("/sessions/old");
+    const link = screen.getByRole("link", { name: "View summary" });
+    expect(link).toHaveAttribute("href", "/sessions/old/summary?from=details");
+
+    await userEvent.click(link);
+    expect(location.current()).toBe("/sessions/old/summary?from=details");
+    expect(screen.getByRole("heading", { level: 1, name: "Session summary" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back" })).toHaveAttribute("href", "/sessions/old");
+    expect(screen.queryByRole("link", { name: "Home" })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("link", { name: "Back" }));
+    expect(location.current()).toBe("/sessions/old");
+    expect(screen.getByRole("heading", { level: 1, name: "Old night" })).toBeInTheDocument();
   });
 
   it("shows each match's Target when both 21 and 31 were used", () => {

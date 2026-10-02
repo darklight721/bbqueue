@@ -24,7 +24,7 @@ Screen: `/sessions/:id/summary` (`src/features/session-summary/`)
 - Entrance animations are skipped during capture, so nothing is caught half-faded.
 - Made on the device with no network, so it works offline.
 - File name: `bbqueue-<session-name-slug>-<YYYY-MM-DD>.png` (the date the Session started).
-- No footer or watermark beyond the logo at the top.
+- A small footer at the bottom of the image only (not shown on the page) with the app link `darklight721.github.io/bbqueue`, so people who see the image can find the app.
 
 ## Share behaviour
 

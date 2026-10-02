@@ -1,5 +1,6 @@
-import { useMemo } from "react";
-import { Redirect } from "wouter";
+import { useId, useMemo } from "react";
+import { Link, Redirect } from "wouter";
+import { ChevronRightIcon, ShareIcon } from "../../components/icons.tsx";
 import { MatchList, MatchRow } from "../../components/MatchRow.tsx";
 import { usesMixedTargets } from "../../components/matchTargets.ts";
 import { Screen } from "../../components/Screen.tsx";
@@ -32,6 +33,7 @@ function Details({ ended }: { ended: EndedSession }) {
   return (
     <Screen title={ended.name} backTo="/sessions">
       <WhenBanner ended={ended} />
+      <SummaryLink sessionId={ended.id} />
       <Totals summary={summary} />
       <TopWinners winners={summary.topWinners} />
 
@@ -54,6 +56,34 @@ function Details({ ended }: { ended: EndedSession }) {
         </MatchList>
       </section>
     </Screen>
+  );
+}
+
+/** Card link to the shareable Session summary (its Back button returns here). */
+function SummaryLink({ sessionId }: { sessionId: string }) {
+  const labelId = useId();
+  const detailId = useId();
+  return (
+    <Link
+      href={`/sessions/${sessionId}/summary?from=details`}
+      aria-labelledby={labelId}
+      aria-describedby={detailId}
+      className="animate-rise group flex min-h-20 items-center gap-4 rounded-box border-[1.5px] border-base-300 bg-base-100 p-4 pr-3 text-base-content shadow-sm transition-transform active:scale-[0.98]"
+      style={rise(1)}
+    >
+      <span className="grid size-12 shrink-0 place-items-center rounded-full bg-base-200 text-primary">
+        <ShareIcon className="size-6" />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span id={labelId} className="font-display text-2xl leading-tight font-bold uppercase">
+          View summary
+        </span>
+        <span id={detailId} className="truncate text-sm text-base-content/65">
+          Share it as an image
+        </span>
+      </span>
+      <ChevronRightIcon className="size-6 shrink-0 opacity-50 transition-transform group-hover:translate-x-0.5" />
+    </Link>
   );
 }
 

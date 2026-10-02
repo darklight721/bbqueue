@@ -196,6 +196,29 @@ test.describe("Persistence and navigation", () => {
   });
 });
 
+test.describe("From the Ended session details", () => {
+  test("View summary opens the summary; Back returns to the details", async ({ page }) => {
+    const ended = makeEndedSession({ name: "Details night" });
+    await seedStorage(page, { endedSessions: [ended] });
+
+    await page.goto("/sessions");
+    await page.getByRole("link", { name: "Details night" }).click();
+    await expect(page).toHaveURL(new RegExp(`/sessions/${ended.id}$`));
+    await expect(page.getByRole("heading", { level: 1, name: "Details night" })).toBeVisible();
+
+    await page.getByRole("link", { name: "View summary" }).click();
+    await expect(page).toHaveURL(new RegExp(`/sessions/${ended.id}/summary\\?from=details$`));
+    await expect(page.getByRole("heading", { level: 1, name: "Session summary" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Home" })).toHaveCount(0);
+    await expect(page.locator("[data-summary-capture]").getByRole("link")).toHaveCount(0);
+
+    await page.getByRole("link", { name: "Back" }).click();
+    await expect(page).toHaveURL(new RegExp(`/sessions/${ended.id}$`));
+    await expect(page.getByRole("heading", { level: 1, name: "Details night" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "View summary" })).toBeVisible();
+  });
+});
+
 test.describe("Full journey", () => {
   test("club → new session → play two matches → end session → summary", async ({ page }) => {
     const names = ["Ana", "Ben", "Cat", "Dan", "Eve", "Fay", "Gus", "Hal"];
@@ -322,7 +345,6 @@ test.describe("Full journey", () => {
     await expect(matches.nth(1)).toContainText("Match #2 · Court 2");
     await expect(matches.nth(1)).toContainText("No score");
     await expect(page.getByText(/\d+ pts/)).toHaveCount(0);
-    await expect(page.getByRole("link", { name: /summary/i })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /delete/i })).toHaveCount(0);
 
     // 9. A reload keeps the details; Back goes to the list.
