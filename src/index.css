@@ -103,7 +103,7 @@
   --color-line: #f7f9f4;
   --color-volt: #d8f53a;
 
-  /* Skill level colours (Okabe–Ito based; always paired with bars + text). */
+  /* Skill level colours (Okabe–Ito based; always paired with the level's name as text). */
   --color-skill-beginner: #0072b2;
   --color-skill-intermediate: #b86e00;
   --color-skill-advanced: #9b3d7a;

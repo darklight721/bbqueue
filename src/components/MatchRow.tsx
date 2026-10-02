@@ -127,7 +127,7 @@ function TeamLine({
               <span className={`truncate ${outcome === "won" ? "font-bold" : "font-medium"}`}>
                 {player?.name ?? "Unknown"}
               </span>
-              {player ? <SkillBadge skill={player.skill} compact className="size-5" /> : null}
+              {player ? <SkillBadge skill={player.skill} compact size="sm" /> : null}
             </span>
           );
         })}

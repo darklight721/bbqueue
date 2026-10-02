@@ -7,7 +7,7 @@ export interface PlayerChipProps {
   /** Ended matches only. */
   matchesPlayed: number;
   /**
-   * "stacked": name on top, Skill bars + count underneath (Court cards, tight columns).
+   * "stacked": name on top, Skill badge (BEG / INT / ADV) + count underneath (Court cards, tight columns).
    * "inline": everything on one line (lists, pickers).
    */
   layout?: "stacked" | "inline";
@@ -31,7 +31,7 @@ export function PlayerChip({
     return (
       <span className={`flex min-w-0 items-center gap-2 ${className}`}>
         <span className="min-w-0 truncate text-lg font-semibold">{name}</span>
-        <SkillBadge skill={skill} compact />
+        <SkillBadge skill={skill} compact size="sm" />
         <span className="shrink-0 text-sm text-base-content/65">{played}</span>
       </span>
     );
@@ -43,9 +43,9 @@ export function PlayerChip({
     >
       <span className="max-w-full truncate text-lg leading-tight font-semibold">{name}</span>
       <span
-        className={`mt-0.5 flex items-center gap-1.5 text-sm text-base-content/65 ${align === "end" ? "flex-row-reverse" : ""}`}
+        className={`mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm text-base-content/65 ${align === "end" ? "flex-row-reverse" : ""}`}
       >
-        <SkillBadge skill={skill} compact className="size-6" />
+        <SkillBadge skill={skill} compact size="sm" />
         {played}
       </span>
     </span>

@@ -1,4 +1,4 @@
-import { SKILL_LABEL, SKILL_VALUE, type SkillLevel } from "../domain/types.ts";
+import { SKILL_LABEL, type SkillLevel } from "../domain/types.ts";
 
 const SKILL_COLOR: Record<SkillLevel, string> = {
   beginner: "var(--color-skill-beginner)",
@@ -6,29 +6,55 @@ const SKILL_COLOR: Record<SkillLevel, string> = {
   advanced: "var(--color-skill-advanced)",
 };
 
+/** Short ALL-CAPS form used by the compact badge (UI only; the domain label is SKILL_LABEL). */
+const SKILL_ABBREVIATION: Record<SkillLevel, string> = {
+  beginner: "BEG",
+  intermediate: "INT",
+  advanced: "ADV",
+};
+
+/**
+ * Compact sizes. The width is fixed so all three levels line up in lists.
+ * "sm": beside "N played" and in match rows. "md": beside a large display name (Summary).
+ */
+const COMPACT_SIZE = {
+  sm: "h-[1.125rem] w-8 text-[10px]",
+  md: "h-5 w-9 text-[11px]",
+} as const;
+
 export interface SkillBadgeProps {
   skill: SkillLevel;
-  /** Bars only (label kept for screen readers and as a tooltip). */
+  /** Abbreviation only (BEG / INT / ADV); the full label is the tooltip and screen-reader text. */
   compact?: boolean;
+  /** Compact only. Defaults to "md". */
+  size?: keyof typeof COMPACT_SIZE;
   className?: string;
 }
 
 /**
- * Skill level shown as rising bars (1–3 filled) plus colour and, unless compact, the label.
- * The bar count carries the meaning on its own, so it works without colour vision.
+ * Skill level as a tinted tag: the level's colour plus its name, so the text alone tells the
+ * levels apart (works without colour vision). Compact shows BEG / INT / ADV at a fixed width.
  */
-export function SkillBadge({ skill, compact = false, className = "" }: SkillBadgeProps) {
-  const color = SKILL_COLOR[skill];
+export function SkillBadge({
+  skill,
+  compact = false,
+  size = "md",
+  className = "",
+}: SkillBadgeProps) {
   const label = SKILL_LABEL[skill];
+  const style = tagStyle(SKILL_COLOR[skill]);
 
   if (compact) {
     return (
       <span
-        className={`inline-flex size-7 shrink-0 items-center justify-center rounded-md ${className}`}
-        style={{ backgroundColor: `color-mix(in oklab, ${color} 16%, transparent)` }}
+        className={`inline-grid shrink-0 place-items-center rounded-[0.3125rem] border leading-none font-semibold tracking-[0.06em] ${COMPACT_SIZE[size]} ${className}`}
+        style={style}
         title={label}
       >
-        <SkillBars skill={skill} />
+        {/* pl balances the trailing letter-spacing so the text sits optically centred. */}
+        <span aria-hidden="true" className="pl-[0.06em]">
+          {SKILL_ABBREVIATION[skill]}
+        </span>
         <span className="sr-only">{label}</span>
       </span>
     );
@@ -36,49 +62,19 @@ export function SkillBadge({ skill, compact = false, className = "" }: SkillBadg
 
   return (
     <span
-      className={`inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border-[1.5px] pr-2 pl-1.5 text-sm font-semibold whitespace-nowrap ${className}`}
-      style={{
-        borderColor: `color-mix(in oklab, ${color} 55%, transparent)`,
-        backgroundColor: `color-mix(in oklab, ${color} 12%, transparent)`,
-      }}
+      className={`inline-flex h-7 shrink-0 items-center rounded-md border-[1.5px] px-2.5 text-sm font-semibold whitespace-nowrap ${className}`}
+      style={style}
     >
-      <SkillBars skill={skill} />
-      <span>{label}</span>
+      {label}
     </span>
   );
 }
 
-/** Three ascending bars; the first `SKILL_VALUE[skill]` are filled. */
-export function SkillBars({ skill, className = "" }: { skill: SkillLevel; className?: string }) {
-  const filled = SKILL_VALUE[skill];
-  const color = SKILL_COLOR[skill];
-  return (
-    <svg
-      viewBox="0 0 14 14"
-      width="16"
-      height="16"
-      aria-hidden="true"
-      focusable="false"
-      className={`shrink-0 ${className}`}
-    >
-      {[0, 1, 2].map((index) => {
-        const height = 6 + index * 4;
-        const on = index < filled;
-        return (
-          <rect
-            key={index}
-            x={on ? index * 5 : index * 5 + 0.5}
-            y={on ? 14 - height : 14 - height + 0.5}
-            width={on ? 4 : 3}
-            height={on ? height : height - 1}
-            rx="1"
-            fill={on ? color : "none"}
-            stroke={on ? "none" : "currentColor"}
-            strokeOpacity={on ? undefined : 0.35}
-            strokeWidth="1"
-          />
-        );
-      })}
-    </svg>
-  );
+/** Tint, border and text all mixed from the level's colour (text leans to base-content for contrast). */
+function tagStyle(color: string) {
+  return {
+    color: `color-mix(in oklab, ${color} 72%, var(--color-base-content))`,
+    borderColor: `color-mix(in oklab, ${color} 55%, transparent)`,
+    backgroundColor: `color-mix(in oklab, ${color} 12%, transparent)`,
+  };
 }
