@@ -27,8 +27,12 @@ _Avoid_: Rank, grade, rating
 ## Sessions
 
 **Session**:
-One evening of play for one Club, from Start to End. Only one Session exists at a time.
+One evening of play for one Club, from Start to End. Only one Session is Active at a time.
 _Avoid_: Event, game night
+
+**Ended session**:
+A Session that has been ended and kept, with its Session players and Ended matches, for looking back on. A Session ended without any Ended match is not kept. Only the 50 most recently ended are kept; older ones are dropped.
+_Avoid_: Past session, archived session, old session
 
 **Point system**:
 The Target given to each new Match in a Session: 21 or 31. Can be changed during the Session; Matches already being played keep their Target.
@@ -61,6 +65,10 @@ _Avoid_: Cancelled match
 
 **Score**:
 The points each Team reached in an Ended match, checked against that Match's Target. The Team with more points wins.
+
+**Top winners**:
+The Session players in 1st to 3rd place for a Session. Ranked by most wins, then fewest losses, then most Ended matches played. Players level on all three share a place. Only Ended matches with a Score produce a win or a loss.
+_Avoid_: Leaderboard, champions
 
 ## Queueing
 

@@ -11,14 +11,7 @@ import { createSession, MAX_COURTS, suggestPointSystem } from "../../domain/engi
 import { newId } from "../../domain/ids.ts";
 import type { Club, PointSystem } from "../../domain/types.ts";
 import { normalizeName } from "../../domain/validation.ts";
-import {
-  getClubs,
-  getSession,
-  setClubs,
-  setSession,
-  setSummary,
-  useClubs,
-} from "../../storage/store.ts";
+import { getClubs, getSession, setClubs, setSession, useClubs } from "../../storage/store.ts";
 import {
   byName,
   clashingGuestIds,
@@ -130,9 +123,8 @@ export function NewSessionScreen() {
     });
     if (plan.clubs) setClubs(plan.clubs);
     const session = createSession(plan.input, { now: Date.now(), rng: Math.random });
-    setSummary(null);
     setSession(session);
-    navigate("/session");
+    navigate(`/sessions/${session.id}`);
   }
 
   return (

@@ -37,7 +37,7 @@ function busySession(): Session {
   return result.session;
 }
 
-function renderAt(path = "/session") {
+function renderAt(path = `/sessions/${getSession()?.id ?? "missing"}`) {
   const location = memoryLocation({ path, record: true });
   render(
     <Router hook={location.hook}>
@@ -63,10 +63,10 @@ describe("SessionScreen", () => {
     vi.useRealTimers();
   });
 
-  it("redirects Home when there is no saved Session", () => {
+  it("redirects to the past sessions list when the id is unknown", () => {
     const location = renderAt();
-    expect(location.current()).toBe("/");
-    expect(screen.getByRole("heading", { level: 1, name: "Badminton Queue" })).toBeInTheDocument();
+    expect(location.current()).toBe("/sessions");
+    expect(screen.getByRole("heading", { level: 1, name: "Past sessions" })).toBeInTheDocument();
   });
 
   it("shows the Session name and Point system in the top bar", () => {

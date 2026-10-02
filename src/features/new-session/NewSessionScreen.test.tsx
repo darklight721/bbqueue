@@ -8,11 +8,9 @@ import type { Club, Session } from "../../domain/types.ts";
 import {
   getClubs,
   getSession,
-  getSummary,
   resetStoreForTests,
   setClubs,
   setSession,
-  setSummary,
 } from "../../storage/store.ts";
 import { defaultSessionName } from "./newSession.ts";
 
@@ -47,7 +45,7 @@ const oldSession: Session = {
 };
 
 function renderScreen() {
-  const location = memoryLocation({ path: "/session/new", record: true });
+  const location = memoryLocation({ path: "/sessions/new", record: true });
   render(
     <Router hook={location.hook}>
       <App />
@@ -191,9 +189,20 @@ describe("NewSessionScreen", () => {
     expect(courts).toHaveValue(10);
     expect(moreCourts).toBeDisabled();
 
-    await u.click(screen.getByRole("button", { name: "Decrease Hours" }));
-    expect(hours).toHaveValue(0.5);
     expect(screen.getByRole("button", { name: "Decrease Hours" })).toBeDisabled();
+    await u.click(screen.getByRole("button", { name: "Increase Hours" }));
+    expect(hours).toHaveValue(2);
+    await u.click(screen.getByRole("button", { name: "Increase Hours" }));
+    expect(hours).toHaveValue(3);
+    await u.click(screen.getByRole("button", { name: "Decrease Hours" }));
+    await u.click(screen.getByRole("button", { name: "Decrease Hours" }));
+    expect(hours).toHaveValue(1);
+    expect(screen.getByRole("button", { name: "Decrease Hours" })).toBeDisabled();
+
+    await u.clear(hours);
+    await u.type(hours, "2.5");
+    await u.tab();
+    expect(hours).toHaveValue(3);
   });
 
   it("follows the suggestion until the Point system is changed by hand", async () => {
@@ -210,12 +219,12 @@ describe("NewSessionScreen", () => {
     expect(screen.getByRole("radio", { name: "21 points" })).toBeChecked();
 
     await u.click(screen.getByRole("button", { name: "Increase Hours" }));
-    expect(screen.getByText("Suggested: 31 — about 3 games each")).toBeInTheDocument();
+    expect(screen.getByText("Suggested: 31 — about 4 games each")).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: "31 points" })).toBeChecked();
 
     await u.click(screen.getByRole("radio", { name: "21 points" }));
     await u.click(screen.getByRole("button", { name: "Increase Hours" }));
-    expect(screen.getByText("Suggested: 31 — about 4 games each")).toBeInTheDocument();
+    expect(screen.getByText("Suggested: 31 — about 6 games each")).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: "21 points" })).toBeChecked();
 
     await u.click(screen.getByRole("button", { name: "Use suggestion" }));
@@ -254,14 +263,6 @@ describe("NewSessionScreen", () => {
 
   it("creates the Session, saves chosen Guests to the Club and opens it", async () => {
     setClubs([riverside, beacon]);
-    setSummary({
-      sessionName: "Old",
-      totalMatches: 0,
-      totalPlayers: 0,
-      startedAt: 1,
-      endedAt: 2,
-      topWinners: [],
-    });
     const location = renderScreen();
     const u = user();
     await u.selectOptions(clubSelect(), "c1");
@@ -275,8 +276,8 @@ describe("NewSessionScreen", () => {
     await u.click(screen.getByRole("button", { name: "Increase Courts" }));
     await u.click(startButton());
 
-    expect(location.current()).toBe("/session");
     const session = getSession()!;
+    expect(location.current()).toBe(`/sessions/${session.id}`);
     expect(session.name).toBe("Thursday");
     expect(session.clubId).toBe("c1");
     expect(session.courts.map((court) => court.number)).toEqual([1, 2]);
@@ -293,6 +294,5 @@ describe("NewSessionScreen", () => {
     expect(session.players[2]?.clubPlayerId).toBe(dana?.id);
     expect(session.players[3]?.clubPlayerId).toBeNull();
     expect(session.players[0]?.clubPlayerId).toBe("p2");
-    expect(getSummary()).toBeNull();
   });
 });

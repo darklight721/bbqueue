@@ -57,7 +57,7 @@ function buildSession({ sittingOut = [], skills = {}, history = [] }: Tweaks = {
 
 async function openSeeded(page: Page, session: Session = buildSession()) {
   await seedStorage(page, { session });
-  await page.goto("/session");
+  await page.goto(`/sessions/${session.id}`);
   await expect(queuesRegion(page)).toBeVisible();
   return session;
 }
@@ -129,7 +129,7 @@ test.describe("Queues section", () => {
   test("Remove queue removes the card and brings back the empty state", async ({ page }) => {
     await openSeeded(page);
     await addQueue(page);
-    await queue(page, 1).getByRole("button", { name: "Remove queue" }).click();
+    await queue(page, 1).getByRole("button", { name: "Remove queue 1" }).click();
     await expect(queue(page, 1)).toHaveCount(0);
     await expect(queuesRegion(page).getByText("Pick the next four players")).toBeVisible();
     expect((await storedSession(page)).queues).toHaveLength(0);
@@ -229,7 +229,7 @@ test.describe("Picking players", () => {
     expect(session.queues[0]!.slots[0][0]).toBe(ivy);
     expect(session.queues[1]!.slots[1][0]).toBe(ivy);
 
-    await queue(page, 1).getByRole("button", { name: "Remove queue" }).click();
+    await queue(page, 1).getByRole("button", { name: "Remove queue 1" }).click();
     await expect(queue(page, 2)).toHaveCount(0);
     await expect(queue(page, 1).getByRole("button", { name: "Clear Ivy" })).toBeVisible();
   });

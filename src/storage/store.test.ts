@@ -1,17 +1,17 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
-import type { Club, Session, SessionSummary } from "../domain/types.ts";
+import type { Club, EndedSession, Session } from "../domain/types.ts";
 import {
   getClubs,
   getSession,
-  getSummary,
+  addEndedSession,
+  getEndedSessions,
   resetStoreForTests,
   setClubs,
   setSession,
-  setSummary,
   useClubs,
+  useEndedSessions,
   useSession,
-  useSummary,
 } from "./store.ts";
 
 const club: Club = { id: "c1", name: "Club", players: [] };
@@ -30,14 +30,18 @@ const session: Session = {
   streakResetAt: {},
 };
 
-const summary: SessionSummary = {
-  sessionName: "Tuesday",
-  totalMatches: 0,
-  totalPlayers: 0,
-  startedAt: 1,
-  endedAt: 2,
-  topWinners: [],
-};
+function endedSession(id: string, endedAt: number): EndedSession {
+  return {
+    id,
+    name: `Session ${id}`,
+    clubId: null,
+    pointSystem: 21,
+    startedAt: endedAt - 1000,
+    endedAt,
+    players: [],
+    matches: [],
+  };
+}
 
 function envelope(data: unknown) {
   return JSON.stringify({ version: 1, data });
@@ -53,7 +57,6 @@ beforeEach(() => {
   // Ensure caches are empty for the next read.
   setClubs([]);
   setSession(null);
-  setSummary(null);
   localStorage.clear();
   resetStoreForTests();
 });
@@ -125,22 +128,44 @@ describe("session store", () => {
   });
 });
 
-describe("summary store", () => {
-  it("sets, notifies, and clears with null", () => {
-    const { result } = renderHook(() => useSummary());
-    expect(result.current).toBeNull();
-    act(() => setSummary(summary));
-    expect(result.current).toEqual(summary);
-    expect(getSummary()).toEqual(summary);
-    act(() => setSummary(null));
-    expect(result.current).toBeNull();
+describe("ended sessions store", () => {
+  it("starts empty with a stable reference", () => {
+    const { result, rerender } = renderHook(() => useEndedSessions());
+    const first = result.current;
+    expect(first).toEqual([]);
+    rerender();
+    expect(result.current).toBe(first);
+  });
+
+  it("adds newest first, persists and notifies", () => {
+    const { result } = renderHook(() => useEndedSessions());
+    act(() => addEndedSession(endedSession("a", 1000)));
+    act(() => addEndedSession(endedSession("b", 2000)));
+    expect(result.current.map((e) => e.id)).toEqual(["b", "a"]);
+    expect(getEndedSessions().map((e) => e.id)).toEqual(["b", "a"]);
+    expect(JSON.parse(localStorage.getItem("bq:v1:ended-sessions")!).version).toBe(1);
+  });
+
+  it("keeps at most 50", () => {
+    for (let i = 1; i <= 52; i++) addEndedSession(endedSession(`s${i}`, i * 1000));
+    const all = getEndedSessions();
+    expect(all).toHaveLength(50);
+    expect(all[0]!.id).toBe("s52");
+    expect(all.at(-1)!.id).toBe("s3");
+  });
+
+  it("loads from localStorage after a reset and drops the old summary key", () => {
+    localStorage.setItem("bq:v1:ended-sessions", envelope([endedSession("a", 1)]));
+    localStorage.setItem("bq:v1:summary", envelope({ sessionName: "old" }));
+    resetStoreForTests();
+    expect(getEndedSessions().map((e) => e.id)).toEqual(["a"]);
     expect(localStorage.getItem("bq:v1:summary")).toBeNull();
   });
 
-  it("refreshes on a storage event", () => {
-    const { result } = renderHook(() => useSummary());
-    localStorage.setItem("bq:v1:summary", envelope(summary));
-    act(() => storageEvent("bq:v1:summary"));
-    expect(result.current).toEqual(summary);
+  it("refreshes on a storage event from another tab", () => {
+    const { result } = renderHook(() => useEndedSessions());
+    localStorage.setItem("bq:v1:ended-sessions", envelope([endedSession("a", 1)]));
+    act(() => storageEvent("bq:v1:ended-sessions"));
+    expect(result.current.map((e) => e.id)).toEqual(["a"]);
   });
 });

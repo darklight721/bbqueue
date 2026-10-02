@@ -136,3 +136,14 @@ export function SearchIcon(props: IconProps) {
     </Icon>
   );
 }
+
+/** Clock with a back-turning arrow: looking back on earlier Sessions. */
+export function HistoryIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 12a8 8 0 1 0 2.35-5.65" />
+      <path d="M4 3.5v4.5h4.5" />
+      <path d="M12 8v4.25l2.75 1.75" />
+    </Icon>
+  );
+}

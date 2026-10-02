@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useLocation } from "wouter";
 import { ConfirmDialog } from "../../../components/ConfirmDialog.tsx";
 import { endSession } from "../../../domain/engine/index.ts";
-import { getSession, setSession, setSummary } from "../../../storage/store.ts";
+import { addEndedSession, getSession, setSession } from "../../../storage/store.ts";
 import { useSessionView } from "../context.ts";
 
 /** "1 match in progress will…", "3 matches in progress will…" */
@@ -22,12 +22,12 @@ export function EndSessionSection() {
     setConfirming(false);
     const current = getSession();
     if (!current) return;
-    const { summary } = endSession(current, { now: Date.now(), rng: Math.random });
-    // All three updates land in one render, so the summary route wins over
-    // SessionScreen's "no Session" redirect.
-    setSummary(summary);
+    const ended = endSession(current, { now: Date.now(), rng: Math.random });
+    // Everything lands in one render, so the new route wins over SessionScreen's
+    // "no Session" redirect. A Session without Ended matches is not kept.
+    if (ended) addEndedSession(ended);
     setSession(null);
-    navigate("/session/summary");
+    navigate(ended ? `/sessions/${ended.id}/summary` : "/");
   }
 
   return (

@@ -1,9 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
-import type { Match, Session, SessionSummary } from "../src/domain/types.ts";
+import type { EndedSession, Match, Session } from "../src/domain/types.ts";
 import {
   makeCourt,
   makeSession,
   makeSessionPlayer,
+  readStored,
   readStoredData,
   seedStorage,
 } from "./fixtures.ts";
@@ -92,7 +93,7 @@ const TWO_MATCHES: Scenario = {
 async function openSeeded(page: Page, scenario: Scenario = {}) {
   const session = build(scenario);
   await seedStorage(page, { session });
-  await page.goto("/session");
+  await page.goto(`/sessions/${session.id}`);
   await expect(historyRegion(page)).toBeVisible();
   return session;
 }
@@ -115,10 +116,11 @@ async function endSessionViaDialog(page: Page) {
 const confirmEnd = async (page: Page) => {
   const dialog = await endSessionViaDialog(page);
   await dialog.getByRole("button", { name: "End session" }).click();
-  await expect(page).toHaveURL(/\/session\/summary$/);
+  await expect(page).toHaveURL(/\/sessions\/[^/]+\/summary$/);
 };
 
-const storedSummary = (page: Page) => readStoredData<SessionSummary>(page, "summary");
+const storedEnded = async (page: Page) =>
+  (await readStoredData<EndedSession[]>(page, "endedSessions")) ?? [];
 
 test.describe("History", () => {
   test("with no ended matches: empty text and no toggle", async ({ page }) => {
@@ -222,27 +224,44 @@ test.describe("End session", () => {
 
     await dialog.getByRole("button", { name: "Cancel" }).click();
     await expect(dialog).toBeHidden();
-    await expect(page).toHaveURL(/\/session$/);
+    await expect(page).toHaveURL(/\/sessions\/(?!new$)[^/]+$/);
     expect((await storedSession(page)).id).toBe(session.id);
-    expect(await storedSummary(page)).toBeNull();
+    expect(await storedEnded(page)).toEqual([]);
   });
 
-  test("confirming lands on /session/summary with a stored summary and no session", async ({
+  test("confirming lands on /sessions/<id>/summary with a stored Ended session and no session", async ({
     page,
   }) => {
-    await openSeeded(page, TWO_MATCHES);
+    const session = await openSeeded(page, TWO_MATCHES);
     await confirmEnd(page);
+    await expect(page).toHaveURL(new RegExp(`/sessions/${session.id}/summary$`));
 
     expect(await readStoredData<Session>(page, "session")).toBeNull();
-    const summary = (await storedSummary(page))!;
-    expect(summary).toMatchObject({
-      sessionName: "History night",
-      totalMatches: 2,
-      totalPlayers: 8,
-    });
+    const [ended, ...rest] = await storedEnded(page);
+    expect(rest).toEqual([]);
+    expect(ended).toMatchObject({ id: session.id, name: "History night" });
+    expect(ended!.matches).toHaveLength(2);
+    expect(ended!.players).toHaveLength(8);
+    expect(ended!.endedAt).toBeGreaterThanOrEqual(ended!.startedAt);
     // Only the scored match has winners.
-    expect(summary.topWinners.map((winner) => winner.name).sort()).toEqual(["Ana", "Ben"]);
-    expect(summary.endedAt).toBeGreaterThanOrEqual(summary.startedAt);
+    const rows = page.getByRole("region", { name: "Top winners" }).getByRole("listitem");
+    await expect(rows).toHaveCount(2);
+    const shown = (await rows.allInnerTexts()).join("\n");
+    expect(shown).toContain("Ana");
+    expect(shown).toContain("Ben");
+  });
+
+  test("ending with no ended matches goes Home and keeps nothing", async ({ page }) => {
+    await openSeeded(page);
+    const dialog = await endSessionViaDialog(page);
+    await dialog.getByRole("button", { name: "End session" }).click();
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByRole("heading", { level: 1, name: "Badminton Queue" })).toBeVisible();
+
+    expect(await readStoredData<Session>(page, "session")).toBeNull();
+    expect(await readStored(page, "endedSessions")).toBeNull();
+    await expect(page.getByRole("link", { name: "Resume session" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Past sessions" })).toHaveCount(0);
   });
 
   test("a match in progress is mentioned, then ended without a score and counted", async ({
@@ -256,12 +275,13 @@ test.describe("End session", () => {
       "1 match in progress will be ended without a score.",
     );
     await dialog.getByRole("button", { name: "End session" }).click();
-    await expect(page).toHaveURL(/\/session\/summary$/);
+    await expect(page).toHaveURL(/\/sessions\/[^/]+\/summary$/);
 
     expect(await readStoredData<Session>(page, "session")).toBeNull();
-    const summary = (await storedSummary(page))!;
-    expect(summary.totalMatches).toBe(3);
-    expect(summary.totalPlayers).toBe(10); // Ivy and Jon only played in the match that was in progress
+    const [ended] = await storedEnded(page);
+    expect(ended!.matches).toHaveLength(3);
+    expect(ended!.matches.at(-1)!.score).toBeNull();
+    expect(ended!.players).toHaveLength(10); // Ivy and Jon only played in the match that was in progress
   });
 
   test("several matches in progress use the plural", async ({ page }) => {
@@ -284,7 +304,7 @@ test.describe("End session", () => {
     session.matches.push(second);
     session.courts[1]!.activeMatchId = second.id;
     await seedStorage(page, { session });
-    await page.goto("/session");
+    await page.goto(`/sessions/${session.id}`);
 
     const dialog = await endSessionViaDialog(page);
     await expect(dialog).toHaveAccessibleDescription(
@@ -293,7 +313,9 @@ test.describe("End session", () => {
     await dialog.getByRole("button", { name: "Cancel" }).click();
   });
 
-  test("top winners share places (1, 1, 3) when wins and games played tie", async ({ page }) => {
+  test("top winners share places (1, 1, 3) when wins, losses and games played tie", async ({
+    page,
+  }) => {
     await openSeeded(page, {
       matches: [
         { a: ["Ana", "Ben"], b: ["Cat", "Dan"], score: [21, 10] },
@@ -303,25 +325,28 @@ test.describe("End session", () => {
     });
     await confirmEnd(page);
 
-    const summary = (await storedSummary(page))!;
-    expect(summary.totalMatches).toBe(3);
-    expect(summary.totalPlayers).toBe(8);
-    expect(summary.topWinners).toMatchObject([
-      { place: 1, name: "Ana", wins: 2, played: 2 },
-      { place: 1, name: "Ben", wins: 2, played: 2 },
-      { place: 3, name: "Gus", wins: 1, played: 1 },
-    ]);
+    const [ended] = await storedEnded(page);
+    expect(ended!.matches).toHaveLength(3);
+    expect(ended!.players).toHaveLength(8);
+    const rows = page.getByRole("region", { name: "Top winners" }).getByRole("listitem");
+    await expect(rows).toHaveCount(3);
+    await expect(rows.nth(0)).toContainText("Joint 1st");
+    await expect(rows.nth(0)).toContainText("Ana");
+    await expect(rows.nth(1)).toContainText("Joint 1st");
+    await expect(rows.nth(1)).toContainText("Ben");
+    await expect(rows.nth(2)).toContainText("3rd");
+    await expect(rows.nth(2)).not.toContainText("Joint");
+    await expect(rows.nth(2)).toContainText("Gus");
   });
 
-  test("afterwards Home has no Resume link, and a reload keeps /session/summary", async ({
-    page,
-  }) => {
+  test("afterwards Home has no Resume link, and a reload keeps the summary", async ({ page }) => {
     await openSeeded(page, TWO_MATCHES);
     await confirmEnd(page);
 
     await page.reload();
-    await expect(page).toHaveURL(/\/session\/summary$/);
-    expect(await storedSummary(page)).not.toBeNull();
+    await expect(page).toHaveURL(/\/sessions\/[^/]+\/summary$/);
+    await expect(page.getByRole("heading", { level: 1, name: "Session summary" })).toBeVisible();
+    expect(await storedEnded(page)).toHaveLength(1);
     expect(await readStoredData<Session>(page, "session")).toBeNull();
 
     await page.goto("/");

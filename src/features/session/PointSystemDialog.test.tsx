@@ -49,7 +49,7 @@ function busySession(): Session {
 
 function renderSession(session: Session) {
   setSession(session);
-  const location = memoryLocation({ path: "/session", record: true });
+  const location = memoryLocation({ path: `/sessions/${session.id}`, record: true });
   render(
     <Router hook={location.hook}>
       <App />

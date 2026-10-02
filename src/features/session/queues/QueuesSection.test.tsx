@@ -59,7 +59,7 @@ function withQueue(session: Session, names: (string | null)[]): Session {
 
 function renderSession(session: Session) {
   setSession(session);
-  const location = memoryLocation({ path: "/session", record: true });
+  const location = memoryLocation({ path: `/sessions/${session.id}`, record: true });
   render(
     <Router hook={location.hook}>
       <App />
@@ -241,7 +241,7 @@ describe("QueuesSection", () => {
 
   it("removes a queue without asking", async () => {
     renderSession(withQueue(makeSession(), ["ana", "Ben", null, null]));
-    await userEvent.click(queue().getByRole("button", { name: "Remove queue" }));
+    await userEvent.click(queue().getByRole("button", { name: "Remove queue 1" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Queue 1" })).not.toBeInTheDocument();
     expect(getSession()!.queues).toEqual([]);

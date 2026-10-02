@@ -10,7 +10,7 @@ export async function startSession(
   options: { players?: number; courts?: number } = {},
 ) {
   const { players = 8, courts = 2 } = options;
-  await page.goto("/session/new");
+  await page.goto("/sessions/new");
   await page.getByRole("textbox", { name: "Session name" }).fill("Courtside");
   for (const name of NAMES.slice(0, players)) {
     await page.getByRole("textbox", { name: "Player name" }).fill(name);
@@ -22,7 +22,7 @@ export async function startSession(
   }
   await expect(page.getByRole("spinbutton", { name: "Courts" })).toHaveValue(String(courts));
   await page.getByRole("button", { name: "Start session" }).click();
-  await expect(page).toHaveURL(/\/session$/);
+  await expect(page).toHaveURL(/\/sessions\/(?!new$)[^/]+$/);
   await expect(page.getByRole("heading", { level: 1, name: "Courtside" })).toBeVisible();
 }
 

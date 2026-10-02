@@ -8,7 +8,7 @@ test.describe("Point system during a Session", () => {
     const session = makeMidMatchSession({ startedAt: Date.now() - 10 * 60_000 });
     session.startedAt = Date.now() - 10 * 60_000;
     await seedStorage(page, { session });
-    await page.goto("/session");
+    await page.goto(`/sessions/${session.id}`);
 
     await page.getByRole("button", { name: "21 pts, change point system" }).click();
     const dialog = page.getByRole("dialog", { name: "Point system" });

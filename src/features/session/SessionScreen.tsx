@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import { Redirect } from "wouter";
 import { ChevronDownIcon } from "../../components/icons.tsx";
 import { Screen } from "../../components/Screen.tsx";
-import { useSession, useSummary } from "../../storage/store.ts";
+import { useSession } from "../../storage/store.ts";
 import { CourtsSection } from "./courts/CourtsSection.tsx";
 import { EndSessionSection } from "./end/EndSessionSection.tsx";
 import { HistorySection } from "./history/HistorySection.tsx";
@@ -31,7 +31,6 @@ const JUMP_TARGETS: readonly JumpTarget[] = [
  */
 export function SessionScreen() {
   const session = useSession();
-  const summary = useSummary();
   // Not saved: Players starts open and History closed on every visit.
   const [playersOpen, setPlayersOpen] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -40,8 +39,8 @@ export function SessionScreen() {
     if (id === "players") setPlayersOpen(true);
     if (id === "history") setHistoryOpen(true);
   }, []);
-  // Safety net: just after End session, go to the summary rather than Home.
-  if (!session) return <Redirect to={summary ? "/session/summary" : "/"} replace />;
+  // Safety net: the route only renders this for the Active session.
+  if (!session) return <Redirect to="/" replace />;
 
   return (
     <SessionProvider session={session}>

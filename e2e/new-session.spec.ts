@@ -4,6 +4,7 @@ import {
   makeClub,
   makeClubPlayer,
   makeClubWithPlayers,
+  makeEndedSession,
   makeSession,
   readStoredData,
   seedStorage,
@@ -51,7 +52,7 @@ test.describe("Club selection", () => {
   test("one Club is auto-selected; players listed alphabetically, unchecked", async ({ page }) => {
     const club = friday();
     await seedStorage(page, { clubs: [club] });
-    await page.goto("/session/new");
+    await page.goto("/sessions/new");
     await expect(page.getByRole("heading", { level: 1, name: "New session" })).toBeVisible();
 
     await expect(page.getByRole("combobox", { name: "Club" })).toHaveValue(club.id);
@@ -70,7 +71,7 @@ test.describe("Club selection", () => {
     const a = friday();
     const b = makeClub({ name: "Alpha Club", players: [makeClubPlayer({ name: "Xena" })] });
     await seedStorage(page, { clubs: [a, b] });
-    await page.goto("/session/new");
+    await page.goto("/sessions/new");
 
     const select = page.getByRole("combobox", { name: "Club" });
     await expect(select).toHaveValue("");
@@ -95,7 +96,7 @@ test.describe("Club selection", () => {
         makeClub({ name: "Alpha Club", players: [makeClubPlayer({ name: "Xena" })] }),
       ],
     });
-    await page.goto("/session/new");
+    await page.goto("/sessions/new");
     await addGuests(page, ["Ann", "Bo", "Cy", "Di"]);
     await expect(page.getByText("4 players selected")).toBeVisible();
 
@@ -105,7 +106,7 @@ test.describe("Club selection", () => {
     await page.getByRole("combobox", { name: "Club" }).selectOption("none");
     await expect(startButton(page)).toBeEnabled();
     await startButton(page).click();
-    await expect(page).toHaveURL(/\/session$/);
+    await expect(page).toHaveURL(/\/sessions\/(?!new$)[^/]+$/);
     expect((await readStoredData<Session>(page, "session"))!.clubId).toBeNull();
   });
 
@@ -115,7 +116,7 @@ test.describe("Club selection", () => {
     const a = friday();
     const b = makeClub({ name: "Alpha Club", players: [makeClubPlayer({ name: "Xena" })] });
     await seedStorage(page, { clubs: [a, b] });
-    await page.goto("/session/new");
+    await page.goto("/sessions/new");
     const select = page.getByRole("combobox", { name: "Club" });
     await select.selectOption(a.id);
 
@@ -143,7 +144,7 @@ test.describe("Starting a session", () => {
   test("one Club: tick 4 → Start → /session with the right stored session", async ({ page }) => {
     const club = friday();
     await seedStorage(page, { clubs: [club] });
-    await page.goto("/session/new");
+    await page.goto("/sessions/new");
 
     await page.getByRole("textbox", { name: "Session name" }).fill("League night");
     for (const name of ["Amy", "Ben", "Cat", "Dan"]) {
@@ -154,7 +155,7 @@ test.describe("Starting a session", () => {
     await expect(page.getByRole("spinbutton", { name: "Courts" })).toHaveValue("2");
 
     await startButton(page).click();
-    await expect(page).toHaveURL(/\/session$/);
+    await expect(page).toHaveURL(/\/sessions\/(?!new$)[^/]+$/);
     await expect(page.getByRole("heading", { level: 1, name: "League night" })).toBeVisible();
 
     const session = await readStoredData<Session>(page, "session");
@@ -175,7 +176,7 @@ test.describe("Starting a session", () => {
   test("no Clubs: guests-only preselected; 4 Guests → Start works; no 'Save to club'", async ({
     page,
   }) => {
-    await page.goto("/session/new");
+    await page.goto("/sessions/new");
     await expect(page.getByRole("combobox", { name: "Club" })).toHaveValue("none");
     await expect(page.getByRole("region", { name: "Club players" })).toHaveCount(0);
     await expect(page.getByRole("heading", { level: 2, name: "Guests" })).toBeVisible();
@@ -187,7 +188,7 @@ test.describe("Starting a session", () => {
     await expect(startButton(page)).toBeEnabled();
     await startButton(page).click();
 
-    await expect(page).toHaveURL(/\/session$/);
+    await expect(page).toHaveURL(/\/sessions\/(?!new$)[^/]+$/);
     const session = await readStoredData<Session>(page, "session");
     expect(session!.clubId).toBeNull();
     expect(session!.pointSystem).toBe(21);
@@ -200,7 +201,7 @@ test.describe("Starting a session", () => {
   test("Start is disabled with fewer than 4 players, and when the name is empty", async ({
     page,
   }) => {
-    await page.goto("/session/new");
+    await page.goto("/sessions/new");
     await expect(startButton(page)).toBeDisabled();
     await expect(page.getByText("Add at least 4 players")).toBeVisible();
 
@@ -223,7 +224,7 @@ test.describe("Starting a session", () => {
   test("Enter in the guest name field adds the guest; duplicate names are rejected", async ({
     page,
   }) => {
-    await page.goto("/session/new");
+    await page.goto("/sessions/new");
     const field = page.getByRole("textbox", { name: "Player name" });
     await field.fill("Ann");
     await field.press("Enter");
@@ -236,35 +237,25 @@ test.describe("Starting a session", () => {
     await expect(page.getByRole("button", { name: /^Remove / })).toHaveCount(1);
   });
 
-  test("Start clears any saved summary", async ({ page }) => {
-    await page.goto("/session/new");
-    await page.evaluate(() =>
-      localStorage.setItem(
-        "bq:v1:summary",
-        JSON.stringify({
-          version: 1,
-          data: {
-            sessionName: "x",
-            totalMatches: 0,
-            totalPlayers: 0,
-            startedAt: 0,
-            endedAt: 0,
-            topWinners: [],
-          },
-        }),
-      ),
-    );
+  test("Start opens /sessions/<id> and leaves Ended sessions alone", async ({ page }) => {
+    const ended = makeEndedSession({ name: "Last week" });
+    await seedStorage(page, { endedSessions: [ended] });
+    await page.goto("/sessions/new");
     await addGuests(page, ["Ann", "Bo", "Cy", "Di"]);
     await startButton(page).click();
-    await expect(page).toHaveURL(/\/session$/);
-    expect(await page.evaluate(() => localStorage.getItem("bq:v1:summary"))).toBeNull();
+    await expect(page).toHaveURL(/\/sessions\/(?!new$)[^/]+$/);
+    const session = (await readStoredData<Session>(page, "session"))!;
+    expect(new URL(page.url()).pathname).toBe(`/sessions/${session.id}`);
+    expect(await readStoredData<{ id: string }[]>(page, "endedSessions")).toMatchObject([
+      { id: ended.id },
+    ]);
   });
 
   test("the Session opens scrolled to the top, even if New session was scrolled down", async ({
     page,
   }) => {
     await seedStorage(page, { clubs: [makeClubWithPlayers(24, { name: "Big Club" })] });
-    await page.goto("/session/new");
+    await page.goto("/sessions/new");
     await page.getByRole("textbox", { name: "Session name" }).fill("Long night");
     const boxes = page.getByRole("region", { name: "Club players" }).getByRole("checkbox");
     for (const box of await boxes.all()) await box.check();
@@ -272,7 +263,7 @@ test.describe("Starting a session", () => {
     expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
 
     await startButton(page).click();
-    await expect(page).toHaveURL(/\/session$/);
+    await expect(page).toHaveURL(/\/sessions\/(?!new$)[^/]+$/);
     await expect(page.getByRole("heading", { level: 1, name: "Long night" })).toBeVisible();
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
   });
@@ -284,7 +275,7 @@ test.describe("Save to club", () => {
   }) => {
     const club = friday();
     await seedStorage(page, { clubs: [club] });
-    await page.goto("/session/new");
+    await page.goto("/sessions/new");
 
     await addGuest(page, "Saved Sam", { skill: "Advanced", saveToClub: true });
     await expect(page.getByText("Will be saved to the club")).toBeVisible();
@@ -292,7 +283,7 @@ test.describe("Save to club", () => {
     await page.getByRole("checkbox", { name: "Amy" }).check();
     await page.getByRole("checkbox", { name: "Ben" }).check();
     await startButton(page).click();
-    await expect(page).toHaveURL(/\/session$/);
+    await expect(page).toHaveURL(/\/sessions\/(?!new$)[^/]+$/);
 
     const clubs = await readStoredData<Club[]>(page, "clubs");
     const stored = clubs!.find((candidate) => candidate.id === club.id)!;
@@ -310,7 +301,7 @@ test.describe("Save to club", () => {
 
 test.describe("Steppers and point system", () => {
   test("Courts and Hours respect their bounds", async ({ page }) => {
-    await page.goto("/session/new");
+    await page.goto("/sessions/new");
     const courts = page.getByRole("spinbutton", { name: "Courts" });
     const hours = page.getByRole("spinbutton", { name: "Hours" });
     await expect(courts).toHaveValue("1");
@@ -323,12 +314,19 @@ test.describe("Steppers and point system", () => {
     await page.getByRole("button", { name: "Decrease Courts" }).click();
     await expect(courts).toHaveValue("9");
 
+    await page.getByRole("button", { name: "Increase Hours" }).click();
+    await expect(hours).toHaveValue("2");
+    await page.getByRole("button", { name: "Increase Hours" }).click();
+    await expect(hours).toHaveValue("3");
     await page.getByRole("button", { name: "Decrease Hours" }).click();
-    await expect(hours).toHaveValue("0.5");
+    await page.getByRole("button", { name: "Decrease Hours" }).click();
+    await expect(hours).toHaveValue("1");
     await expect(page.getByRole("button", { name: "Decrease Hours" })).toBeDisabled();
-    await page.getByRole("button", { name: "Increase Hours" }).click();
-    await page.getByRole("button", { name: "Increase Hours" }).click();
-    await expect(hours).toHaveValue("1.5");
+
+    // Typed decimals round to a whole number on blur.
+    await hours.fill("2.5");
+    await hours.blur();
+    await expect(hours).toHaveValue("3");
 
     // Typed out-of-range values are clamped on blur.
     await hours.fill("99");
@@ -341,7 +339,7 @@ test.describe("Steppers and point system", () => {
   });
 
   test("suggestion is hidden below 4 players", async ({ page }) => {
-    await page.goto("/session/new");
+    await page.goto("/sessions/new");
     await expect(suggestion(page)).toHaveCount(0);
     await addGuests(page, ["Ann", "Bo", "Cy"]);
     await expect(suggestion(page)).toHaveCount(0);
@@ -350,7 +348,7 @@ test.describe("Steppers and point system", () => {
   });
 
   test("suggestion follows players / courts / hours", async ({ page }) => {
-    await page.goto("/session/new");
+    await page.goto("/sessions/new");
     await addGuests(page, ["Ann", "Bo", "Cy", "Di"]);
 
     await expect(suggestion(page)).toHaveText("Suggested: 21 — about 4 games each");
@@ -362,7 +360,7 @@ test.describe("Steppers and point system", () => {
 
     await page.getByRole("button", { name: "Decrease Courts" }).click();
     await expect(page.getByRole("radio", { name: "21 points" })).toBeChecked();
-    for (let i = 0; i < 4; i++) await page.getByRole("button", { name: "Increase Hours" }).click();
+    for (let i = 0; i < 2; i++) await page.getByRole("button", { name: "Increase Hours" }).click();
     await expect(suggestion(page)).toHaveText("Suggested: 31 — about 6 games each");
 
     // More players → fewer games each; exactly 3 games each at 30 min is still 31, 10 players drops to 21.
@@ -374,7 +372,7 @@ test.describe("Steppers and point system", () => {
   });
 
   test("manual override sticks until 'Use suggestion'", async ({ page }) => {
-    await page.goto("/session/new");
+    await page.goto("/sessions/new");
     await addGuests(page, ["Ann", "Bo", "Cy", "Di"]);
     await expect(page.getByRole("button", { name: "Use suggestion" })).toHaveCount(0);
 
@@ -396,14 +394,14 @@ test.describe("Steppers and point system", () => {
     // The chosen system is what gets saved.
     await page.getByRole("radio", { name: "31 points" }).check({ force: true });
     await startButton(page).click();
-    await expect(page).toHaveURL(/\/session$/);
+    await expect(page).toHaveURL(/\/sessions\/(?!new$)[^/]+$/);
     expect((await readStoredData<Session>(page, "session"))!.pointSystem).toBe(31);
   });
 });
 
 test.describe("Existing saved session", () => {
   async function fillAndStart(page: Page) {
-    await page.goto("/session/new");
+    await page.goto("/sessions/new");
     await page.getByRole("textbox", { name: "Session name" }).fill("Brand new");
     await addGuests(page, ["Ann", "Bo", "Cy", "Di"]);
     await startButton(page).click();
@@ -420,7 +418,7 @@ test.describe("Existing saved session", () => {
     await dialog.getByRole("button", { name: "Cancel" }).click();
     await expect(dialog).toBeHidden();
 
-    await expect(page).toHaveURL(/\/session\/new$/);
+    await expect(page).toHaveURL(/\/sessions\/new$/);
     const stored = await readStoredData<Session>(page, "session");
     expect(stored).toEqual(old);
   });
@@ -435,7 +433,7 @@ test.describe("Existing saved session", () => {
       .getByRole("button", { name: "Discard and start" })
       .click();
 
-    await expect(page).toHaveURL(/\/session$/);
+    await expect(page).toHaveURL(/\/sessions\/(?!new$)[^/]+$/);
     const stored = await readStoredData<Session>(page, "session");
     expect(stored!.id).not.toBe(old.id);
     expect(stored!.name).toBe("Brand new");

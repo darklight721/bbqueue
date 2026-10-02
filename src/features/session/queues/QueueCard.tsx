@@ -1,5 +1,5 @@
 import { useId, useState } from "react";
-import { CloseIcon, PlusIcon, WarningIcon } from "../../../components/icons.tsx";
+import { CloseIcon, PlusIcon, TrashIcon, WarningIcon } from "../../../components/icons.tsx";
 import {
   canMoveQueue,
   moveQueueToCourt,
@@ -58,10 +58,12 @@ export function QueueCard({ queue, number }: { queue: Queue; number: number }) {
         </span>
         <button
           type="button"
-          className="btn btn-ghost ml-auto text-sm text-base-content/70"
+          className="btn -my-2 -mr-2 ml-auto btn-square size-11 btn-ghost text-base-content/60 hover:text-error"
+          aria-label={`Remove queue ${number}`}
+          title="Remove queue"
           onClick={() => actions.run((s) => removeQueue(s, queue.id))}
         >
-          Remove queue
+          <TrashIcon className="size-6" />
         </button>
       </header>
 

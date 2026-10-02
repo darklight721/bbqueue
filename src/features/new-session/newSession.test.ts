@@ -64,7 +64,7 @@ describe("newSession helpers", () => {
         { id: "g2", name: "Eve", skill: "beginner", saveToClub: false },
       ],
       courts: 2,
-      hours: 1.5,
+      hours: 2,
       pointSystem: 31,
       newId: () => `new-${next++}`,
     });
@@ -72,7 +72,7 @@ describe("newSession helpers", () => {
       name: "Thu night",
       clubId: "r",
       pointSystem: 31,
-      plannedHours: 1.5,
+      plannedHours: 2,
       courts: 2,
       players: [
         { name: "Amy", skill: "intermediate", clubPlayerId: "r-1" },

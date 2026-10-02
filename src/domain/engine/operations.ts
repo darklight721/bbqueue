@@ -4,7 +4,7 @@ import type {
   PointSystem,
   Session,
   SessionPlayer,
-  SessionSummary,
+  EndedSession,
   SkillLevel,
   Team,
 } from "../types.ts";
@@ -15,8 +15,8 @@ import { canMoveQueue, clearPlayerFromQueues, queueTeams } from "./queues.ts";
 import { rehashAllLineups } from "./rehashAll.ts";
 import { validateScore } from "./scoring.ts";
 import { busyPlayerIds, freePlayerIds } from "./select.ts";
-import { buildSummary } from "./summary.ts";
-import { isIdle, sortedCourts } from "./stats.ts";
+import { toEndedSession } from "./endedSession.ts";
+import { isIdle } from "./stats.ts";
 
 export const MAX_COURTS = 10;
 
@@ -89,7 +89,7 @@ export type CreateSessionError =
   | "duplicate-name";
 
 export const MIN_PLAYERS = 4;
-export const MIN_HOURS = 0.5;
+export const MIN_HOURS = 1;
 export const MAX_HOURS = 12;
 
 /** Everything wrong with a `createSession` input; empty means it is safe to create. */
@@ -413,11 +413,11 @@ export function setPointSystem(
 
 // ------------------------------------------------------------------ end session
 
-/** End every Active match without a score and summarise the Session. */
-export function endSession(
-  session: Session,
-  ctx: EngineContext,
-): { session: Session; summary: SessionSummary } {
+/**
+ * End every Active match without a score and slim the Session down to an Ended session.
+ * Returns null when the Session has no Ended matches (nothing to keep).
+ */
+export function endSession(session: Session, ctx: EngineContext): EndedSession | null {
   const ended: Session = {
     ...session,
     matches: renumberEnded(
@@ -427,7 +427,6 @@ export function endSession(
           : match,
       ),
     ),
-    courts: sortedCourts(session).map((court) => ({ ...court, lineup: null, activeMatchId: null })),
   };
-  return { session: ended, summary: buildSummary(ended, ctx.now) };
+  return toEndedSession(ended, ctx.now);
 }

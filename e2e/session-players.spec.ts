@@ -31,7 +31,7 @@ function buildSession(overrides: Partial<Session> = {}, sitOutJon = false): Sess
 
 async function openSeeded(page: Page, session: Session = buildSession()) {
   await seedStorage(page, { session });
-  await page.goto("/session");
+  await page.goto(`/sessions/${session.id}`);
   await expect(page.getByRole("region", { name: "Players" })).toBeVisible();
   return session;
 }

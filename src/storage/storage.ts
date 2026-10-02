@@ -1,11 +1,20 @@
-import type { Club, Session, SessionSummary } from "../domain/types.ts";
+import type { Club, EndedSession, Session } from "../domain/types.ts";
 
 const VERSION = 1;
 const CLUBS_KEY = "bq:v1:clubs";
 const SESSION_KEY = "bq:v1:session";
-const SUMMARY_KEY = "bq:v1:summary";
+const ENDED_SESSIONS_KEY = "bq:v1:ended-sessions";
+/** Replaced by Ended sessions (ADR-0005); removed on load and never written again. */
+const LEGACY_SUMMARY_KEY = "bq:v1:summary";
 
-export const STORAGE_KEYS = { clubs: CLUBS_KEY, session: SESSION_KEY, summary: SUMMARY_KEY };
+/** Ended sessions kept on device; older ones are dropped (ADR-0005). */
+export const MAX_ENDED_SESSIONS = 50;
+
+export const STORAGE_KEYS = {
+  clubs: CLUBS_KEY,
+  session: SESSION_KEY,
+  endedSessions: ENDED_SESSIONS_KEY,
+};
 
 type Guard<T> = (value: unknown) => value is T;
 
@@ -32,11 +41,18 @@ const isSession: Guard<Session> = (value): value is Session =>
   Array.isArray(value.matches) &&
   Array.isArray(value.queues);
 
-const isSummary: Guard<SessionSummary> = (value): value is SessionSummary =>
-  isRecord(value) &&
-  typeof value.sessionName === "string" &&
-  typeof value.totalMatches === "number" &&
-  Array.isArray(value.topWinners);
+const isEndedSessions: Guard<EndedSession[]> = (value): value is EndedSession[] =>
+  Array.isArray(value) &&
+  value.every(
+    (ended) =>
+      isRecord(ended) &&
+      typeof ended.id === "string" &&
+      typeof ended.name === "string" &&
+      typeof ended.startedAt === "number" &&
+      typeof ended.endedAt === "number" &&
+      Array.isArray(ended.players) &&
+      Array.isArray(ended.matches),
+  );
 
 function read<T>(key: string, guard: Guard<T>): T | null {
   try {
@@ -50,9 +66,14 @@ function read<T>(key: string, guard: Guard<T>): T | null {
   }
 }
 
+/** Writes `data`; throws when storage refuses (e.g. quota exceeded). */
+function writeOrThrow(key: string, data: unknown): void {
+  localStorage.setItem(key, JSON.stringify({ version: VERSION, data }));
+}
+
 function write(key: string, data: unknown): void {
   try {
-    localStorage.setItem(key, JSON.stringify({ version: VERSION, data }));
+    writeOrThrow(key, data);
   } catch (error) {
     console.error(`Failed to save ${key}`, error);
   }
@@ -100,14 +121,39 @@ export function clearSession(): void {
   remove(SESSION_KEY);
 }
 
-export function loadSummary(): SessionSummary | null {
-  return read(SUMMARY_KEY, isSummary);
+export function removeLegacySummary(): void {
+  remove(LEGACY_SUMMARY_KEY);
 }
 
-export function saveSummary(summary: SessionSummary): void {
-  write(SUMMARY_KEY, summary);
+/** Newest first by `endedAt`. Also drops the old summary key. */
+export function loadEndedSessions(): EndedSession[] {
+  removeLegacySummary();
+  const stored = read(ENDED_SESSIONS_KEY, isEndedSessions) ?? [];
+  return [...stored].sort((a, b) => b.endedAt - a.endedAt);
 }
 
-export function clearSummary(): void {
-  remove(SUMMARY_KEY);
+/**
+ * Keep `ended` first in `existing`, at most 50 newest. If storage is full, drop the oldest
+ * and retry until it fits or only `ended` is left; a final failure is logged, not thrown.
+ * Returns the list as kept (newest first).
+ */
+export function saveEndedSession(
+  existing: readonly EndedSession[],
+  ended: EndedSession,
+): EndedSession[] {
+  let list = [ended, ...existing.filter((other) => other.id !== ended.id)]
+    .sort((a, b) => b.endedAt - a.endedAt)
+    .slice(0, MAX_ENDED_SESSIONS);
+  for (;;) {
+    try {
+      writeOrThrow(ENDED_SESSIONS_KEY, list);
+      return list;
+    } catch (error) {
+      if (list.length <= 1) {
+        console.error(`Failed to save ${ENDED_SESSIONS_KEY}`, error);
+        return list;
+      }
+      list = list.slice(0, -1);
+    }
+  }
 }

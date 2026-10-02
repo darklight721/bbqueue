@@ -1,15 +1,15 @@
 import { useSyncExternalStore } from "react";
-import type { Club, Session, SessionSummary } from "../domain/types.ts";
+import type { Club, EndedSession, Session } from "../domain/types.ts";
 import {
   STORAGE_KEYS,
   clearSession,
-  clearSummary,
   loadClubs,
+  loadEndedSessions,
   loadSession,
-  loadSummary,
+  removeLegacySummary,
   saveClubs,
+  saveEndedSession,
   saveSession,
-  saveSummary,
 } from "./storage.ts";
 
 /** In-memory cache backed by storage.ts. `loaded` distinguishes "not read yet" from `null`. */
@@ -25,7 +25,7 @@ function createSlot<T>(initial: T): Slot<T> {
 
 const clubsSlot = createSlot<Club[]>([]);
 const sessionSlot = createSlot<Session | null>(null);
-const summarySlot = createSlot<SessionSummary | null>(null);
+const endedSessionsSlot = createSlot<EndedSession[]>([]);
 
 function get<T>(slot: Slot<T>, load: () => T): T {
   if (!slot.loaded) {
@@ -57,15 +57,16 @@ function subscribeTo(slot: Slot<unknown>) {
 
 const subscribeClubs = subscribeTo(clubsSlot);
 const subscribeSession = subscribeTo(sessionSlot);
-const subscribeSummary = subscribeTo(summarySlot);
+const subscribeEndedSessions = subscribeTo(endedSessionsSlot);
 
 // Other tabs: drop the cache for the affected key and notify subscribers.
 if (typeof window !== "undefined") {
+  removeLegacySummary();
   window.addEventListener("storage", (event) => {
     const all = event.key === null; // localStorage.clear()
     if (all || event.key === STORAGE_KEYS.clubs) refresh(clubsSlot);
     if (all || event.key === STORAGE_KEYS.session) refresh(sessionSlot);
-    if (all || event.key === STORAGE_KEYS.summary) refresh(summarySlot);
+    if (all || event.key === STORAGE_KEYS.endedSessions) refresh(endedSessionsSlot);
   });
 }
 
@@ -98,21 +99,26 @@ export function useSession(): Session | null {
   return useSyncExternalStore(subscribeSession, getSession);
 }
 
-export function getSummary(): SessionSummary | null {
-  return get(summarySlot, loadSummary);
+/** Ended sessions, newest first by `endedAt`. */
+export function getEndedSessions(): EndedSession[] {
+  return get(endedSessionsSlot, loadEndedSessions);
 }
 
-export function setSummary(summary: SessionSummary | null): void {
-  set(summarySlot, summary, (value) => (value === null ? clearSummary() : saveSummary(value)));
+/** Keeps `ended` first, at most 50 (ADR-0005); drops the oldest if storage is full. */
+export function addEndedSession(ended: EndedSession): void {
+  const kept = saveEndedSession(getEndedSessions(), ended);
+  endedSessionsSlot.value = kept;
+  endedSessionsSlot.loaded = true;
+  notify(endedSessionsSlot);
 }
 
-export function useSummary(): SessionSummary | null {
-  return useSyncExternalStore(subscribeSummary, getSummary);
+export function useEndedSessions(): EndedSession[] {
+  return useSyncExternalStore(subscribeEndedSessions, getEndedSessions);
 }
 
 /** Test helper: drop caches so the next read re-loads from localStorage. */
 export function resetStoreForTests(): void {
-  for (const slot of [clubsSlot, sessionSlot, summarySlot]) {
+  for (const slot of [clubsSlot, sessionSlot, endedSessionsSlot]) {
     slot.loaded = false;
   }
 }

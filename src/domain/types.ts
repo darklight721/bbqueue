@@ -102,7 +102,42 @@ export interface TopWinner {
   name: string;
   skill: SkillLevel;
   wins: number;
+  losses: number;
   played: number;
+}
+
+/** A Session player kept in an Ended session (ADR-0005). */
+export interface EndedSessionPlayer {
+  id: string;
+  name: string;
+  skill: SkillLevel;
+}
+
+/** An Ended match kept in an Ended session (ADR-0005). */
+export interface EndedSessionMatch {
+  number: number;
+  courtNumber: number;
+  teams: [Team, Team];
+  target: PointSystem;
+  startedAt: number;
+  endedAt: number;
+  score: [number, number] | null;
+}
+
+/** A Session that was ended and kept, slimmed down for storage (ADR-0005). */
+export interface EndedSession {
+  /** The Session's id. */
+  id: string;
+  name: string;
+  clubId: string | null;
+  /** Point system at the moment the Session ended. */
+  pointSystem: PointSystem;
+  startedAt: number;
+  endedAt: number;
+  /** Only Session players who played at least one Ended match. */
+  players: EndedSessionPlayer[];
+  /** Ended matches only, oldest first. */
+  matches: EndedSessionMatch[];
 }
 
 export interface SessionSummary {

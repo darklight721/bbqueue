@@ -8,9 +8,9 @@ export const NO_CLUB = "none";
 export const NO_CHOICE = "";
 
 export const COURTS_MIN = 1;
-export const HOURS_MIN = 0.5;
+export const HOURS_MIN = 1;
 export const HOURS_MAX = 12;
-export const HOURS_STEP = 0.5;
+export const HOURS_STEP = 1;
 export const MIN_PLAYERS = 4;
 
 export interface Guest {

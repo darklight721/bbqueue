@@ -75,7 +75,15 @@ export function NumberStepper({
           onChange={(event) => {
             setDraft(event.target.value);
             const parsed = event.target.valueAsNumber;
-            if (Number.isFinite(parsed) && parsed >= min && parsed <= max) onChange(parsed);
+            // Only live-commit values that already fit the step; others round on blur.
+            if (
+              Number.isFinite(parsed) &&
+              parsed >= min &&
+              parsed <= max &&
+              roundToStep(parsed, step) === parsed
+            ) {
+              onChange(parsed);
+            }
           }}
           onBlur={() => {
             const parsed = Number(draft);

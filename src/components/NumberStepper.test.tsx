@@ -34,4 +34,13 @@ describe("NumberStepper", () => {
     await userEvent.tab();
     expect(input).toHaveValue(3);
   });
+
+  it("rounds typed decimals to the step on blur", async () => {
+    render(<Harness initial={1} />);
+    const input = screen.getByLabelText("Courts");
+    await userEvent.clear(input);
+    await userEvent.type(input, "2.5");
+    await userEvent.tab();
+    expect(input).toHaveValue(3);
+  });
 });

@@ -28,14 +28,14 @@ test.describe("Session shell", () => {
     await expect(resume).toBeVisible();
     await expect(resume).toContainText("Courtside");
     await resume.click();
-    await expect(page).toHaveURL(/\/session$/);
+    await expect(page).toHaveURL(/\/sessions\/(?!new$)[^/]+$/);
     await expect(court(page, 1)).toBeVisible();
   });
 
-  test("/session without a saved session redirects Home", async ({ page }) => {
-    await page.goto("/session");
-    await expect(page).toHaveURL(/\/$/);
-    await expect(page.getByRole("heading", { level: 1, name: "Badminton Queue" })).toBeVisible();
+  test("an unknown /sessions/:id redirects to the past sessions list", async ({ page }) => {
+    await page.goto("/sessions/xyz");
+    await expect(page).toHaveURL(/\/sessions$/);
+    await expect(page.getByRole("heading", { level: 1, name: "Past sessions" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Resume session" })).toHaveCount(0);
   });
 });
@@ -290,8 +290,9 @@ test.describe("Reload", () => {
     page,
   }) => {
     const startedAt = Date.now() - 5 * 60_000;
-    await seedStorage(page, { session: makeMidMatchSession({ startedAt }) });
-    await page.goto("/session");
+    const session = makeMidMatchSession({ startedAt });
+    await seedStorage(page, { session });
+    await page.goto(`/sessions/${session.id}`);
 
     const one = court(page, 1);
     const timer = one.getByRole("timer", { name: "Match time" });

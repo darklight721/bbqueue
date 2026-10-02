@@ -1,6 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
-import type { Club, SessionSummary } from "../src/domain/types.ts";
-import { makeSummary, makeTopWinner, readStored, readStoredData, seedStorage } from "./fixtures.ts";
+import type { Club, EndedSession } from "../src/domain/types.ts";
+import {
+  makeEndedSession,
+  makeEndedSessionFromMatches,
+  readStored,
+  readStoredData,
+  seedStorage,
+} from "./fixtures.ts";
 import { court, lineupOf, openScoreDialog, storedSession } from "./session-helpers.ts";
 
 const stat = (page: Page, label: RegExp) =>
@@ -11,18 +17,27 @@ const stat = (page: Page, label: RegExp) =>
 
 const winnerRows = (page: Page) => page.getByRole("list").getByRole("listitem");
 
-async function openSummary(page: Page, summary: SessionSummary = makeSummary()) {
-  await seedStorage(page, { summary });
-  await page.goto("/session/summary");
+async function openSummary(page: Page, ended: EndedSession = makeEndedSession()) {
+  await seedStorage(page, { endedSessions: [ended] });
+  await page.goto(`/sessions/${ended.id}/summary`);
   await expect(page.getByRole("heading", { level: 1, name: "Session summary" })).toBeVisible();
 }
 
+const win = (a: [string, string], b: [string, string], score: [number, number] = [21, 10]) => ({
+  a,
+  b,
+  score,
+});
+
 test.describe("Totals", () => {
   test("shows the session name, date line and totals", async ({ page }) => {
-    await openSummary(
-      page,
-      makeSummary({ sessionName: "Friday smash", totalMatches: 7, totalPlayers: 10 }),
+    const names = ["Ana", "Ben", "Cat", "Dan", "Eve", "Fay", "Gus", "Hal", "Ivy", "Jon"];
+    const ended = makeEndedSessionFromMatches(
+      Array.from({ length: 7 }, () => ({ a: ["Ana", "Ben"], b: ["Cat", "Dan"], score: null })),
+      { name: "Friday smash" },
     );
+    ended.players = names.map((name) => ({ id: name, name, skill: "intermediate" }));
+    await openSummary(page, ended);
 
     // The name is upper-cased by CSS only; the text keeps its case.
     await expect(page.getByText("Friday smash", { exact: true })).toBeVisible();
@@ -43,7 +58,7 @@ test.describe("Totals", () => {
   for (const [label, ms, expected] of durations) {
     test(`duration: ${label} → ${expected}`, async ({ page }) => {
       const startedAt = 1_760_000_000_000;
-      await openSummary(page, makeSummary({ startedAt, endedAt: startedAt + ms }));
+      await openSummary(page, makeEndedSession({ startedAt, endedAt: startedAt + ms }));
       await expect(stat(page, /^Duration$/)).toHaveText(expected);
     });
   }
@@ -51,15 +66,16 @@ test.describe("Totals", () => {
 
 test.describe("Top winners", () => {
   test("lists places with name, matches played and wins", async ({ page }) => {
+    // Ana 2-0 in 2, Eve 1-0 in 1, Ben 1-1 in 2.
     await openSummary(
       page,
-      makeSummary({
-        topWinners: [
-          makeTopWinner({ place: 1, name: "Ana", skill: "advanced", wins: 4, played: 5 }),
-          makeTopWinner({ place: 2, name: "Ben", wins: 1, played: 1 }),
-          makeTopWinner({ place: 3, name: "Cat", wins: 1, played: 2 }),
+      makeEndedSessionFromMatches(
+        [
+          win(["Ana", "Ben"], ["Cat", "Dan"], [21, 10]),
+          win(["Ana", "Eve"], ["Ben", "Fay"], [21, 15]),
         ],
-      }),
+        { skills: { Ana: "advanced" } },
+      ),
     );
     await expect(page.getByRole("heading", { level: 2, name: "Top winners" })).toBeVisible();
     await expect(page.getByText("No scored matches")).toHaveCount(0);
@@ -68,14 +84,16 @@ test.describe("Top winners", () => {
     await expect(rows).toHaveCount(3);
     await expect(rows.nth(0)).toContainText("1st");
     await expect(rows.nth(0)).toContainText("Ana");
-    await expect(rows.nth(0)).toContainText("5 matches played");
-    await expect(rows.nth(0).getByText("4", { exact: true })).toBeVisible();
+    await expect(rows.nth(0)).toContainText("2 matches played");
+    await expect(rows.nth(0).getByText("2", { exact: true })).toBeVisible();
     await expect(rows.nth(0).getByText("wins", { exact: true })).toBeVisible();
 
     await expect(rows.nth(1)).toContainText("2nd");
+    await expect(rows.nth(1)).toContainText("Eve");
     await expect(rows.nth(1)).toContainText("1 match played");
     await expect(rows.nth(1).getByText("win", { exact: true })).toBeVisible();
     await expect(rows.nth(2)).toContainText("3rd");
+    await expect(rows.nth(2)).toContainText("Ben");
     await expect(rows.nth(2)).toContainText("2 matches played");
     for (const row of [rows.nth(0), rows.nth(1), rows.nth(2)]) {
       await expect(row).not.toContainText("Joint");
@@ -85,88 +103,96 @@ test.describe("Top winners", () => {
   test("tied places are shown as Joint: 1, 1, 3", async ({ page }) => {
     await openSummary(
       page,
-      makeSummary({
-        topWinners: [
-          makeTopWinner({ place: 1, name: "Ana", wins: 2, played: 2 }),
-          makeTopWinner({ place: 1, name: "Ben", wins: 2, played: 2 }),
-          makeTopWinner({ place: 3, name: "Gus", wins: 1, played: 1 }),
-        ],
-      }),
+      makeEndedSessionFromMatches([
+        win(["Ana", "Ben"], ["Cat", "Dan"]),
+        win(["Ana", "Ben"], ["Eve", "Fay"]),
+        win(["Gus", "Hal"], ["Cat", "Eve"]),
+      ]),
     );
     const rows = winnerRows(page);
-    await expect(rows).toHaveCount(3);
+    await expect(rows).toHaveCount(4);
     await expect(rows.nth(0)).toContainText("Joint 1st");
     await expect(rows.nth(0)).toContainText("Ana");
     await expect(rows.nth(1)).toContainText("Joint 1st");
     await expect(rows.nth(1)).toContainText("Ben");
-    await expect(rows.nth(2)).toContainText("3rd");
-    await expect(rows.nth(2)).not.toContainText("Joint");
-    await expect(rows.nth(2)).toContainText("Gus");
-  });
-
-  test("a tie for 3rd shows more than three rows", async ({ page }) => {
-    await openSummary(
-      page,
-      makeSummary({
-        topWinners: [
-          makeTopWinner({ place: 1, name: "Ana", wins: 3, played: 3 }),
-          makeTopWinner({ place: 2, name: "Ben", wins: 2, played: 2 }),
-          makeTopWinner({ place: 3, name: "Cat", wins: 1, played: 1 }),
-          makeTopWinner({ place: 3, name: "Dan", wins: 1, played: 1 }),
-        ],
-      }),
-    );
-    const rows = winnerRows(page);
-    await expect(rows).toHaveCount(4);
-    await expect(rows.nth(0)).not.toContainText("Joint");
-    await expect(rows.nth(1)).not.toContainText("Joint");
     await expect(rows.nth(2)).toContainText("Joint 3rd");
     await expect(rows.nth(3)).toContainText("Joint 3rd");
   });
 
+  test("fewer losses rank before more matches played; a tie for 3rd shows more than three rows", async ({
+    page,
+  }) => {
+    // Ana 4-0; Cat 2-1; Eve, Fay, Gus 1-1 in 2 matches share 3rd; Ben 1-2 is 6th and not shown.
+    await openSummary(
+      page,
+      makeEndedSessionFromMatches([
+        win(["Ana", "Ben"], ["Cat", "Dan"]),
+        win(["Ana", "Cat"], ["Ben", "Eve"]),
+        win(["Ana", "Eve"], ["Ben", "Fay"]),
+        win(["Ana", "Fay"], ["Gus", "Hal"]),
+        win(["Cat", "Gus"], ["Dan", "Hal"]),
+      ]),
+    );
+    const rows = winnerRows(page);
+    await expect(rows).toHaveCount(5);
+    await expect(rows.nth(0)).toContainText("Ana");
+    await expect(rows.nth(0)).not.toContainText("Joint");
+    await expect(rows.nth(1)).toContainText("Cat");
+    await expect(rows.nth(1)).not.toContainText("Joint");
+    for (const index of [2, 3, 4]) await expect(rows.nth(index)).toContainText("Joint 3rd");
+    await expect(page.getByText("Ben")).toHaveCount(0);
+  });
+
   test("no winners → 'No scored matches'", async ({ page }) => {
-    await openSummary(page, makeSummary({ topWinners: [], totalMatches: 2, totalPlayers: 8 }));
+    await openSummary(
+      page,
+      makeEndedSessionFromMatches([
+        { a: ["Ana", "Ben"], b: ["Cat", "Dan"], score: null },
+        { a: ["Eve", "Fay"], b: ["Gus", "Hal"], score: null },
+      ]),
+    );
     await expect(page.getByText("No scored matches")).toBeVisible();
     await expect(page.getByRole("list")).toHaveCount(0);
     await expect(stat(page, /^Matches played$/)).toHaveText("2");
+    await expect(stat(page, /^Players$/)).toHaveText("8");
   });
 });
 
 test.describe("Persistence and navigation", () => {
   test("a reload keeps the summary", async ({ page }) => {
-    await openSummary(
-      page,
-      makeSummary({
-        sessionName: "Reload night",
-        totalMatches: 3,
-        topWinners: [makeTopWinner({ name: "Ana" })],
-      }),
+    const ended = makeEndedSessionFromMatches(
+      [
+        win(["Ana", "Ben"], ["Cat", "Dan"]),
+        win(["Ana", "Ben"], ["Eve", "Fay"]),
+        win(["Ana", "Ben"], ["Gus", "Hal"]),
+      ],
+      { name: "Reload night" },
     );
+    await openSummary(page, ended);
     await page.reload();
-    await expect(page).toHaveURL(/\/session\/summary$/);
+    await expect(page).toHaveURL(new RegExp(`/sessions/${ended.id}/summary$`));
     await expect(page.getByText("Reload night", { exact: true })).toBeVisible();
     await expect(stat(page, /^Matches played$/)).toHaveText("3");
-    await expect(winnerRows(page)).toHaveCount(1);
+    await expect(winnerRows(page)).toHaveCount(2);
   });
 
-  test("Home goes to / and clears the summary; revisiting redirects Home", async ({ page }) => {
-    await openSummary(page);
-    expect(await readStored(page, "summary")).not.toBeNull();
+  test("Home goes to / and keeps the Ended session", async ({ page }) => {
+    const ended = makeEndedSession();
+    await openSummary(page, ended);
 
     await page.getByRole("link", { name: "Home" }).click();
     await expect(page).toHaveURL(/\/$/);
     await expect(page.getByRole("heading", { level: 1, name: "Badminton Queue" })).toBeVisible();
-    await expect.poll(() => readStored(page, "summary")).toBeNull();
+    expect(await readStored(page, "endedSessions")).not.toBeNull();
 
-    await page.goto("/session/summary");
-    await expect(page).toHaveURL(/\/$/);
-    await expect(page.getByRole("heading", { level: 1, name: "Badminton Queue" })).toBeVisible();
+    await page.goto(`/sessions/${ended.id}/summary`);
+    await expect(page.getByRole("heading", { level: 1, name: "Session summary" })).toBeVisible();
   });
 
-  test("with no stored summary /session/summary redirects Home", async ({ page }) => {
-    await page.goto("/session/summary");
-    await expect(page).toHaveURL(/\/$/);
-    await expect(page.getByRole("link", { name: "New session" })).toBeVisible();
+  test("an unknown id redirects to the past sessions list", async ({ page }) => {
+    await page.goto("/sessions/xyz/summary");
+    await expect(page).toHaveURL(/\/sessions$/);
+    await expect(page.getByRole("heading", { level: 1, name: "Past sessions" })).toBeVisible();
   });
 });
 
@@ -192,14 +218,14 @@ test.describe("Full journey", () => {
     expect(clubs![0]!.players).toHaveLength(8);
 
     // 2. New session: the only Club is preselected; tick everyone; 2 courts.
-    await page.goto("/session/new");
+    await page.goto("/sessions/new");
     await page.getByRole("textbox", { name: "Session name" }).fill("Journey night");
     await page.getByRole("button", { name: "Select all" }).click();
     await expect(page.getByText("8 players selected")).toBeVisible();
     await page.getByRole("button", { name: "Increase Courts" }).click();
     await expect(page.getByRole("spinbutton", { name: "Courts" })).toHaveValue("2");
     await page.getByRole("button", { name: "Start session" }).click();
-    await expect(page).toHaveURL(/\/session$/);
+    await expect(page).toHaveURL(/\/sessions\/(?!new$)[^/]+$/);
     await expect(page.getByRole("heading", { level: 1, name: "Journey night" })).toBeVisible();
     expect((await storedSession(page)).clubId).toBe(clubs![0]!.id);
 
@@ -229,8 +255,9 @@ test.describe("Full journey", () => {
       .click();
     const confirm = page.getByRole("dialog", { name: "End session?" });
     await expect(confirm).toHaveAccessibleDescription("");
+    const sessionId = (await storedSession(page)).id;
     await confirm.getByRole("button", { name: "End session" }).click();
-    await expect(page).toHaveURL(/\/session\/summary$/);
+    await expect(page).toHaveURL(new RegExp(`/sessions/${sessionId}/summary$`));
 
     // 5. Summary.
     await expect(page.getByRole("heading", { level: 1, name: "Session summary" })).toBeVisible();
@@ -251,8 +278,58 @@ test.describe("Full journey", () => {
     for (const name of one.a) expect(shown).toContain(name);
     for (const name of one.b) expect(shown).not.toContain(name);
 
-    // The session is gone, the summary is stored.
+    // The session is gone, the Ended session is stored.
     expect(await readStored(page, "session")).toBeNull();
-    expect((await readStoredData<SessionSummary>(page, "summary"))!.totalMatches).toBe(2);
+    const stored = (await readStoredData<EndedSession[]>(page, "endedSessions"))!;
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({ id: sessionId, name: "Journey night" });
+    expect(stored[0]!.matches).toHaveLength(2);
+
+    // 6. A reload keeps the summary and the Ended session.
+    await page.reload();
+    await expect(page.getByRole("heading", { level: 1, name: "Session summary" })).toBeVisible();
+
+    // 7. Home now offers Past sessions; the list shows the Ended session.
+    await page.getByRole("link", { name: "Home" }).click();
+    const past = page.getByRole("link", { name: "Past sessions" });
+    await expect(past).toHaveAccessibleDescription("1 session");
+    await past.click();
+    await expect(page).toHaveURL(/\/sessions$/);
+    const row = page.getByRole("link", { name: "Journey night" });
+    await expect(row).toHaveAttribute("href", `/sessions/${sessionId}`);
+    await expect(row).toContainText("2 matches · 8 players");
+    await expect(row).toHaveAccessibleDescription(/ · .+–.+ 2 matches · 8 players$/);
+
+    // 8. The details: when, totals, Top winners and the matches oldest first.
+    await row.click();
+    await expect(page).toHaveURL(new RegExp(`/sessions/${sessionId}$`));
+    await expect(page.getByRole("heading", { level: 1, name: "Journey night" })).toBeVisible();
+    await expect(page.getByText("Ended session", { exact: true })).toBeVisible();
+    await expect(page.getByText(/^.+–.+$/).first()).toBeVisible(); // "18:00–20:15"
+    await expect(stat(page, /^Matches played$/)).toHaveText("2");
+    await expect(stat(page, /^Players$/)).toHaveText("8");
+    const detailWinners = page.getByRole("region", { name: "Top winners" }).getByRole("listitem");
+    await expect(detailWinners).toHaveCount(2);
+    await expect(detailWinners.nth(0)).toContainText("Joint 1st");
+
+    const matches = page.getByRole("list", { name: "Matches" }).getByRole("listitem");
+    await expect(matches).toHaveCount(2);
+    await expect(matches.nth(0)).toContainText("Match #1 · Court 1");
+    await expect(matches.nth(0).getByText("Won, 21")).toBeVisible();
+    await expect(matches.nth(0).getByText("15", { exact: true })).toBeVisible();
+    await expect(matches.nth(0)).not.toContainText("No score");
+    for (const name of [...one.a, ...one.b]) await expect(matches.nth(0)).toContainText(name);
+    await expect(matches.nth(1)).toContainText("Match #2 · Court 2");
+    await expect(matches.nth(1)).toContainText("No score");
+    await expect(page.getByText(/\d+ pts/)).toHaveCount(0);
+    await expect(page.getByRole("link", { name: /summary/i })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /delete/i })).toHaveCount(0);
+
+    // 9. A reload keeps the details; Back goes to the list.
+    await page.reload();
+    await expect(page.getByRole("list", { name: "Matches" }).getByRole("listitem")).toHaveCount(2);
+    await page.getByRole("button", { name: "Back" }).click();
+    await expect(page).toHaveURL(/\/sessions$/);
+    await expect(page.getByRole("heading", { level: 1, name: "Past sessions" })).toBeVisible();
   });
 });

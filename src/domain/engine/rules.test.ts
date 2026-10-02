@@ -621,6 +621,9 @@ describe("validateCreateSessionInput", () => {
     expect(validateCreateSessionInput({ ...valid(), courts: 1.5 })).toEqual([
       "courts-out-of-range",
     ]);
+    expect(validateCreateSessionInput({ ...valid(), plannedHours: 0.5 })).toEqual([
+      "hours-out-of-range",
+    ]);
     expect(validateCreateSessionInput({ ...valid(), plannedHours: 0.25 })).toEqual([
       "hours-out-of-range",
     ]);

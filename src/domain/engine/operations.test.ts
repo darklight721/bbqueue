@@ -21,6 +21,7 @@ import {
 import { addQueue, removeQueue, setQueueSlot } from "./queues.ts";
 import { allPlayerStats } from "./playerStats.ts";
 import { lineupPlayerIds } from "./select.ts";
+import { buildSummary } from "./summary.ts";
 import {
   MIN,
   T0,
@@ -516,22 +517,67 @@ describe("moveQueueToCourt", () => {
 });
 
 describe("endSession", () => {
-  it("ends Active matches without a score and summarises", () => {
-    const { ctx, session: s } = created(8, 2);
+  it("ends Active matches without a score and returns the slimmed Ended session", () => {
+    const { ctx, session: s } = created(10, 2);
     let current = unwrap(startMatch(s, s.courts[0]!.id, at(ctx, T0)));
     current = unwrap(startMatch(current, current.courts[1]!.id, at(ctx, T0)));
     current = unwrap(endMatch(current, current.matches[0]!.id, [21, 5], at(ctx, T0 + 10 * MIN)));
-    const { session: ended, summary } = endSession(current, at(ctx, T0 + 30 * MIN));
-    expect(ended.matches.every((m) => m.status === "ended")).toBe(true);
-    expect(ended.matches[1]).toMatchObject({ score: null, endedAt: T0 + 30 * MIN });
-    expect(summary).toMatchObject({
-      sessionName: "Tuesday",
-      totalMatches: 2,
-      totalPlayers: 8,
+    const ended = endSession(current, at(ctx, T0 + 30 * MIN))!;
+    expect(ended).toMatchObject({
+      id: s.id,
+      name: "Tuesday",
+      clubId: s.clubId,
+      pointSystem: s.pointSystem,
       startedAt: T0,
       endedAt: T0 + 30 * MIN,
     });
-    expect(summary.topWinners).toHaveLength(2);
+    expect(ended.matches).toHaveLength(2);
+    expect(ended.matches[0]).toMatchObject({ number: 1, score: [21, 5], endedAt: T0 + 10 * MIN });
+    expect(ended.matches[1]).toMatchObject({ number: 2, score: null, endedAt: T0 + 30 * MIN });
+    expect(buildSummary(ended).topWinners).toHaveLength(2);
+  });
+
+  it("slims: only players who played, only the kept fields", () => {
+    const { ctx, session: s } = created(10, 2);
+    let current = unwrap(startMatch(s, s.courts[0]!.id, at(ctx, T0)));
+    current = unwrap(endMatch(current, current.matches[0]!.id, [21, 5], at(ctx, T0 + 10 * MIN)));
+    const ended = endSession(current, at(ctx, T0 + 30 * MIN))!;
+    expect(ended.players).toHaveLength(4);
+    const ids = new Set(current.matches[0]!.teams.flat());
+    expect(new Set(ended.players.map((p) => p.id))).toEqual(ids);
+    expect(Object.keys(ended.players[0]!).sort()).toEqual(["id", "name", "skill"]);
+    expect(Object.keys(ended.matches[0]!).sort()).toEqual([
+      "courtNumber",
+      "endedAt",
+      "number",
+      "score",
+      "startedAt",
+      "target",
+      "teams",
+    ]);
+    expect(Object.keys(ended).sort()).toEqual([
+      "clubId",
+      "endedAt",
+      "id",
+      "matches",
+      "name",
+      "players",
+      "pointSystem",
+      "startedAt",
+    ]);
+  });
+
+  it("returns null when there are no Ended matches", () => {
+    const { ctx, session: s } = created(8, 2);
+    expect(endSession(s, at(ctx, T0 + 30 * MIN))).toBeNull();
+  });
+
+  it("keeps an Active match as an Ended match without a score", () => {
+    const { ctx, session: s } = created(8, 1);
+    const playing = unwrap(startMatch(s, s.courts[0]!.id, at(ctx, T0)));
+    const ended = endSession(playing, at(ctx, T0 + 5 * MIN))!;
+    expect(ended.matches).toHaveLength(1);
+    expect(ended.matches[0]).toMatchObject({ score: null, endedAt: T0 + 5 * MIN });
   });
 });
 

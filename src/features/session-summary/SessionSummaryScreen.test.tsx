@@ -4,31 +4,84 @@ import { beforeEach, describe, expect, it } from "vite-plus/test";
 import { Router } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
 import { App } from "../../app/App.tsx";
-import type { SessionSummary } from "../../domain/types.ts";
-import { getSummary, resetStoreForTests, setSummary } from "../../storage/store.ts";
+import type { EndedSession, EndedSessionMatch, SkillLevel } from "../../domain/types.ts";
+import { getEndedSessions, resetStoreForTests, addEndedSession } from "../../storage/store.ts";
 import { formatSessionDuration, ordinal } from "./summaryFormat.ts";
 
 const START = Date.UTC(2026, 9, 2, 18, 0, 0);
 const MIN = 60_000;
 
-function summary(overrides: Partial<SessionSummary> = {}): SessionSummary {
+const PLAYERS: [string, SkillLevel][] = [
+  ["ana", "advanced"],
+  ["ben", "intermediate"],
+  ["cat", "beginner"],
+  ["dan", "intermediate"],
+  ["eve", "intermediate"],
+  ["fay", "intermediate"],
+  ["gus", "intermediate"],
+  ["hal", "intermediate"],
+];
+
+/** Matches as [team A, team B, score]; ids are the lowercase names above. */
+function endedSession(
+  rows: [[string, string], [string, string], [number, number] | null][],
+  overrides: Partial<EndedSession> = {},
+): EndedSession {
+  const matches: EndedSessionMatch[] = rows.map(([a, b, score], index) => ({
+    number: index + 1,
+    courtNumber: 1,
+    teams: [a, b],
+    target: 21,
+    startedAt: START + index * 10 * MIN,
+    endedAt: START + index * 10 * MIN + 8 * MIN,
+    score,
+  }));
+  const played = new Set(rows.flatMap(([a, b]) => [...a, ...b]));
   return {
-    sessionName: "Thursday Smash",
-    totalMatches: 12,
-    totalPlayers: 16,
+    id: "s1",
+    name: "Thursday Smash",
+    clubId: null,
+    pointSystem: 21,
     startedAt: START,
     endedAt: START + 135 * MIN,
-    topWinners: [
-      { place: 1, name: "Ana", skill: "advanced", wins: 4, played: 5 },
-      { place: 1, name: "Ben", skill: "intermediate", wins: 4, played: 5 },
-      { place: 3, name: "Cat", skill: "beginner", wins: 3, played: 4 },
-      { place: 3, name: "Dan", skill: "intermediate", wins: 3, played: 4 },
-    ],
+    players: PLAYERS.filter(([id]) => played.has(id)).map(([id, skill]) => ({
+      id,
+      name: id[0]!.toUpperCase() + id.slice(1),
+      skill,
+    })),
+    matches,
     ...overrides,
   };
 }
 
-function renderAt(path = "/session/summary") {
+/** Ana & Ben win 4 of 5, Cat & Dan win 3 of 3 (Joint 1st, Joint 3rd). */
+function jointSession(): EndedSession {
+  const abWin = (): [[string, string], [string, string], [number, number]] => [
+    ["ana", "ben"],
+    ["eve", "fay"],
+    [21, 5],
+  ];
+  const cdWin = (): [[string, string], [string, string], [number, number]] => [
+    ["cat", "dan"],
+    ["gus", "hal"],
+    [21, 5],
+  ];
+  return endedSession([
+    abWin(),
+    abWin(),
+    abWin(),
+    abWin(),
+    [
+      ["ana", "ben"],
+      ["cat", "dan"],
+      [10, 21],
+    ],
+    cdWin(),
+    cdWin(),
+  ]);
+}
+
+function renderAt(path = "/sessions/s1/summary") {
   const location = memoryLocation({ path, record: true });
   render(
     <Router hook={location.hook}>
@@ -72,14 +125,15 @@ describe("SessionSummaryScreen", () => {
     resetStoreForTests();
   });
 
-  it("redirects Home when there is no summary", () => {
-    const location = renderAt();
-    expect(location.current()).toBe("/");
-    expect(screen.getByRole("heading", { level: 1, name: "Badminton Queue" })).toBeInTheDocument();
+  it("redirects to the past sessions list for an unknown id", () => {
+    addEndedSession(jointSession());
+    const location = renderAt("/sessions/nope/summary");
+    expect(location.current()).toBe("/sessions");
+    expect(screen.getByRole("heading", { level: 1, name: "Past sessions" })).toBeInTheDocument();
   });
 
   it("shows the Session name and totals", () => {
-    setSummary(summary());
+    addEndedSession(jointSession());
     renderAt();
     expect(screen.getByRole("heading", { level: 1, name: "Session summary" })).toBeInTheDocument();
     expect(screen.getByText("Thursday Smash")).toBeInTheDocument();
@@ -89,11 +143,11 @@ describe("SessionSummaryScreen", () => {
         .getAllByRole("term")
         .map((term) => [term.textContent, term.nextElementSibling?.textContent]),
     );
-    expect(totals).toEqual({ "Matches played": "12", Players: "16", Duration: "2 h 15 min" });
+    expect(totals).toEqual({ "Matches played": "7", Players: "8", Duration: "2 h 15 min" });
   });
 
   it("lists top winners with shared places, showing everyone placed 3rd or better", () => {
-    setSummary(summary());
+    addEndedSession(jointSession());
     renderAt();
     const list = within(screen.getByRole("region", { name: "Top winners" })).getByRole("list");
     const rows = within(list).getAllByRole("listitem");
@@ -101,40 +155,48 @@ describe("SessionSummaryScreen", () => {
     expect(rows.map((row) => row.textContent)).toEqual([
       expect.stringMatching(/^Joint 1stAna.*Advanced.*Joint 1st · 5 matches played4wins$/),
       expect.stringMatching(/^Joint 1stBen.*Intermediate.*5 matches played4wins$/),
-      expect.stringMatching(/^Joint 3rdCat.*Beginner.*4 matches played3wins$/),
+      expect.stringMatching(/^Joint 3rdCat.*Beginner.*3 matches played3wins$/),
       expect.stringMatching(/^Joint 3rdDan.*/),
     ]);
   });
 
-  it("shows a single winner without 'Joint'", () => {
-    setSummary(
-      summary({
-        topWinners: [
-          { place: 1, name: "Ana", skill: "advanced", wins: 1, played: 1 },
-          { place: 2, name: "Ben", skill: "beginner", wins: 1, played: 2 },
+  it("shows single winners without 'Joint'", () => {
+    addEndedSession(
+      endedSession([
+        [
+          ["ana", "ben"],
+          ["cat", "dan"],
+          [21, 5],
         ],
-      }),
+        [
+          ["ana", "eve"],
+          ["ben", "fay"],
+          [21, 10],
+        ],
+      ]),
     );
     renderAt();
     const rows = within(screen.getByRole("list")).getAllByRole("listitem");
-    expect(rows[0]).toHaveTextContent(/^1stAna.*1 match played1win$/);
-    expect(rows[1]).toHaveTextContent(/^2ndBen.*2 matches played1win$/);
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toHaveTextContent(/^1stAna.*2 matches played2wins$/);
+    expect(rows[1]).toHaveTextContent(/^2ndEve.*1 match played1win$/);
+    expect(rows[2]).toHaveTextContent(/^3rdBen.*2 matches played1win$/);
     expect(screen.queryByText(/Joint/)).not.toBeInTheDocument();
   });
 
   it("says when there were no scored matches", () => {
-    setSummary(summary({ topWinners: [] }));
+    addEndedSession(endedSession([[["ana", "ben"], ["cat", "dan"], null]]));
     renderAt();
     expect(screen.getByText("No scored matches")).toBeInTheDocument();
     expect(screen.queryByRole("list")).not.toBeInTheDocument();
   });
 
-  it("goes Home, which clears the summary", async () => {
-    setSummary(summary());
+  it("goes Home and keeps the Ended session", async () => {
+    addEndedSession(jointSession());
     const location = renderAt();
     await userEvent.click(screen.getByRole("link", { name: "Home" }));
     expect(location.current()).toBe("/");
     expect(screen.getByRole("heading", { level: 1, name: "Badminton Queue" })).toBeInTheDocument();
-    expect(getSummary()).toBeNull();
+    expect(getEndedSessions()).toHaveLength(1);
   });
 });

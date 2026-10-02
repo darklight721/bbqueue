@@ -12,7 +12,12 @@ import {
   startMatch,
 } from "../../../domain/engine/index.ts";
 import type { Session, Team } from "../../../domain/types.ts";
-import { getSession, getSummary, resetStoreForTests, setSession } from "../../../storage/store.ts";
+import {
+  getEndedSessions,
+  getSession,
+  resetStoreForTests,
+  setSession,
+} from "../../../storage/store.ts";
 
 const T0 = Date.UTC(2026, 9, 2, 18, 0, 0);
 const NAMES = ["Ana", "Ben", "Cat", "Dan", "Eve", "Fay", "Gus", "Hal", "Ivy", "Jon"];
@@ -59,7 +64,7 @@ function playedSession(): Session {
 
 function renderSession(session: Session) {
   setSession(session);
-  const location = memoryLocation({ path: "/session", record: true });
+  const location = memoryLocation({ path: `/sessions/${session.id}`, record: true });
   render(
     <Router hook={location.hook}>
       <App />
@@ -197,22 +202,36 @@ describe("EndSessionSection", () => {
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(getSession()).toEqual(session);
-    expect(getSummary()).toBeNull();
-    expect(location.current()).toBe("/session");
+    expect(getEndedSessions()).toEqual([]);
+    expect(location.current()).toBe(`/sessions/${session.id}`);
   });
 
-  it("ends the session, saves the summary and opens it", async () => {
-    const location = renderSession(playedSession());
+  it("ends a session with no Ended matches without keeping it and goes Home", async () => {
+    const location = renderSession(fresh());
     await userEvent.click(screen.getByRole("button", { name: "End session" }));
     const dialog = screen.getByRole("dialog", { name: "End session?" });
     await userEvent.click(within(dialog).getByRole("button", { name: "End session" }));
 
-    expect(location.current()).toBe("/session/summary");
+    expect(location.current()).toBe("/");
+    expect(getSession()).toBeNull();
+    expect(getEndedSessions()).toEqual([]);
+    expect(localStorage.getItem("bq:v1:ended-sessions")).toBeNull();
+  });
+
+  it("ends the session, keeps it as an Ended session and opens its summary", async () => {
+    const played = playedSession();
+    const location = renderSession(played);
+    await userEvent.click(screen.getByRole("button", { name: "End session" }));
+    const dialog = screen.getByRole("dialog", { name: "End session?" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "End session" }));
+
+    expect(location.current()).toBe(`/sessions/${played.id}/summary`);
     expect(screen.getByRole("heading", { level: 1, name: "Session summary" })).toBeInTheDocument();
     expect(getSession()).toBeNull();
-    const summary = getSummary()!;
-    expect(summary.sessionName).toBe("Thursday");
+    const [ended] = getEndedSessions();
+    expect(ended).toMatchObject({ id: played.id, name: "Thursday" });
     // The match in progress was ended too (without a score).
-    expect(summary.totalMatches).toBe(3);
+    expect(ended!.matches).toHaveLength(3);
+    expect(ended!.matches.map((match) => match.number)).toEqual([1, 2, 3]);
   });
 });

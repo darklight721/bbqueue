@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import type { TopWinner } from "../../domain/types.ts";
 
 /** "2 h 15 min", "45 min", "1 h"; whole minutes (rounded); under a minute → "Under 1 min". */
@@ -36,15 +37,29 @@ export function sharedPlaces(winners: readonly TopWinner[]): Set<number> {
 
 /** "Fri, 2 Oct · 18:00–20:15" in the device locale. */
 export function sessionWhen(startedAt: number, endedAt: number): string {
-  const day = new Intl.DateTimeFormat(undefined, {
+  return `${sessionDay(startedAt)} · ${sessionTimes(startedAt, endedAt)}`;
+}
+
+/** "Fri, 2 Oct" in the device locale. */
+export function sessionDay(startedAt: number): string {
+  return new Intl.DateTimeFormat(undefined, {
     weekday: "short",
     day: "numeric",
     month: "short",
   }).format(startedAt);
+}
+
+/** "18:00–20:15" in the device locale. */
+export function sessionTimes(startedAt: number, endedAt: number): string {
   const time = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
-  return `${day} · ${time.format(startedAt)}–${time.format(endedAt)}`;
+  return `${time.format(startedAt)}–${time.format(endedAt)}`;
 }
 
 export function countLabel(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`;
+}
+
+/** Staggered rise-in delay for step `step` of a screen's entrance. */
+export function rise(step: number): CSSProperties {
+  return { animationDelay: `${120 + step * 70}ms` };
 }

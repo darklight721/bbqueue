@@ -3,18 +3,19 @@ import type {
   Club,
   ClubPlayer,
   Court,
+  EndedSession,
+  EndedSessionMatch,
   Match,
   Session,
   SessionPlayer,
-  SessionSummary,
-  TopWinner,
+  SkillLevel,
 } from "../src/domain/types.ts";
 
 /** Mirrors `STORAGE_KEYS` in src/storage/storage.ts (kept literal so e2e never imports app runtime code). */
 export const STORAGE_KEYS = {
   clubs: "bq:v1:clubs",
   session: "bq:v1:session",
-  summary: "bq:v1:summary",
+  endedSessions: "bq:v1:ended-sessions",
 } as const;
 
 export type StorageKey = keyof typeof STORAGE_KEYS;
@@ -22,7 +23,7 @@ export type StorageKey = keyof typeof STORAGE_KEYS;
 export interface SeedData {
   clubs?: Club[];
   session?: Session;
-  summary?: SessionSummary;
+  endedSessions?: EndedSession[];
 }
 
 let counter = 0;
@@ -86,16 +87,47 @@ export function makeSession(overrides: Partial<Session> = {}): Session {
   };
 }
 
-export function makeSummary(overrides: Partial<SessionSummary> = {}): SessionSummary {
+export function makeEndedSession(overrides: Partial<EndedSession> = {}): EndedSession {
   return {
-    sessionName: "Tuesday night",
-    totalMatches: 0,
-    totalPlayers: 0,
+    id: nextId("ended"),
+    name: "Tuesday night",
+    clubId: null,
+    pointSystem: 21,
     startedAt: 1_700_000_000_000,
     endedAt: 1_700_007_200_000,
-    topWinners: [],
+    players: [],
+    matches: [],
     ...overrides,
   };
+}
+
+type Pair = [string, string];
+
+/**
+ * Ended session built from named matches. Player ids are the names; players are the names that
+ * appear in a match (plus `extraPlayers`, for tests that only need a player count).
+ */
+export function makeEndedSessionFromMatches(
+  rows: { a: Pair; b: Pair; score: [number, number] | null; court?: number }[],
+  overrides: Partial<EndedSession> & { skills?: Record<string, SkillLevel> } = {},
+): EndedSession {
+  const { skills = {}, ...rest } = overrides;
+  const startedAt = rest.startedAt ?? 1_700_000_000_000;
+  const matches: EndedSessionMatch[] = rows.map((row, index) => ({
+    number: index + 1,
+    courtNumber: row.court ?? 1,
+    teams: [row.a, row.b],
+    target: 21,
+    startedAt: startedAt + index * 15 * 60_000,
+    endedAt: startedAt + index * 15 * 60_000 + 10 * 60_000,
+    score: row.score,
+  }));
+  const names = [...new Set(rows.flatMap((row) => [...row.a, ...row.b]))];
+  return makeEndedSession({
+    players: names.map((name) => ({ id: name, name, skill: skills[name] ?? "intermediate" })),
+    matches,
+    ...rest,
+  });
 }
 
 /**
@@ -191,8 +223,4 @@ export function makeMidMatchSession(options: {
     ],
     ...options.overrides,
   });
-}
-
-export function makeTopWinner(overrides: Partial<TopWinner> = {}): TopWinner {
-  return { place: 1, name: "Ana", skill: "intermediate", wins: 1, played: 1, ...overrides };
 }

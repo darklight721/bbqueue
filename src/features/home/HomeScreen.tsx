@@ -1,20 +1,24 @@
-import { useEffect, useId, type CSSProperties, type ReactNode } from "react";
+import { useId, type CSSProperties, type ReactNode } from "react";
 import { Link } from "wouter";
-import { ChevronRightIcon, PlayIcon, PlusIcon, UsersIcon } from "../../components/icons.tsx";
-import { getSummary, setSummary, useClubs, useSession } from "../../storage/store.ts";
+import {
+  ChevronRightIcon,
+  HistoryIcon,
+  PlayIcon,
+  PlusIcon,
+  UsersIcon,
+} from "../../components/icons.tsx";
+import { useClubs, useEndedSessions, useSession } from "../../storage/store.ts";
+import { countLabel } from "../session-summary/summaryFormat.ts";
 import { CourtLines } from "./CourtLines.tsx";
 
-/** Start screen: resume the current Session, start a new one, or manage Clubs. */
+/** Start screen: resume the current Session, start a new one, manage Clubs or look back. */
 export function HomeScreen() {
   const session = useSession();
   const clubs = useClubs();
-
-  useEffect(() => {
-    // The summary is only kept until the user leaves it.
-    if (getSummary() !== null) setSummary(null);
-  }, []);
+  const endedCount = useEndedSessions().length;
 
   const clubCount = clubs.length;
+  const step = session ? 3 : 2;
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -22,10 +26,10 @@ export function HomeScreen() {
 
       <main className="px-safe relative z-10 mx-auto -mt-8 flex w-full max-w-2xl flex-col pb-[max(1.5rem,env(safe-area-inset-bottom))]">
         <nav aria-label="Main" className="flex flex-col gap-3">
-          {session ? <ResumeLink sessionName={session.name} /> : null}
+          {session ? <ResumeLink sessionId={session.id} sessionName={session.name} /> : null}
 
           <ActionLink
-            href="/session/new"
+            href="/sessions/new"
             tone={session ? "plain" : "primary"}
             icon={<PlusIcon className="size-7" />}
             label="New session"
@@ -43,8 +47,19 @@ export function HomeScreen() {
                 ? "Save the people you play with"
                 : `${clubCount} ${clubCount === 1 ? "club" : "clubs"}`
             }
-            delay={session ? 3 : 2}
+            delay={step}
           />
+
+          {endedCount > 0 ? (
+            <ActionLink
+              href="/sessions"
+              tone="plain"
+              icon={<HistoryIcon className="size-7" />}
+              label="Past sessions"
+              detail={countLabel(endedCount, "session", "sessions")}
+              delay={step + 1}
+            />
+          ) : null}
         </nav>
 
         <p className="pt-6 text-center text-sm text-base-content/55">
@@ -87,12 +102,12 @@ function Hero() {
   );
 }
 
-function ResumeLink({ sessionName }: { sessionName: string }) {
+function ResumeLink({ sessionId, sessionName }: { sessionId: string; sessionName: string }) {
   const labelId = useId();
   const detailId = useId();
   return (
     <Link
-      href="/session"
+      href={`/sessions/${sessionId}`}
       aria-labelledby={labelId}
       aria-describedby={detailId}
       className="animate-rise group flex min-h-24 items-center gap-4 rounded-box bg-neutral p-4 pr-3 text-neutral-content shadow-lg ring-1 ring-black/5 transition-transform active:scale-[0.98]"
