@@ -8,7 +8,7 @@ test.describe("Offline", () => {
 
   test("app shell loads and routes render offline after first visit", async ({ page, context }) => {
     await page.goto("/");
-    await expect(page.getByRole("heading", { level: 1, name: "Badminton Queue" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "BBQueue" })).toBeVisible();
 
     // Wait for the SW to be active, then reload so this page is controlled by it.
     await page.evaluate(async () => {
@@ -22,7 +22,7 @@ test.describe("Offline", () => {
     await context.setOffline(true);
 
     await page.reload();
-    await expect(page.getByRole("heading", { level: 1, name: "Badminton Queue" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "BBQueue" })).toBeVisible();
 
     // Deep link while offline is served via navigateFallback.
     await page.goto("/clubs");

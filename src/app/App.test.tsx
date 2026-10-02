@@ -5,6 +5,6 @@ import { App } from "./App.tsx";
 describe("App", () => {
   it("renders the home heading", () => {
     render(<App />);
-    expect(screen.getByRole("heading", { level: 1, name: "Badminton Queue" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "BBQueue" })).toBeInTheDocument();
   });
 });

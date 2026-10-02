@@ -4,7 +4,7 @@ import { makeEndedSessionFromMatches, makeSession, readStored, seedStorage } fro
 test.describe("Home", () => {
   test("fresh storage shows New session and Clubs, no Resume", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByRole("heading", { level: 1, name: "Badminton Queue" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "BBQueue" })).toBeVisible();
     await expect(page.getByRole("link", { name: "New session" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Clubs" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Resume session" })).toHaveCount(0);
@@ -60,7 +60,7 @@ test.describe("Home", () => {
 
     await page.goBack();
     await expect(page).toHaveURL(/\/$/);
-    await expect(page.getByRole("heading", { level: 1, name: "Badminton Queue" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "BBQueue" })).toBeVisible();
   });
 
   test("Clubs link navigates and Back returns Home", async ({ page }) => {
@@ -71,7 +71,7 @@ test.describe("Home", () => {
 
     await page.goBack();
     await expect(page).toHaveURL(/\/$/);
-    await expect(page.getByRole("heading", { level: 1, name: "Badminton Queue" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "BBQueue" })).toBeVisible();
   });
 
   test("New session link still works when a session is saved", async ({ page }) => {
@@ -87,7 +87,7 @@ test.describe("Home", () => {
       localStorage.setItem("bq:v1:summary", JSON.stringify({ version: 1, data: {} })),
     );
     await page.goto("/");
-    await expect(page.getByRole("heading", { level: 1, name: "Badminton Queue" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "BBQueue" })).toBeVisible();
     await expect.poll(() => page.evaluate(() => localStorage.getItem("bq:v1:summary"))).toBeNull();
     expect(await readStored(page, "endedSessions")).toBeNull();
   });

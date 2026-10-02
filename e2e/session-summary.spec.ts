@@ -182,7 +182,7 @@ test.describe("Persistence and navigation", () => {
 
     await page.getByRole("link", { name: "Home" }).click();
     await expect(page).toHaveURL(/\/$/);
-    await expect(page.getByRole("heading", { level: 1, name: "Badminton Queue" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "BBQueue" })).toBeVisible();
     expect(await readStored(page, "endedSessions")).not.toBeNull();
 
     await page.goto(`/sessions/${ended.id}/summary`);

@@ -196,7 +196,7 @@ describe("SessionSummaryScreen", () => {
     const location = renderAt();
     await userEvent.click(screen.getByRole("link", { name: "Home" }));
     expect(location.current()).toBe("/");
-    expect(screen.getByRole("heading", { level: 1, name: "Badminton Queue" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "BBQueue" })).toBeInTheDocument();
     expect(getEndedSessions()).toHaveLength(1);
   });
 });

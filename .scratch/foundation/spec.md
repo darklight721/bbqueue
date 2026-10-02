@@ -105,7 +105,7 @@ Club edit uses it as an editable row list (name + skill + remove button) plus an
 
 - Precache app shell; `navigateFallback: /index.html`; works fully offline after first load.
 - Update strategy: `registerType: 'prompt'` — show a toast "New version available — Reload"; never auto-reload.
-- Manifest: name "Badminton Queue", standalone, icons 192/512/maskable.
+- Manifest: name "BBQueue" (description "Better Badminton Queue"), standalone, icons 192/512/maskable.
 
 ## Acceptance
 

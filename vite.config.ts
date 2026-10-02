@@ -62,9 +62,9 @@ export default defineConfig({
       registerType: "prompt",
       includeAssets: ["favicon.ico", "favicon.svg", "apple-touch-icon-180x180.png"],
       manifest: {
-        name: "Badminton Queue",
-        short_name: "Badminton",
-        description: "Badminton Queue",
+        name: "BBQueue",
+        short_name: "BBQueue",
+        description: "Better Badminton Queue",
         theme_color: themeColor,
         background_color: backgroundColor,
         display: "standalone",

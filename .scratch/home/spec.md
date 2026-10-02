@@ -7,7 +7,7 @@ Route: `/`
 
 ## Content
 
-- App title "Badminton Queue".
+- App title "BBQueue" with the tagline "Better Badminton Queue." beneath it.
 - **New session** → `/session/new`.
 - **Resume session** → `/session`. Shown **only** when a saved Session exists. Shows the Session name as secondary text.
 - **Clubs** → `/clubs`.

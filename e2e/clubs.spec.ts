@@ -74,6 +74,6 @@ test.describe("Clubs", () => {
     await expect(page).toHaveURL(/\/clubs$/);
     await page.getByRole("button", { name: "Back" }).click();
     await expect(page).toHaveURL(/\/$/);
-    await expect(page.getByRole("heading", { level: 1, name: "Badminton Queue" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "BBQueue" })).toBeVisible();
   });
 });

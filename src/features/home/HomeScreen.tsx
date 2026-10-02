@@ -86,16 +86,19 @@ function Hero() {
 
       <div className="px-safe pt-safe mx-auto flex w-full max-w-2xl flex-1 flex-col">
         <div className="flex min-h-[17rem] flex-1 flex-col justify-end pt-10 pb-16">
-          <p className="animate-rise mb-3 inline-flex items-center gap-2 self-start rounded-full bg-black/20 px-3 py-1 text-xs font-bold tracking-[0.18em] uppercase backdrop-blur-sm">
-            <span className="size-2 rounded-full bg-volt" aria-hidden="true" />
-            Doubles
-          </p>
           <h1
-            className="animate-rise font-display text-[clamp(3rem,15.5vw,6.5rem)] leading-[0.85] font-extrabold tracking-tight uppercase"
+            className="animate-rise font-display text-[clamp(4.5rem,25vw,10rem)] leading-[0.8] font-extrabold tracking-[-0.02em]"
             style={{ animationDelay: "60ms" }}
           >
-            <span className="block">Badminton</span> <span className="block text-volt">Queue</span>
+            <span className="text-volt">BBQ</span>
+            <span className="text-line">ueue</span>
           </h1>
+          <p
+            className="animate-rise mt-3 text-lg font-medium text-line sm:text-xl"
+            style={{ animationDelay: "140ms" }}
+          >
+            Better Badminton Queue.
+          </p>
         </div>
       </div>
     </header>

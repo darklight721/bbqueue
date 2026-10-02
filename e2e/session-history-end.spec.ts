@@ -256,7 +256,7 @@ test.describe("End session", () => {
     const dialog = await endSessionViaDialog(page);
     await dialog.getByRole("button", { name: "End session" }).click();
     await expect(page).toHaveURL(/\/$/);
-    await expect(page.getByRole("heading", { level: 1, name: "Badminton Queue" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "BBQueue" })).toBeVisible();
 
     expect(await readStoredData<Session>(page, "session")).toBeNull();
     expect(await readStored(page, "endedSessions")).toBeNull();
