@@ -100,7 +100,7 @@ test.describe("Top winners", () => {
     }
   });
 
-  test("tied places are shown as Joint: 1, 1, 3", async ({ page }) => {
+  test("tied places share a place: 1, 1, 3", async ({ page }) => {
     await openSummary(
       page,
       makeEndedSessionFromMatches([
@@ -111,12 +111,13 @@ test.describe("Top winners", () => {
     );
     const rows = winnerRows(page);
     await expect(rows).toHaveCount(4);
-    await expect(rows.nth(0)).toContainText("Joint 1st");
+    await expect(rows.nth(0)).toContainText("1st");
     await expect(rows.nth(0)).toContainText("Ana");
-    await expect(rows.nth(1)).toContainText("Joint 1st");
+    await expect(rows.nth(1)).toContainText("1st");
     await expect(rows.nth(1)).toContainText("Ben");
-    await expect(rows.nth(2)).toContainText("Joint 3rd");
-    await expect(rows.nth(3)).toContainText("Joint 3rd");
+    await expect(rows.nth(2)).toContainText("3rd");
+    await expect(rows.nth(3)).toContainText("3rd");
+    await expect(page.getByText("Joint")).toHaveCount(0);
   });
 
   test("fewer losses rank before more matches played; a tie for 3rd shows more than three rows", async ({
@@ -136,10 +137,11 @@ test.describe("Top winners", () => {
     const rows = winnerRows(page);
     await expect(rows).toHaveCount(5);
     await expect(rows.nth(0)).toContainText("Ana");
-    await expect(rows.nth(0)).not.toContainText("Joint");
+    await expect(rows.nth(0)).toContainText("1st");
     await expect(rows.nth(1)).toContainText("Cat");
-    await expect(rows.nth(1)).not.toContainText("Joint");
-    for (const index of [2, 3, 4]) await expect(rows.nth(index)).toContainText("Joint 3rd");
+    await expect(rows.nth(1)).toContainText("2nd");
+    for (const index of [2, 3, 4]) await expect(rows.nth(index)).toContainText("3rd");
+    await expect(page.getByText("Joint")).toHaveCount(0);
     await expect(page.getByText("Ben")).toHaveCount(0);
   });
 
@@ -293,7 +295,7 @@ test.describe("Full journey", () => {
     const rows = winnerRows(page);
     await expect(rows).toHaveCount(2);
     for (const index of [0, 1]) {
-      await expect(rows.nth(index)).toContainText("Joint 1st");
+      await expect(rows.nth(index)).toContainText("1st");
       await expect(rows.nth(index)).toContainText("1 match played");
       await expect(rows.nth(index).getByText("win", { exact: true })).toBeVisible();
     }
@@ -334,7 +336,8 @@ test.describe("Full journey", () => {
     // Everyone who played is in the Standings, not just the winners.
     const standings = page.getByRole("region", { name: "Standings" }).getByRole("listitem");
     await expect(standings).toHaveCount(8);
-    await expect(standings.nth(0)).toContainText("Joint 1st");
+    await expect(standings.nth(0)).toContainText("1st");
+    await expect(page.getByText("Joint")).toHaveCount(0);
     await expect(standings.nth(7)).toContainText("1 loss");
 
     const showMatches = page.getByRole("button", { name: "Show matches" });

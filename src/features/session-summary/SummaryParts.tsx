@@ -1,7 +1,7 @@
 import { useId, useState, type CSSProperties, type ReactNode } from "react";
 import { SkillBadge } from "../../components/SkillBadge.tsx";
 import type { SessionSummary, StandingsEntry, TopWinner } from "../../domain/types.ts";
-import { countLabel, formatSessionDuration, ordinal, rise, sharedPlaces } from "./summaryFormat.ts";
+import { countLabel, formatSessionDuration, ordinal, rise } from "./summaryFormat.ts";
 
 /**
  * Gold / silver / bronze discs for Top winners; the place number is always printed on them
@@ -43,7 +43,6 @@ export function Totals({ summary }: { summary: SessionSummary }) {
 }
 
 export function TopWinners({ winners }: { winners: readonly TopWinner[] }) {
-  const shared = sharedPlaces(winners);
   const headingId = useId();
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-3">
@@ -60,7 +59,6 @@ export function TopWinners({ winners }: { winners: readonly TopWinner[] }) {
             <PlaceRow
               key={`${winner.place}-${winner.name}`}
               entry={winner}
-              joint={shared.has(winner.place)}
               style={rise(4 + index * 0.6)}
             />
           ))}
@@ -81,7 +79,6 @@ export function Standings({
   standings: readonly StandingsEntry[];
   style?: CSSProperties;
 }) {
-  const shared = sharedPlaces(standings);
   return (
     <CollapsibleSection
       title="Standings"
@@ -97,7 +94,6 @@ export function Standings({
             <PlaceRow
               key={`${entry.place}-${entry.name}`}
               entry={entry}
-              joint={shared.has(entry.place)}
               showLosses
               // Stagger the first few rows on page load; a reopened list comes in quickly.
               style={
@@ -188,12 +184,10 @@ export function CollapsibleSection({
  */
 function PlaceRow({
   entry,
-  joint,
   showLosses = false,
   style,
 }: {
   entry: StandingsEntry;
-  joint: boolean;
   showLosses?: boolean;
   style: CSSProperties;
 }) {
@@ -219,10 +213,7 @@ function PlaceRow({
             : { boxShadow: "inset 0 0 0 1.5px var(--color-base-300)" }
         }
       >
-        <span>
-          {joint ? <span className="sr-only">Joint </span> : null}
-          {ordinal(entry.place)}
-        </span>
+        <span>{ordinal(entry.place)}</span>
       </span>
 
       <span className="flex min-w-0 flex-1 flex-col">
@@ -236,13 +227,6 @@ function PlaceRow({
         </span>
         <span className="text-sm text-base-content/65">
           {/* Each part stays on one line, so a narrow row breaks between parts, not inside. */}
-          {joint ? (
-            <>
-              <span aria-hidden="true" className="whitespace-nowrap">
-                Joint {ordinal(entry.place)} ·
-              </span>{" "}
-            </>
-          ) : null}
           <span className="whitespace-nowrap">
             {countLabel(entry.played, "match", "matches")} played{showLosses ? " ·" : null}
           </span>

@@ -57,8 +57,8 @@ function endedSession(
   };
 }
 
-/** Ana & Ben win 4 of 5, Cat & Dan win 3 of 3 (Joint 1st, Joint 3rd). */
-function jointSession(): EndedSession {
+/** Ana & Ben win 4 of 5, Cat & Dan win 3 of 3 (tied 1st, tied 3rd). */
+function tiedSession(): EndedSession {
   const abWin = (): [[string, string], [string, string], [number, number]] => [
     ["ana", "ben"],
     ["eve", "fay"],
@@ -129,14 +129,14 @@ describe("SessionSummaryScreen", () => {
   });
 
   it("redirects to the past sessions list for an unknown id", () => {
-    addEndedSession(jointSession());
+    addEndedSession(tiedSession());
     const location = renderAt("/sessions/nope/summary");
     expect(location.current()).toBe("/sessions");
     expect(screen.getByRole("heading", { level: 1, name: "Past sessions" })).toBeInTheDocument();
   });
 
   it("shows the Session name and totals", () => {
-    addEndedSession(jointSession());
+    addEndedSession(tiedSession());
     renderAt();
     expect(screen.getByRole("heading", { level: 1, name: "Session summary" })).toBeInTheDocument();
     expect(screen.getByText("Thursday Smash")).toBeInTheDocument();
@@ -150,20 +150,21 @@ describe("SessionSummaryScreen", () => {
   });
 
   it("lists top winners with shared places, showing everyone placed 3rd or better", () => {
-    addEndedSession(jointSession());
+    addEndedSession(tiedSession());
     renderAt();
     const list = within(screen.getByRole("region", { name: "Top winners" })).getByRole("list");
     const rows = within(list).getAllByRole("listitem");
     expect(rows).toHaveLength(4);
     expect(rows.map((row) => row.textContent)).toEqual([
-      expect.stringMatching(/^Joint 1stAna.*Advanced.*Joint 1st · 5 matches played4wins$/),
-      expect.stringMatching(/^Joint 1stBen.*Intermediate.*5 matches played4wins$/),
-      expect.stringMatching(/^Joint 3rdCat.*Beginner.*3 matches played3wins$/),
-      expect.stringMatching(/^Joint 3rdDan.*/),
+      expect.stringMatching(/^1stAna.*Advanced.*5 matches played4wins$/),
+      expect.stringMatching(/^1stBen.*Intermediate.*5 matches played4wins$/),
+      expect.stringMatching(/^3rdCat.*Beginner.*3 matches played3wins$/),
+      expect.stringMatching(/^3rdDan.*/),
     ]);
+    expect(screen.queryByText(/Joint/)).not.toBeInTheDocument();
   });
 
-  it("shows single winners without 'Joint'", () => {
+  it("shows single winners with their own places", () => {
     addEndedSession(
       endedSession([
         [
@@ -195,7 +196,7 @@ describe("SessionSummaryScreen", () => {
   });
 
   it("goes Home and keeps the Ended session", async () => {
-    addEndedSession(jointSession());
+    addEndedSession(tiedSession());
     const location = renderAt();
     await userEvent.click(screen.getByRole("link", { name: "Home" }));
     expect(location.current()).toBe("/");
@@ -212,7 +213,7 @@ describe("SessionSummaryScreen", () => {
     beforeEach(() => {
       domToBlob.mockReset();
       domToBlob.mockResolvedValue(new Blob(["png"], { type: "image/png" }));
-      addEndedSession(jointSession());
+      addEndedSession(tiedSession());
     });
 
     afterEach(() => {

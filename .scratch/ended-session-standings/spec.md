@@ -20,7 +20,7 @@ Screens: `/sessions/:id` (`src/features/past-sessions/EndedSessionScreen.tsx`) a
   - Collapsible, **open** by default. Header detail: "N players". Toggle button: "Hide standings" / "Show standings" with the chevron, the same pattern as History in the live session.
   - Rows look like the current winner rows. The subtitle adds losses: "3 matches played · 1 loss" (or "0 losses").
   - Gold, silver and bronze discs (and the ring on 1st) go **only to Top winners**. Every other row gets a neutral numbered disc (base-200) and no ring.
-  - Shared places keep the "Joint" label.
+  - Shared places show the same place number; no "Joint" label.
 - **Matches** section becomes collapsible, **closed** by default. Header detail: "N matches". Toggle: "Show matches" / "Hide matches". Oldest first, as now.
 - Open/closed state is not remembered between visits.
 - No empty state: Ended sessions always have at least one Ended match.

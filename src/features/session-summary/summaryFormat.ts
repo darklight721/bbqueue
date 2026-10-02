@@ -1,5 +1,4 @@
 import type { CSSProperties } from "react";
-import type { TopWinner } from "../../domain/types.ts";
 
 /** "2 h 15 min", "45 min", "1 h"; whole minutes (rounded); under a minute → "Under 1 min". */
 export function formatSessionDuration(ms: number): string {
@@ -26,13 +25,6 @@ export function ordinal(place: number): string {
     default:
       return `${place}th`;
   }
-}
-
-/** Places shared by more than one winner (shown as "Joint 1st"). */
-export function sharedPlaces(winners: readonly TopWinner[]): Set<number> {
-  const counts = new Map<number, number>();
-  for (const winner of winners) counts.set(winner.place, (counts.get(winner.place) ?? 0) + 1);
-  return new Set([...counts].filter(([, count]) => count > 1).map(([place]) => place));
 }
 
 /** "Fri, 2 Oct · 18:00–20:15" in the device locale. */

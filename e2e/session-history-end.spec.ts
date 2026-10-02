@@ -330,13 +330,13 @@ test.describe("End session", () => {
     expect(ended!.players).toHaveLength(8);
     const rows = page.getByRole("region", { name: "Top winners" }).getByRole("listitem");
     await expect(rows).toHaveCount(3);
-    await expect(rows.nth(0)).toContainText("Joint 1st");
+    await expect(rows.nth(0)).toContainText("1st");
     await expect(rows.nth(0)).toContainText("Ana");
-    await expect(rows.nth(1)).toContainText("Joint 1st");
+    await expect(rows.nth(1)).toContainText("1st");
     await expect(rows.nth(1)).toContainText("Ben");
     await expect(rows.nth(2)).toContainText("3rd");
-    await expect(rows.nth(2)).not.toContainText("Joint");
     await expect(rows.nth(2)).toContainText("Gus");
+    await expect(page.getByText("Joint")).toHaveCount(0);
   });
 
   test("afterwards Home has no Resume link, and a reload keeps the summary", async ({ page }) => {

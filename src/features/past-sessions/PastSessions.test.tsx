@@ -123,10 +123,12 @@ describe("past sessions routes", () => {
       "C",
       "D",
     ]);
-    expect(rows[0]).toHaveTextContent("Joint 1st · 2 matches played · 0 losses");
+    expect(rows[0]).toHaveTextContent(/^1st.*2 matches played · 0 losses/);
     expect(rows[0]).toHaveTextContent("1win");
-    expect(rows[2]).toHaveTextContent("Joint 3rd · 2 matches played · 1 loss");
+    expect(rows[1]).toHaveTextContent(/^1st/);
+    expect(rows[2]).toHaveTextContent(/^3rd.*2 matches played · 1 loss/);
     expect(rows[2]).toHaveTextContent("0wins");
+    expect(standings).not.toHaveTextContent("Joint");
 
     await userEvent.click(hideStandings);
     expect(within(standings).queryByRole("listitem")).not.toBeInTheDocument();
