@@ -53,10 +53,18 @@ function ScoreForm({
     }
   }
 
+  // Each field spans both rows of the parent grid (subgrid), so the two names share
+  // one row: each name hugs the top of its own input, and the inputs stay level when
+  // only one name wraps to two lines.
   function field(index: 0 | 1, id: string) {
     return (
-      <div className="flex min-w-0 flex-col gap-1.5">
-        <label htmlFor={id} className="line-clamp-2 min-h-10 text-sm leading-tight font-semibold">
+      <div
+        className={`${index === 0 ? "col-start-1" : "col-start-3"} row-span-2 row-start-1 grid min-w-0 grid-rows-subgrid`}
+      >
+        <label
+          htmlFor={id}
+          className="line-clamp-2 self-end text-center text-sm leading-tight font-semibold break-words"
+        >
           {teamLabels[index]}
         </label>
         <input
@@ -89,9 +97,12 @@ function ScoreForm({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-end gap-3">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] grid-rows-[auto_auto] gap-x-3 gap-y-1.5">
         {field(0, idA)}
-        <span aria-hidden="true" className="pb-4 font-display text-2xl text-base-content/40">
+        <span
+          aria-hidden="true"
+          className="col-start-2 row-start-2 self-center font-display text-2xl text-base-content/40"
+        >
           –
         </span>
         {field(1, idB)}
@@ -110,7 +121,7 @@ function ScoreForm({
         <div className="grid grid-cols-2 gap-2">
           <button
             type="button"
-            className="btn btn-outline border-base-300"
+            className="btn btn-outline border-base-300 px-3"
             onClick={onEndWithoutScore}
           >
             End without score

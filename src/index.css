@@ -181,6 +181,18 @@
   }
 }
 
+/*
+ * Buttons: tight line height, so a label that wraps to two lines on a narrow phone
+ * stays a compact block inside the fixed-height button. One-line labels look the same
+ * (the button's height is fixed and its content is centred). This sits in the
+ * components layer, so any `leading-*` utility on a button still wins.
+ */
+@layer components {
+  .btn {
+    line-height: 1.25; /* same as Tailwind's leading-tight */
+  }
+}
+
 @utility pt-safe {
   padding-top: env(safe-area-inset-top, 0px);
 }

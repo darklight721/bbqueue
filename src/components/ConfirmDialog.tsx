@@ -98,7 +98,7 @@ function OpenDialog({
           <button
             ref={cancelRef}
             type="button"
-            className="btn btn-lg btn-outline border-base-300 leading-tight"
+            className="btn btn-lg btn-outline border-base-300"
             onClick={onCancel}
           >
             {cancelLabel}
@@ -106,7 +106,7 @@ function OpenDialog({
           <button
             ref={confirmRef}
             type="button"
-            className={`btn btn-lg leading-tight ${danger ? "btn-error" : "btn-primary"}`}
+            className={`btn btn-lg ${danger ? "btn-error" : "btn-primary"}`}
             onClick={onConfirm}
           >
             {confirmLabel}
