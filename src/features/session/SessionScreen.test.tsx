@@ -147,7 +147,10 @@ describe("SessionScreen", () => {
     const a = dialog.getByRole("textbox", { name: labelA });
     const b = dialog.getByRole("textbox", { name: labelB });
     expect(a).toHaveAttribute("inputmode", "numeric");
-    expect(a).toHaveFocus();
+    // Focus lands on the title, not a score field, so a phone keyboard doesn't pop up
+    // over the sheet; the user taps a field when ready.
+    expect(a).not.toHaveFocus();
+    expect(dialog.getByRole("heading", { name: "End match — Court 1" })).toHaveFocus();
 
     const save = dialog.getByRole("button", { name: "Save" });
     await userEvent.click(save);

@@ -9,6 +9,11 @@ export interface ModalProps {
   onClose: () => void;
   /** Element to focus when the dialog opens (defaults to the first focusable element). */
   initialFocusRef?: RefObject<HTMLElement | null>;
+  /**
+   * Focus the title on open instead of the first field, so a phone keyboard stays
+   * closed until the user taps a field (an auto-opened iOS keyboard covers the sheet).
+   */
+  focusTitle?: boolean;
   children?: ReactNode;
 }
 
@@ -21,8 +26,16 @@ export function Modal(props: ModalProps) {
   return <OpenModal {...props} />;
 }
 
-function OpenModal({ title, description, onClose, initialFocusRef, children }: ModalProps) {
+function OpenModal({
+  title,
+  description,
+  onClose,
+  initialFocusRef,
+  focusTitle = false,
+  children,
+}: ModalProps) {
   const ref = useRef<HTMLDialogElement>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
   const titleId = useId();
   const descriptionId = useId();
 
@@ -30,13 +43,16 @@ function OpenModal({ title, description, onClose, initialFocusRef, children }: M
     const dialog = ref.current;
     if (!dialog) return;
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    // showModal() focuses the dialog's autofocus element itself; mark the title so it
+    // never moves focus to a field first (which would flash the keyboard open).
+    if (focusTitle) titleRef.current?.setAttribute("autofocus", "");
     if (typeof dialog.showModal === "function") {
       if (!dialog.open) dialog.showModal();
     } else {
       dialog.setAttribute("open", "");
     }
     const target =
-      initialFocusRef?.current ??
+      (focusTitle ? titleRef.current : initialFocusRef?.current) ??
       dialog.querySelector<HTMLElement>("input, select, textarea, button:not([tabindex='-1'])");
     target?.focus();
     return () => {
@@ -59,7 +75,12 @@ function OpenModal({ title, description, onClose, initialFocusRef, children }: M
       }}
     >
       <div className="modal-box pb-safe px-6 pt-6">
-        <h2 id={titleId} className="font-display text-2xl uppercase">
+        <h2
+          ref={titleRef}
+          id={titleId}
+          tabIndex={focusTitle ? -1 : undefined}
+          className="font-display text-2xl uppercase focus:outline-none"
+        >
           {title}
         </h2>
         {description ? (

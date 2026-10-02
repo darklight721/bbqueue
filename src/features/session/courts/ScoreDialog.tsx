@@ -20,6 +20,7 @@ export function ScoreDialog(props: ScoreDialogProps) {
     <Modal
       open={props.open}
       title={`End match — Court ${props.courtNumber}`}
+      focusTitle
       onClose={props.onCancel}
     >
       {props.open ? <ScoreForm {...props} /> : null}
