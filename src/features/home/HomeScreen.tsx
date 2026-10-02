@@ -9,6 +9,7 @@ import {
 } from "../../components/icons.tsx";
 import { useClubs, useEndedSessions, useSession } from "../../storage/store.ts";
 import { countLabel } from "../session-summary/summaryFormat.ts";
+import { BrandMark } from "./BrandMark.tsx";
 import { CourtLines } from "./CourtLines.tsx";
 
 /** Start screen: resume the current Session, start a new one, manage Clubs or look back. */
@@ -86,6 +87,10 @@ function Hero() {
 
       <div className="px-safe pt-safe mx-auto flex w-full max-w-2xl flex-1 flex-col">
         <div className="flex min-h-[17rem] flex-1 flex-col justify-end pt-10 pb-16">
+          <BrandMark
+            className="animate-rise mb-4 size-18 drop-shadow-[0_6px_14px_rgb(0_0_0/0.18)] sm:mb-5 sm:size-24"
+            style={{ animationDelay: "0ms" }}
+          />
           <h1
             className="animate-rise font-display text-[clamp(4.5rem,25vw,10rem)] leading-[0.8] font-extrabold tracking-[-0.02em]"
             style={{ animationDelay: "60ms" }}

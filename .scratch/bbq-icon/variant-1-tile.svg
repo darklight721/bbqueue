@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <!-- BBQueue app icon: three shuttlecocks on a skewer. Source for all PWA icons (pwa-assets.config.ts). -->
+  <!-- BBQueue icon, variant 1 (Flat, same direction), tile -->
   <rect width="512" height="512" rx="112" fill="#0b6b45"/>
   <g transform="translate(256 256) scale(0.915) rotate(-45)">
     <!-- skewer: round handle end, pointed tip -->

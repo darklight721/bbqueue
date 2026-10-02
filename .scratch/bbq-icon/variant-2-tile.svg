@@ -1,17 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <!-- BBQueue app icon: three shuttlecocks on a skewer. Source for all PWA icons (pwa-assets.config.ts). -->
+  <!-- BBQueue icon, variant 2 (Flat, alternating), tile -->
   <rect width="512" height="512" rx="112" fill="#0b6b45"/>
-  <g transform="translate(256 256) scale(0.915) rotate(-45)">
+  <g transform="translate(256 256) rotate(-45)">
     <!-- skewer: round handle end, pointed tip -->
-    <path d="M-204 0H202" stroke="#d8f53a" stroke-width="14" stroke-linecap="round"/>
-    <circle cx="-209" cy="0" r="11" fill="#d8f53a"/>
-    <path d="M200 -8L221 0L200 8Z" fill="#d8f53a"/>
+    <path d="M-186 0H184" stroke="#d8f53a" stroke-width="14" stroke-linecap="round"/>
+    <circle cx="-191" cy="0" r="11" fill="#d8f53a"/>
+    <path d="M182 -8L203 0L182 8Z" fill="#d8f53a"/>
     <g transform="translate(105 0) scale(-1 1)">
       <path d="M0 -28L-74 -80Q-82 -60 -74 -40Q-82 -20 -74 0Q-82 20 -74 40Q-82 60 -74 80L0 28Z" fill="#f7f9f4"/>
       <path d="M-8 -12L-70 -44M-8 0H-70M-8 12L-70 44M-60 -62V62" stroke="#0b6b45" stroke-width="7" stroke-linecap="round"/>
       <path d="M0 -30H6A30 30 0 0 1 6 30H0Z" fill="#d8f53a"/>
     </g>
-    <g transform="translate(-21 0) scale(-1 1)">
+    <g transform="translate(33 0)">
       <path d="M0 -28L-74 -80Q-82 -60 -74 -40Q-82 -20 -74 0Q-82 20 -74 40Q-82 60 -74 80L0 28Z" fill="#f7f9f4"/>
       <path d="M-8 -12L-70 -44M-8 0H-70M-8 12L-70 44M-60 -62V62" stroke="#0b6b45" stroke-width="7" stroke-linecap="round"/>
       <path d="M0 -30H6A30 30 0 0 1 6 30H0Z" fill="#d8f53a"/>

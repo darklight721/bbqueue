@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BBQueue icon candidates</title>
+<style>
+  :root {
+    --court: #0b6b45;
+    --court-deep: #08543a;
+    --line: #f7f9f4;
+    --volt: #d8f53a;
+    --ink: #14201a;
+    --base-200: #eaefe7;
+    --base-300: #d5ddd2;
+    --display: "Barlow Condensed Variable", "Barlow Condensed", "Avenir Next Condensed", "Bahnschrift",
+      "DIN Alternate", "Roboto Condensed", "Arial Narrow", ui-sans-serif, system-ui, sans-serif;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: var(--sans); background: var(--line); color: var(--ink); }
+  header.page { padding: 2.5rem 1.5rem 1rem; max-width: 1200px; margin: 0 auto; }
+  header.page h1 { font-family: var(--display); font-weight: 800; font-size: 2.75rem; margin: 0; line-height: 1; }
+  header.page p { margin: .5rem 0 0; color: #14201aaa; max-width: 60ch; }
+
+  .variant { max-width: 1200px; margin: 1.5rem auto 3rem; padding: 0 1.5rem; }
+  .variant > h2 {
+    display: flex; align-items: baseline; gap: .75rem;
+    font-family: var(--display); font-weight: 800; font-size: 2.25rem; margin: 0 0 1rem;
+    border-top: 3px solid var(--ink); padding-top: 1rem;
+  }
+  .variant > h2 .num {
+    background: var(--volt); color: var(--ink); padding: 0 .5rem; border-radius: .4rem;
+  }
+  .variant > h2 small { font-family: var(--sans); font-weight: 500; font-size: 1rem; color: #14201a99; }
+
+  .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); }
+  .card { background: #fff; border: 1.5px solid var(--base-300); border-radius: 1.25rem; padding: 1rem; }
+  .card h3 { margin: 0 0 .75rem; font-size: .8rem; letter-spacing: .06em; text-transform: uppercase; color: #14201a99; }
+
+  .sizes { display: flex; align-items: flex-end; gap: 1rem; flex-wrap: wrap; }
+  .sizes figure { margin: 0; display: grid; justify-items: center; gap: .35rem; font-size: .75rem; color: #14201a99; }
+  .sizes img { display: block; }
+
+  /* Browser-tab strips */
+  .strip { display: flex; align-items: center; gap: .5rem; padding: .5rem .6rem 0; border-radius: .6rem; margin-bottom: .5rem; }
+  .strip.light { background: #dee1e6; }
+  .strip.dark  { background: #202124; }
+  .tab {
+    display: flex; align-items: center; gap: .5rem; padding: .45rem .75rem; border-radius: .5rem .5rem 0 0;
+    font: 12px/1 var(--sans); min-width: 150px;
+  }
+  .light .tab { background: #fff; color: #202124; }
+  .dark .tab  { background: #35363a; color: #e8eaed; }
+  .tab.big { font-size: 15px; }
+  .tab img { flex: none; }
+
+  /* Maskable previews: full-bleed green behind the art, then a mask shape. */
+  .masks { display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-end; }
+  .masks figure { margin: 0; display: grid; justify-items: center; gap: .35rem; font-size: .75rem; color: #14201a99; }
+  .mask { position: relative; width: 112px; height: 112px; background: var(--court); overflow: hidden; }
+  .mask img { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .mask.circle { border-radius: 50%; }
+  .mask.squircle { border-radius: 26%; }
+  .mask.safe::after {
+    content: ""; position: absolute; inset: 10%; border-radius: 50%;
+    border: 1.5px dashed rgb(255 255 255 / .7);
+  }
+
+  /* Home hero mock */
+  .heroes { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); margin-top: 1rem; }
+  .hero {
+    position: relative; isolation: isolate; overflow: hidden; border-radius: 1.25rem;
+    background: var(--court); color: var(--line); min-height: 25rem;
+    display: flex; flex-direction: column; justify-content: flex-end; padding: 2.5rem 1.5rem 3rem;
+  }
+  .hero::before {
+    content: ""; position: absolute; inset: 0; z-index: -1;
+    background:
+      radial-gradient(120% 90% at 15% -10%, rgb(255 255 255 / 0.22), transparent 55%),
+      linear-gradient(160deg, transparent 40%, var(--court-deep) 100%);
+  }
+  .hero .court-lines {
+    position: absolute; z-index: -1; top: 50%; left: 50%; width: 165%;
+    transform: translate(-50%, -50%) rotate(-30deg); color: rgb(247 249 244 / .22);
+  }
+  .hero .mark { width: 5rem; height: 5rem; display: block; margin-bottom: 1.25rem;
+    filter: drop-shadow(0 6px 14px rgb(0 0 0 / .18)); }
+  .hero h1 {
+    margin: 0; font-family: var(--display); font-weight: 800;
+    font-size: clamp(4.5rem, 12vw, 7.5rem); line-height: .8; letter-spacing: -0.02em;
+  }
+  .hero h1 .bbq { color: var(--volt); }
+  .hero p { margin: .75rem 0 0; font-size: 1.125rem; font-weight: 500; }
+  .hero .tag {
+    position: absolute; top: 1rem; right: 1rem; font: 600 .75rem/1 var(--sans);
+    background: rgb(0 0 0 / .25); padding: .4rem .6rem; border-radius: 999px; letter-spacing: .04em;
+  }
+
+  /* Side-by-side comparison */
+  .compare { max-width: 1200px; margin: 0 auto 4rem; padding: 0 1.5rem; }
+  .compare h2 { font-family: var(--display); font-weight: 800; font-size: 2.25rem; margin: 0 0 1rem;
+    border-top: 3px solid var(--ink); padding-top: 1rem; }
+  .compare table { border-collapse: collapse; background: #fff; border-radius: 1rem; overflow: hidden; }
+  .compare td, .compare th { padding: .6rem 1rem; text-align: center; border-bottom: 1px solid var(--base-200); font-size: .85rem; }
+  .compare th { text-align: left; }
+  .compare .dk { background: #202124; }
+</style>
+</head>
+<body>
+
+<header class="page">
+  <h1>BBQueue icon: pick one</h1>
+  <p>Four takes on three shuttlecocks on a skewer. Tell me the variant number and hero style, e.g. “variant 3, hero b”.
+    Each variant has an app icon (tile) and two round marks for the home screen: <strong>hero a</strong> (dark green disc, thin yellow ring)
+    and <strong>hero b</strong> (off-white disc).</p>
+</header>
+
+<main id="variants"></main>
+
+<section class="compare">
+  <h2>All four, small, side by side</h2>
+  <table id="compare"></table>
+</section>
+
+<template id="court-lines">
+  <svg class="court-lines" viewBox="0 0 610 1340" fill="none" stroke="currentColor" stroke-width="6" aria-hidden="true">
+    <rect x="3" y="3" width="604" height="1334"/>
+    <path d="M46 3V1337M564 3V1337M3 670H607M3 472H607M3 868H607M305 3V472M305 868V1337M3 79H607M3 1261H607"/>
+  </svg>
+</template>
+
+<script>
+  const VARIANTS = [
+    { n: 1, name: "Flat, same direction", note: "Plain version. All three corks point down toward the handle." },
+    { n: 2, name: "Flat, alternating", note: "Middle shuttle turned round, so feathers meet feathers and corks meet corks." },
+    { n: 3, name: "Grill marks", note: "Same as 1, with two dark grill stripes on each cork." },
+    { n: 4, name: "Smoke", note: "Same as 1, with two small smoke wisps rising off the top." },
+  ];
+  const src = (n, kind) => `variant-${n}-${kind}.svg`;
+  const img = (n, kind, size, alt = "") =>
+    `<img src="${src(n, kind)}" width="${size}" height="${size}" alt="${alt}">`;
+  const courtLines = document.getElementById("court-lines").innerHTML;
+
+  const hero = (n, which) => `
+    <div class="hero">
+      ${courtLines}
+      <span class="tag">Variant ${n} · hero ${which}</span>
+      <img class="mark" src="${src(n, "hero-" + which)}" alt="">
+      <h1><span class="bbq">BBQ</span>ueue</h1>
+      <p>Better Badminton Queue.</p>
+    </div>`;
+
+  const tabStrip = (n, tone) => `
+    <div class="strip ${tone}">
+      <div class="tab">${img(n, "tile", 16)} BBQueue — 16px</div>
+      <div class="tab big">${img(n, "tile", 32)} 32px</div>
+    </div>`;
+
+  document.getElementById("variants").innerHTML = VARIANTS.map(({ n, name, note }) => `
+    <section class="variant" id="v${n}">
+      <h2><span class="num">Variant ${n}</span> ${name} <small>${note}</small></h2>
+      <div class="grid">
+        <div class="card">
+          <h3>App icon sizes</h3>
+          <div class="sizes">
+            ${[16, 32, 64, 192].map((s) => `<figure>${img(n, "tile", s)}<figcaption>${s}px</figcaption></figure>`).join("")}
+          </div>
+        </div>
+        <div class="card">
+          <h3>Browser tab (light and dark)</h3>
+          ${tabStrip(n, "light")}
+          ${tabStrip(n, "dark")}
+          <h3 style="margin-top:1rem">Maskable (Android / iOS crops)</h3>
+          <div class="masks">
+            <figure><div class="mask circle">${img(n, "tile", 112)}</div><figcaption>Circle</figcaption></figure>
+            <figure><div class="mask squircle">${img(n, "tile", 112)}</div><figcaption>Rounded square</figcaption></figure>
+            <figure><div class="mask circle safe">${img(n, "tile", 112)}</div><figcaption>Safe zone (dashed)</figcaption></figure>
+          </div>
+        </div>
+      </div>
+      <div class="heroes">${hero(n, "a")}${hero(n, "b")}</div>
+    </section>`).join("");
+
+  // Comparison table
+  const rows = [
+    ["Tile 16px on light", (n) => img(n, "tile", 16), ""],
+    ["Tile 16px on dark", (n) => img(n, "tile", 16), "dk"],
+    ["Tile 32px", (n) => img(n, "tile", 32), ""],
+    ["Tile 64px", (n) => img(n, "tile", 64), ""],
+    ["Hero a 48px", (n) => img(n, "hero-a", 48), ""],
+    ["Hero b 48px", (n) => img(n, "hero-b", 48), "dk"],
+  ];
+  document.getElementById("compare").innerHTML =
+    `<tr><th></th>${VARIANTS.map((v) => `<th style="text-align:center">Variant ${v.n}</th>`).join("")}</tr>` +
+    rows.map(([label, f, cls]) =>
+      `<tr><th>${label}</th>${VARIANTS.map((v) => `<td class="${cls}">${f(v.n)}</td>`).join("")}</tr>`).join("");
+</script>
+</body>
+</html>

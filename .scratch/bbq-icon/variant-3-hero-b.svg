@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- BBQueue icon, variant 3 (Grill marks on the corks), hero-b -->
+  <circle cx="256" cy="256" r="256" fill="#f7f9f4"/>
+  <g transform="translate(256 256) scale(0.86) rotate(-45)">
+    <!-- skewer: round handle end, pointed tip -->
+    <path d="M-186 0H184" stroke="#0b6b45" stroke-width="14" stroke-linecap="round"/>
+    <circle cx="-191" cy="0" r="11" fill="#0b6b45"/>
+    <path d="M182 -8L203 0L182 8Z" fill="#0b6b45"/>
+    <g transform="translate(105 0) scale(-1 1)">
+      <path d="M0 -28L-74 -80Q-82 -60 -74 -40Q-82 -20 -74 0Q-82 20 -74 40Q-82 60 -74 80L0 28Z" fill="#0b6b45"/>
+      <path d="M-8 -12L-70 -44M-8 0H-70M-8 12L-70 44M-60 -62V62" stroke="#f7f9f4" stroke-width="7" stroke-linecap="round"/>
+      <path d="M0 -30H6A30 30 0 0 1 6 30H0Z" fill="#d8f53a" stroke="#0b6b45" stroke-width="6" stroke-linejoin="round"/>
+      <path d="M9 -20L16 20M22 -18L28 12" stroke="#14201a" stroke-width="7" stroke-linecap="round"/>
+    </g>
+    <g transform="translate(-21 0) scale(-1 1)">
+      <path d="M0 -28L-74 -80Q-82 -60 -74 -40Q-82 -20 -74 0Q-82 20 -74 40Q-82 60 -74 80L0 28Z" fill="#0b6b45"/>
+      <path d="M-8 -12L-70 -44M-8 0H-70M-8 12L-70 44M-60 -62V62" stroke="#f7f9f4" stroke-width="7" stroke-linecap="round"/>
+      <path d="M0 -30H6A30 30 0 0 1 6 30H0Z" fill="#d8f53a" stroke="#0b6b45" stroke-width="6" stroke-linejoin="round"/>
+      <path d="M9 -20L16 20M22 -18L28 12" stroke="#14201a" stroke-width="7" stroke-linecap="round"/>
+    </g>
+    <g transform="translate(-147 0) scale(-1 1)">
+      <path d="M0 -28L-74 -80Q-82 -60 -74 -40Q-82 -20 -74 0Q-82 20 -74 40Q-82 60 -74 80L0 28Z" fill="#0b6b45"/>
+      <path d="M-8 -12L-70 -44M-8 0H-70M-8 12L-70 44M-60 -62V62" stroke="#f7f9f4" stroke-width="7" stroke-linecap="round"/>
+      <path d="M0 -30H6A30 30 0 0 1 6 30H0Z" fill="#d8f53a" stroke="#0b6b45" stroke-width="6" stroke-linejoin="round"/>
+      <path d="M9 -20L16 20M22 -18L28 12" stroke="#14201a" stroke-width="7" stroke-linecap="round"/>
+    </g>
+  </g>
+</svg>
