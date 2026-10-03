@@ -12,20 +12,28 @@ See ADR-0006 and `.scratch/accounts/spec.md` (stories 1–7, Implementation Deci
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] Firebase (Firestore + Anonymous Auth) set up for the static SPA, with the Firestore offline cache on. The existing signed-out experience is untouched.
-- [ ] A `Backend` boundary with Firebase and in-memory versions. UI code never imports Firebase directly.
-- [ ] Domain function: Account ID from a name, following the rules in the spec (slug, dash, 4 characters with no look-alikes), compared ignoring case. Unit-tested.
+- [x] A `Backend` boundary with Firebase and in-memory versions (plus a local fake persisted in localStorage for e2e). UI code never imports Firebase directly.
+- [x] Domain function: Account ID from a name, following the rules in the spec (slug, dash, 4 characters with no look-alikes), compared ignoring case. Unit-tested.
 - [ ] Creating an Account reserves the Account ID in a transaction, tries again if it's taken, and stores the name
 - [ ] Contract tests pass against both versions. Security Rules tests pass on the emulator.
-- [ ] Welcome screen: shown on first launch only, and remembers whether the person created an Account or skipped
-- [ ] Offline on the Welcome screen: a clear message, and continuing without an Account works
+- [x] Welcome screen: shown on first launch only, and remembers whether the person created an Account or skipped
+- [x] Offline on the Welcome screen: a clear message, and continuing without an Account works
 - [ ] The e2e setup can start the emulator and clear it between tests. Fixtures can seed an Account.
-- [ ] The existing e2e suite still passes for signed-out use
+- [x] The existing e2e suite still passes for signed-out use
 
 ## E2E workflows
 
 - First launch → Welcome → enter a name → Home. After a reload, no Welcome screen, and the Account still exists.
 - First launch → Skip → Home. After a reload, no Welcome screen.
 - First launch while offline → message → continue → Home without an Account.
+
+## Comments
+
+Deferred: Firebase emulator, Security Rules tests and Firebase-backed contract/e2e tests — no Java on dev machine; e2e uses the local fake Backend (VITE_BACKEND=fake).
+
+Still open (unticked above because nothing has run against real Firebase yet): Firebase project set-up and the Firebase `Backend` verified against the emulator; the transactional Account ID reservation/retry on Firebase; contract + Security Rules tests on the emulator; emulator start/clear and Account seeding in the e2e setup (`seedStorage(page, { account })` already seeds the app and the local fake).
+
+Done so far: `Backend` interface (`src/backend/backend.ts`) with Firebase (`firebaseBackend.ts`, lazy-loaded only when `VITE_FIREBASE_*` is set), in-memory and local fake versions; one contract suite (`backend.contract.ts`) run against in-memory and local fake; Welcome screen; Account ID domain functions.

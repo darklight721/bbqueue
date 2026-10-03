@@ -10,7 +10,7 @@
 - **Queues**: build a pair of Teams by hand and move it onto a Court instead of that Court's Lineup.
 - **Matches**: start, time, score, end, or remove Matches. Players can be marked as Sitting out without leaving the Session.
 - **History and summary**: see the Ended matches for the Session, the Top winners, and up to 50 past Ended sessions.
-- **Offline and local-only**: everything is saved in the browser's `localStorage` after every change. There's no backend, no accounts, and no sync.
+- **Offline and local-only**: everything is saved in the browser's `localStorage` after every change. Without a Firebase config there's no backend, no Accounts, and no sync (see `.env.example`; `VITE_BACKEND=fake` runs a local fake backend for development and e2e).
 
 ### Queueing rules
 

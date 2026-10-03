@@ -156,3 +156,10 @@ export interface SessionSummary {
   endedAt: number;
   topWinners: TopWinner[];
 }
+
+/** A person's identity in the app (GLOSSARY: Account). Bound to the device it was created on. */
+export interface Account {
+  /** The short, readable, never-changing Account ID, e.g. `roy-7k3f`. */
+  accountId: string;
+  name: string;
+}

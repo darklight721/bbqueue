@@ -1,9 +1,11 @@
-import type { Club, EndedSession, Session } from "../domain/types.ts";
+import type { Account, Club, EndedSession, Session } from "../domain/types.ts";
 
 const VERSION = 1;
 const CLUBS_KEY = "bq:v1:clubs";
 const SESSION_KEY = "bq:v1:session";
 const ENDED_SESSIONS_KEY = "bq:v1:ended-sessions";
+const ACCOUNT_KEY = "bq:v1:account";
+const WELCOME_DONE_KEY = "bq:v1:welcome-done";
 /** Replaced by Ended sessions (ADR-0005); removed on load and never written again. */
 const LEGACY_SUMMARY_KEY = "bq:v1:summary";
 
@@ -14,6 +16,8 @@ export const STORAGE_KEYS = {
   clubs: CLUBS_KEY,
   session: SESSION_KEY,
   endedSessions: ENDED_SESSIONS_KEY,
+  account: ACCOUNT_KEY,
+  welcomeDone: WELCOME_DONE_KEY,
 };
 
 type Guard<T> = (value: unknown) => value is T;
@@ -40,6 +44,11 @@ const isSession: Guard<Session> = (value): value is Session =>
   Array.isArray(value.courts) &&
   Array.isArray(value.matches) &&
   Array.isArray(value.queues);
+
+const isAccount: Guard<Account> = (value): value is Account =>
+  isRecord(value) && typeof value.accountId === "string" && typeof value.name === "string";
+
+const isTrue: Guard<true> = (value): value is true => value === true;
 
 const isEndedSessions: Guard<EndedSession[]> = (value): value is EndedSession[] =>
   Array.isArray(value) &&
@@ -172,4 +181,26 @@ export function saveEndedSession(
       list = list.slice(0, -1);
     }
   }
+}
+
+/** The device's Account as last seen from the Backend, so Home can show it before (or without) the network. */
+export function loadAccount(): Account | null {
+  return read(ACCOUNT_KEY, isAccount);
+}
+
+export function saveAccount(account: Account): void {
+  write(ACCOUNT_KEY, account);
+}
+
+export function clearAccount(): void {
+  remove(ACCOUNT_KEY);
+}
+
+/** Whether the Welcome screen is done: the person created an Account or skipped. */
+export function loadWelcomeDone(): boolean {
+  return read(WELCOME_DONE_KEY, isTrue) === true;
+}
+
+export function saveWelcomeDone(): void {
+  write(WELCOME_DONE_KEY, true);
 }

@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import type {
+  Account,
   Club,
   ClubPlayer,
   Court,
@@ -16,11 +17,45 @@ export const STORAGE_KEYS = {
   clubs: "bq:v1:clubs",
   session: "bq:v1:session",
   endedSessions: "bq:v1:ended-sessions",
+  account: "bq:v1:account",
+  welcomeDone: "bq:v1:welcome-done",
 } as const;
+
+/**
+ * Where the local fake Backend (`VITE_BACKEND=fake`, which e2e runs against) keeps its "server"
+ * data. Mirrors `FAKE_BACKEND_KEYS` in src/backend/localFakeBackend.ts.
+ */
+export const FAKE_BACKEND_KEYS = {
+  account: "bq:fake:account",
+  accountIds: "bq:fake:account-ids",
+} as const;
+
+/**
+ * Browser storage for a device that has already been through the Welcome screen. Playwright
+ * applies it to every test by default (see playwright.config.ts), so specs start on Home. A spec
+ * about first launch opts out with `test.use({ storageState: FIRST_LAUNCH_STORAGE_STATE })`.
+ */
+export function welcomeDoneStorageState(origin: string) {
+  return {
+    cookies: [],
+    origins: [
+      {
+        origin,
+        localStorage: [
+          { name: STORAGE_KEYS.welcomeDone, value: JSON.stringify({ version: 1, data: true }) },
+        ],
+      },
+    ],
+  };
+}
+
+export const FIRST_LAUNCH_STORAGE_STATE = { cookies: [], origins: [] };
 
 export type StorageKey = keyof typeof STORAGE_KEYS;
 
 export interface SeedData {
+  /** Seeds the Account in the app and in the fake Backend, as if it had been created on this device. */
+  account?: Account;
   clubs?: Club[];
   session?: Session;
   endedSessions?: EndedSession[];
@@ -139,12 +174,18 @@ export function makeEndedSessionFromMatches(
  * (tracked in sessionStorage). Otherwise a reload would resurrect data the app deliberately cleared.
  */
 export async function seedStorage(page: Page, seed: SeedData): Promise<void> {
-  const entries = (Object.keys(STORAGE_KEYS) as StorageKey[])
+  const entries = (Object.keys(seed) as (keyof SeedData)[])
     .filter((name) => seed[name] !== undefined)
     .map((name): [string, string] => [
       STORAGE_KEYS[name],
       JSON.stringify({ version: 1, data: seed[name] }),
     ]);
+  if (seed.account) {
+    entries.push(
+      [FAKE_BACKEND_KEYS.account, JSON.stringify(seed.account)],
+      [FAKE_BACKEND_KEYS.accountIds, JSON.stringify([seed.account.accountId.toLowerCase()])],
+    );
+  }
 
   await page.addInitScript((items: [string, string][]) => {
     for (const [key, value] of items) {
@@ -225,4 +266,12 @@ export function makeMidMatchSession(options: {
     ],
     ...options.overrides,
   });
+}
+
+/** The Account the fake Backend holds for this device (what the "server" knows), or null. */
+export async function readFakeAccount(page: Page): Promise<Account | null> {
+  return page.evaluate((key) => {
+    const raw = localStorage.getItem(key);
+    return raw === null ? null : (JSON.parse(raw) as Account);
+  }, FAKE_BACKEND_KEYS.account);
 }

@@ -2,16 +2,22 @@ import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 import type { Club, EndedSession, Session } from "../domain/types.ts";
 import {
+  getAccount,
   getClubs,
   getSession,
+  getWelcomeDone,
   addEndedSession,
   getEndedSessions,
   resetStoreForTests,
+  setAccount,
   setClubs,
   setSession,
+  setWelcomeDone,
+  useAccount,
   useClubs,
   useEndedSessions,
   useSession,
+  useWelcomeDone,
 } from "./store.ts";
 
 const club: Club = { id: "c1", name: "Club", players: [] };
@@ -169,5 +175,61 @@ describe("ended sessions store", () => {
     localStorage.setItem("bq:v1:ended-sessions", envelope([endedSession("a", 1)]));
     act(() => storageEvent("bq:v1:ended-sessions"));
     expect(result.current.map((e) => e.id)).toEqual(["a"]);
+  });
+});
+
+describe("Account and Welcome done", () => {
+  it("has no Account and the Welcome screen is not done at first", () => {
+    expect(getAccount()).toBeNull();
+    expect(getWelcomeDone()).toBe(false);
+  });
+
+  it("remembers the Account on the device and notifies subscribers", () => {
+    const { result } = renderHook(() => useAccount());
+    expect(result.current).toBeNull();
+
+    act(() => setAccount({ accountId: "roy-7k3f", name: "Roy" }));
+    expect(result.current).toEqual({ accountId: "roy-7k3f", name: "Roy" });
+
+    resetStoreForTests();
+    expect(getAccount()).toEqual({ accountId: "roy-7k3f", name: "Roy" });
+  });
+
+  it("clears the Account", () => {
+    setAccount({ accountId: "roy-7k3f", name: "Roy" });
+    setAccount(null);
+    resetStoreForTests();
+    expect(getAccount()).toBeNull();
+    expect(localStorage.getItem("bq:v1:account")).toBeNull();
+  });
+
+  it("doesn't notify when the Account is unchanged", () => {
+    setAccount({ accountId: "roy-7k3f", name: "Roy" });
+    let renders = 0;
+    renderHook(() => {
+      renders += 1;
+      return useAccount();
+    });
+    const before = renders;
+    act(() => setAccount({ accountId: "roy-7k3f", name: "Roy" }));
+    expect(renders).toBe(before);
+  });
+
+  it("remembers that the Welcome screen is done", () => {
+    const { result } = renderHook(() => useWelcomeDone());
+    expect(result.current).toBe(false);
+
+    act(() => setWelcomeDone());
+    expect(result.current).toBe(true);
+
+    resetStoreForTests();
+    expect(getWelcomeDone()).toBe(true);
+  });
+
+  it("refreshes on a storage event from another tab", () => {
+    const { result } = renderHook(() => useAccount());
+    localStorage.setItem("bq:v1:account", envelope({ accountId: "ana-2222", name: "Ana" }));
+    act(() => storageEvent("bq:v1:account"));
+    expect(result.current).toEqual({ accountId: "ana-2222", name: "Ana" });
   });
 });

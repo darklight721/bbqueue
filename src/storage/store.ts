@@ -1,15 +1,20 @@
 import { useSyncExternalStore } from "react";
-import type { Club, EndedSession, Session } from "../domain/types.ts";
+import type { Account, Club, EndedSession, Session } from "../domain/types.ts";
 import {
   STORAGE_KEYS,
+  clearAccount,
   clearSession,
+  loadAccount,
   loadClubs,
   loadEndedSessions,
   loadSession,
+  loadWelcomeDone,
   removeLegacySummary,
+  saveAccount,
   saveClubs,
   saveEndedSession,
   saveSession,
+  saveWelcomeDone,
 } from "./storage.ts";
 
 /** In-memory cache backed by storage.ts. `loaded` distinguishes "not read yet" from `null`. */
@@ -26,6 +31,8 @@ function createSlot<T>(initial: T): Slot<T> {
 const clubsSlot = createSlot<Club[]>([]);
 const sessionSlot = createSlot<Session | null>(null);
 const endedSessionsSlot = createSlot<EndedSession[]>([]);
+const accountSlot = createSlot<Account | null>(null);
+const welcomeDoneSlot = createSlot<boolean>(false);
 
 function get<T>(slot: Slot<T>, load: () => T): T {
   if (!slot.loaded) {
@@ -58,6 +65,8 @@ function subscribeTo(slot: Slot<unknown>) {
 const subscribeClubs = subscribeTo(clubsSlot);
 const subscribeSession = subscribeTo(sessionSlot);
 const subscribeEndedSessions = subscribeTo(endedSessionsSlot);
+const subscribeAccount = subscribeTo(accountSlot);
+const subscribeWelcomeDone = subscribeTo(welcomeDoneSlot);
 
 // Other tabs: drop the cache for the affected key and notify subscribers.
 if (typeof window !== "undefined") {
@@ -67,6 +76,8 @@ if (typeof window !== "undefined") {
     if (all || event.key === STORAGE_KEYS.clubs) refresh(clubsSlot);
     if (all || event.key === STORAGE_KEYS.session) refresh(sessionSlot);
     if (all || event.key === STORAGE_KEYS.endedSessions) refresh(endedSessionsSlot);
+    if (all || event.key === STORAGE_KEYS.account) refresh(accountSlot);
+    if (all || event.key === STORAGE_KEYS.welcomeDone) refresh(welcomeDoneSlot);
   });
 }
 
@@ -116,9 +127,37 @@ export function useEndedSessions(): EndedSession[] {
   return useSyncExternalStore(subscribeEndedSessions, getEndedSessions);
 }
 
+/** The Account bound to this device, or null (no Account, or the Backend says there is none). */
+export function getAccount(): Account | null {
+  return get(accountSlot, loadAccount);
+}
+
+export function setAccount(account: Account | null): void {
+  const current = getAccount();
+  if (current?.accountId === account?.accountId && current?.name === account?.name) return;
+  set(accountSlot, account, (value) => (value === null ? clearAccount() : saveAccount(value)));
+}
+
+export function useAccount(): Account | null {
+  return useSyncExternalStore(subscribeAccount, getAccount);
+}
+
+/** Whether the person created an Account or skipped on the Welcome screen. Remembered on the device. */
+export function getWelcomeDone(): boolean {
+  return get(welcomeDoneSlot, loadWelcomeDone);
+}
+
+export function setWelcomeDone(): void {
+  set(welcomeDoneSlot, true, saveWelcomeDone);
+}
+
+export function useWelcomeDone(): boolean {
+  return useSyncExternalStore(subscribeWelcomeDone, getWelcomeDone);
+}
+
 /** Test helper: drop caches so the next read re-loads from localStorage. */
 export function resetStoreForTests(): void {
-  for (const slot of [clubsSlot, sessionSlot, endedSessionsSlot]) {
+  for (const slot of [clubsSlot, sessionSlot, endedSessionsSlot, accountSlot, welcomeDoneSlot]) {
     slot.loaded = false;
   }
 }
