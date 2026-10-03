@@ -41,7 +41,7 @@ export function MatchList({
 }
 
 /**
- * One Ended match: "Match #n · Court N", both Teams with Skill, the score (or "No score")
+ * One Ended match: "Match #n · Court N", both Teams with Skill, the score (or "--" per Team when unscored)
  * and how long it took. The Target is shown only when `showTarget` (both 21 and 31 were used).
  */
 export function MatchRow({
@@ -88,7 +88,7 @@ export function MatchRow({
         outcome={outcome(winner, 1)}
         playerById={playerById}
       />
-      {score === null ? <p className="text-sm text-base-content/60 italic">No score</p> : null}
+      {score === null ? <p className="sr-only">No score</p> : null}
     </li>
   );
 }
@@ -141,7 +141,14 @@ function TeamLine({
           {outcome === "won" ? <span className="sr-only">Won, </span> : null}
           <span>{score}</span>
         </span>
-      ) : null}
+      ) : (
+        <span
+          aria-hidden="true"
+          className="min-w-10 text-right font-display text-2xl leading-none font-semibold tracking-[0.15em] text-base-content/40 tabular-nums"
+        >
+          --
+        </span>
+      )}
     </div>
   );
 }
