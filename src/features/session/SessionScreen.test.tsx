@@ -6,7 +6,7 @@ import { memoryLocation } from "wouter/memory-location";
 import { App } from "../../app/App.tsx";
 import { createRng, createSession, startMatch } from "../../domain/engine/index.ts";
 import type { Session } from "../../domain/types.ts";
-import { getSession, resetStoreForTests, setClubs, setSession } from "../../storage/store.ts";
+import { getSession, resetStoreForTests, setLocalClubs, setSession } from "../../storage/store.ts";
 
 const T0 = Date.UTC(2026, 9, 1, 18, 0, 0);
 const NAMES = ["Ana", "Ben", "Cat", "Dan", "Eve", "Fay", "Gus", "Hal", "Ivy", "Jon", "Kim", "Lou"];
@@ -81,14 +81,14 @@ describe("SessionScreen", () => {
   });
 
   it("shows the Club name under the title: current name, saved name when deleted, none without", () => {
-    setClubs([{ id: "c1", name: "Riverside Renamed", players: [] }]);
+    setLocalClubs([{ id: "c1", name: "Riverside Renamed", kind: "local", players: [] }]);
     setSession({ ...makeSession(), clubId: "c1", clubName: "Riverside" });
     renderAt();
     expect(topBar().getByRole("heading", { level: 1, name: "Thursday" })).toBeInTheDocument();
     expect(topBar().getByText("Riverside Renamed")).toBeInTheDocument();
     cleanup();
 
-    setClubs([]);
+    setLocalClubs([]);
     renderAt();
     expect(topBar().getByText("Riverside")).toBeInTheDocument();
     cleanup();

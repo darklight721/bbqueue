@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vite-plus/test";
 import { runBackendContract } from "./backend.contract.ts";
+import { runSharedClubsContract } from "./backend.clubs.contract.ts";
 import { createInMemoryBackend } from "./inMemoryBackend.ts";
 
 runBackendContract("in-memory", createInMemoryBackend);
+runSharedClubsContract("in-memory", () => {
+  const backend = createInMemoryBackend();
+  return { backend, setOnline: (online) => backend.setOnline(online) };
+});
 
 describe("in-memory Backend", () => {
   it("tells observers when the connection comes and goes", () => {

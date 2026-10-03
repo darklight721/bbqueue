@@ -1,6 +1,7 @@
 import { generateAccountId, normalizeAccountId } from "../domain/accountId.ts";
 import { normalizeName } from "../domain/validation.ts";
 import type { Account } from "../domain/types.ts";
+import { createSimulatedClubs, type SimulatedClubsState } from "./simulatedClubs.ts";
 import {
   BackendError,
   MAX_ACCOUNT_ID_ATTEMPTS,
@@ -11,7 +12,7 @@ import {
 } from "./backend.ts";
 
 /** Where a simulated backend keeps its "server" data. */
-export interface SimulatedState {
+export interface SimulatedState extends SimulatedClubsState {
   loadAccount(): Account | null;
   saveAccount(account: Account): void;
   /** Normalised Account IDs that are reserved. */
@@ -51,7 +52,14 @@ export function createSimulatedBackend(
     for (const listener of [...listeners]) listener(account);
   }
 
+  const { clubs, refresh: refreshClubs } = createSimulatedClubs(
+    state,
+    () => state.loadAccount(),
+    online,
+  );
+
   return {
+    ...clubs,
     isOnline: () => online.get(),
     observeOnline: (listener) => online.subscribe(listener),
 
@@ -83,6 +91,7 @@ export function createSimulatedBackend(
         const account: Account = { accountId, name: trimmed };
         state.saveAccount(account);
         emit();
+        refreshClubs();
         return Promise.resolve(account);
       }
       return Promise.reject(new BackendError("id-unavailable"));

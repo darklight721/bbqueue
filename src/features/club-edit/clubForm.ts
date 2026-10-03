@@ -1,11 +1,13 @@
 import { normalizeName } from "../../domain/validation.ts";
-import type { Club, SkillLevel } from "../../domain/types.ts";
+import type { AccountLink, Club, ClubKind, SkillLevel } from "../../domain/types.ts";
 
 export interface PlayerRow {
   /** Club player id (kept for existing players, fresh for new rows). */
   id: string;
   name: string;
   skill: SkillLevel;
+  /** Kept as it is: the form never changes a Club player's link to an Account. */
+  link?: AccountLink;
 }
 
 export interface ClubForm {
@@ -21,7 +23,12 @@ export function formFromClub(club: Club | null): ClubForm {
   if (!club) return { name: "", rows: [] };
   return {
     name: club.name,
-    rows: [...club.players].sort(byName).map(({ id, name, skill }) => ({ id, name, skill })),
+    rows: [...club.players].sort(byName).map(({ id, name, skill, link }) => ({
+      id,
+      name,
+      skill,
+      ...(link ? { link } : {}),
+    })),
   };
 }
 
@@ -34,14 +41,16 @@ export function formSignature(form: ClubForm): string {
 }
 
 /** The Club to persist, with normalised names. */
-export function clubFromForm(id: string, form: ClubForm): Club {
+export function clubFromForm(id: string, kind: ClubKind, form: ClubForm): Club {
   return {
     id,
     name: normalizeName(form.name),
+    kind,
     players: form.rows.map((row) => ({
       id: row.id,
       name: normalizeName(row.name),
       skill: row.skill,
+      ...(row.link ? { link: row.link } : {}),
     })),
   };
 }

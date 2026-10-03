@@ -4,13 +4,15 @@ import type { Club, EndedSession, Session } from "../domain/types.ts";
 import {
   getAccount,
   getClubs,
+  getSharedClubs,
   getSession,
   getWelcomeDone,
   addEndedSession,
   getEndedSessions,
   resetStoreForTests,
   setAccount,
-  setClubs,
+  setLocalClubs,
+  setSharedClubs,
   setSession,
   setWelcomeDone,
   useAccount,
@@ -20,7 +22,7 @@ import {
   useWelcomeDone,
 } from "./store.ts";
 
-const club: Club = { id: "c1", name: "Club", players: [] };
+const club: Club = { id: "c1", name: "Club", kind: "local", players: [] };
 
 const session: Session = {
   id: "s1",
@@ -63,7 +65,7 @@ beforeEach(() => {
   localStorage.clear();
   resetStoreForTests();
   // Ensure caches are empty for the next read.
-  setClubs([]);
+  setLocalClubs([]);
   setSession(null);
   localStorage.clear();
   resetStoreForTests();
@@ -80,7 +82,7 @@ describe("clubs store", () => {
 
   it("persists and notifies subscribers on set", () => {
     const { result } = renderHook(() => useClubs());
-    act(() => setClubs([club]));
+    act(() => setLocalClubs([club]));
     expect(result.current).toEqual([club]);
     expect(getClubs()).toEqual([club]);
     expect(JSON.parse(localStorage.getItem("bq:v1:clubs")!)).toEqual({ version: 1, data: [club] });
@@ -231,5 +233,50 @@ describe("Account and Welcome done", () => {
     localStorage.setItem("bq:v1:account", envelope({ accountId: "ana-2222", name: "Ana" }));
     act(() => storageEvent("bq:v1:account"));
     expect(result.current).toEqual({ accountId: "ana-2222", name: "Ana" });
+  });
+});
+
+describe("Local and Shared clubs", () => {
+  const shared: Club = { id: "s1", name: "Shared", kind: "shared", players: [] };
+
+  it("shows Local clubs and Shared clubs together", () => {
+    const { result } = renderHook(() => useClubs());
+    act(() => setLocalClubs([club]));
+    act(() => setSharedClubs([shared]));
+    expect(result.current.map((c) => c.id)).toEqual(["c1", "s1"]);
+  });
+
+  it("keeps Shared clubs on the device and out of the Local clubs", () => {
+    setLocalClubs([club]);
+    setSharedClubs([shared]);
+    resetStoreForTests();
+    expect(getSharedClubs()).toEqual([shared]);
+    expect(getClubs().map((c) => c.id)).toEqual(["c1", "s1"]);
+    expect(JSON.parse(localStorage.getItem("bq:v1:clubs")!).data.map((c: Club) => c.id)).toEqual([
+      "c1",
+    ]);
+  });
+
+  it("gives the same list until something changes", () => {
+    setSharedClubs([shared]);
+    expect(getClubs()).toBe(getClubs());
+  });
+
+  it("doesn't notify for an identical Shared clubs update", () => {
+    setSharedClubs([shared]);
+    let renders = 0;
+    renderHook(() => {
+      renders += 1;
+      return useClubs();
+    });
+    const before = renders;
+    act(() => setSharedClubs([{ ...shared }]));
+    expect(renders).toBe(before);
+  });
+
+  it("drops Shared clubs when the Backend reports none", () => {
+    setSharedClubs([shared]);
+    setSharedClubs([]);
+    expect(getClubs().map((c) => c.id)).toEqual([]);
   });
 });

@@ -4,8 +4,8 @@ import { beforeEach, describe, expect, it } from "vite-plus/test";
 import { Router } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
 import { App } from "../../app/App.tsx";
-import type { EndedSession } from "../../domain/types.ts";
-import { addEndedSession, resetStoreForTests, setClubs } from "../../storage/store.ts";
+import type { Club, EndedSession } from "../../domain/types.ts";
+import { addEndedSession, resetStoreForTests, setLocalClubs } from "../../storage/store.ts";
 import { sessionDay, sessionTimes } from "../session-summary/summaryFormat.ts";
 
 function ended(
@@ -214,12 +214,12 @@ describe("past sessions routes", () => {
   });
 });
 
-const riverside = { id: "c1", name: "Riverside", players: [] };
-const hilltop = { id: "c2", name: "Hilltop", players: [] };
+const riverside: Club = { id: "c1", name: "Riverside", kind: "local", players: [] };
+const hilltop: Club = { id: "c2", name: "Hilltop", kind: "local", players: [] };
 
 /** One Ended session each for Riverside, Hilltop and no Club. */
 function seedClubSessions() {
-  setClubs([riverside, hilltop]);
+  setLocalClubs([riverside, hilltop]);
   addEndedSession(
     ended("r", "River night", 1_000_000_000_000, { clubId: "c1", clubName: "Riverside" }),
   );
@@ -241,7 +241,7 @@ describe("Club name on past sessions", () => {
   });
 
   it("shows the Club name on rows, the current name after a rename, the saved name when deleted", () => {
-    setClubs([{ ...riverside, name: "Riverside Renamed" }]);
+    setLocalClubs([{ ...riverside, name: "Riverside Renamed" }]);
     addEndedSession(
       ended("r", "River night", 3_000_000_000_000, { clubId: "c1", clubName: "Riverside" }),
     );
@@ -260,7 +260,7 @@ describe("Club name on past sessions", () => {
   });
 
   it("shows the Club name on the details and the summary", async () => {
-    setClubs([riverside]);
+    setLocalClubs([riverside]);
     addEndedSession(
       ended("r", "River night", 1_000_000_000_000, { clubId: "c1", clubName: "Old name" }),
     );
@@ -290,7 +290,7 @@ describe("filtering past sessions by Club", () => {
   });
 
   it("has no filter with fewer than two choices", () => {
-    setClubs([riverside]);
+    setLocalClubs([riverside]);
     addEndedSession(
       ended("r", "River night", 1_000_000_000_000, { clubId: "c1", clubName: "Riverside" }),
     );
@@ -313,7 +313,7 @@ describe("filtering past sessions by Club", () => {
   });
 
   it("labels deleted Clubs and leaves out those with no saved name", () => {
-    setClubs([hilltop]);
+    setLocalClubs([hilltop]);
     addEndedSession(
       ended("h", "Hill night", 2_000_000_000_000, { clubId: "c2", clubName: "Hilltop" }),
     );
@@ -408,7 +408,7 @@ describe("a Club's own sessions list", () => {
   });
 
   it("shows the Club's current name as the title", () => {
-    setClubs([{ ...riverside, name: "Riverside Renamed" }]);
+    setLocalClubs([{ ...riverside, name: "Riverside Renamed" }]);
     addEndedSession(
       ended("r", "River night", 1_000_000_000_000, { clubId: "c1", clubName: "Riverside" }),
     );
@@ -427,7 +427,7 @@ describe("a Club's own sessions list", () => {
   });
 
   it("shows an empty state for a Club without sessions", () => {
-    setClubs([riverside]);
+    setLocalClubs([riverside]);
     renderAt("/clubs/c1/sessions");
     expect(screen.getByText("No past sessions yet")).toBeInTheDocument();
   });

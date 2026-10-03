@@ -15,6 +15,7 @@ import type {
 /** Mirrors `STORAGE_KEYS` in src/storage/storage.ts (kept literal so e2e never imports app runtime code). */
 export const STORAGE_KEYS = {
   clubs: "bq:v1:clubs",
+  sharedClubs: "bq:v1:shared-clubs",
   session: "bq:v1:session",
   endedSessions: "bq:v1:ended-sessions",
   account: "bq:v1:account",
@@ -29,6 +30,8 @@ export const STORAGE_KEYS = {
 export const FAKE_BACKEND_KEYS = {
   account: "bq:fake:account",
   accountIds: "bq:fake:account-ids",
+  clubs: "bq:fake:clubs",
+  pendingClubOps: "bq:fake:pending-club-ops",
 } as const;
 
 /**
@@ -55,6 +58,11 @@ export const FIRST_LAUNCH_STORAGE_STATE = { cookies: [], origins: [] };
 export type StorageKey = keyof typeof STORAGE_KEYS;
 
 export interface SeedData {
+  /**
+   * Shared clubs on the fake "server". They show up for the seeded Account when one of their Club
+   * players is linked to it.
+   */
+  sharedClubs?: Club[];
   /** Seeds the Account in the app and in the fake Backend, as if it had been created on this device. */
   account?: Account;
   clubs?: Club[];
@@ -83,6 +91,7 @@ export function makeClub(overrides: Partial<Club> = {}): Club {
   return {
     id: nextId("club"),
     name: "Tuesday Club",
+    kind: "local",
     players: [],
     ...overrides,
   };
@@ -181,6 +190,9 @@ export async function seedStorage(page: Page, seed: SeedData): Promise<void> {
       STORAGE_KEYS[name],
       JSON.stringify({ version: 1, data: seed[name] }),
     ]);
+  if (seed.sharedClubs) {
+    entries.push([FAKE_BACKEND_KEYS.clubs, JSON.stringify(seed.sharedClubs)]);
+  }
   if (seed.account) {
     entries.push(
       [FAKE_BACKEND_KEYS.account, JSON.stringify(seed.account)],
@@ -275,4 +287,20 @@ export async function readFakeAccount(page: Page): Promise<Account | null> {
     const raw = localStorage.getItem(key);
     return raw === null ? null : (JSON.parse(raw) as Account);
   }, FAKE_BACKEND_KEYS.account);
+}
+
+/** Shared clubs on the fake "server" (changes made offline show up here only once synced). */
+export async function readFakeClubs(page: Page): Promise<Club[]> {
+  return page.evaluate((key) => {
+    const raw = localStorage.getItem(key);
+    return raw === null ? [] : (JSON.parse(raw) as Club[]);
+  }, FAKE_BACKEND_KEYS.clubs);
+}
+
+/** Changes made offline to Shared clubs that haven't reached the fake "server" yet. */
+export async function readFakePendingClubOps(page: Page): Promise<unknown[]> {
+  return page.evaluate((key) => {
+    const raw = localStorage.getItem(key);
+    return raw === null ? [] : (JSON.parse(raw) as unknown[]);
+  }, FAKE_BACKEND_KEYS.pendingClubOps);
 }

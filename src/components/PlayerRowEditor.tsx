@@ -12,7 +12,8 @@ export interface PlayerDraft {
 export interface PlayerRowEditorProps {
   value: PlayerDraft;
   onChange: (value: PlayerDraft) => void;
-  onRemove: () => void;
+  /** Leave out to hide the Remove button (e.g. for the Organizer row of a Shared club). */
+  onRemove?: () => void;
   error?: NameErrorCode | null;
   autoFocus?: boolean;
   /** Enter in the name field (e.g. move on to the next player). */
@@ -66,14 +67,16 @@ export function PlayerRowEditor({
           value={value.skill}
           onChange={(skill) => onChange({ ...value, skill })}
         />
-        <button
-          type="button"
-          className="btn btn-ghost btn-square shrink-0 text-base-content/70 hover:text-error"
-          aria-label={displayName ? `Remove ${displayName}` : "Remove player"}
-          onClick={onRemove}
-        >
-          <CloseIcon className="size-6" />
-        </button>
+        {onRemove ? (
+          <button
+            type="button"
+            className="btn btn-ghost btn-square shrink-0 text-base-content/70 hover:text-error"
+            aria-label={displayName ? `Remove ${displayName}` : "Remove player"}
+            onClick={onRemove}
+          >
+            <CloseIcon className="size-6" />
+          </button>
+        ) : null}
       </div>
       {error ? (
         <p id={errorId} className="pl-1 text-sm font-semibold text-error">

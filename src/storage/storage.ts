@@ -1,9 +1,17 @@
-import type { Account, Club, EndedSession, Session } from "../domain/types.ts";
+import type {
+  Account,
+  Club,
+  ClubKind,
+  ClubPlayer,
+  EndedSession,
+  Session,
+} from "../domain/types.ts";
 
 const VERSION = 1;
 const CLUBS_KEY = "bq:v1:clubs";
 const SESSION_KEY = "bq:v1:session";
 const ENDED_SESSIONS_KEY = "bq:v1:ended-sessions";
+const SHARED_CLUBS_KEY = "bq:v1:shared-clubs";
 const ACCOUNT_KEY = "bq:v1:account";
 const WELCOME_DONE_KEY = "bq:v1:welcome-done";
 const INSTALL_HINT_DISMISSED_KEY = "bq:v1:install-hint-dismissed";
@@ -15,6 +23,7 @@ export const MAX_ENDED_SESSIONS = 50;
 
 export const STORAGE_KEYS = {
   clubs: CLUBS_KEY,
+  sharedClubs: SHARED_CLUBS_KEY,
   session: SESSION_KEY,
   endedSessions: ENDED_SESSIONS_KEY,
   account: ACCOUNT_KEY,
@@ -98,12 +107,43 @@ function remove(key: string): void {
   }
 }
 
+/** A stored Club player: keeps a valid Account link, drops anything else. */
+function normalizeClubPlayer(player: ClubPlayer): ClubPlayer {
+  const { link, ...rest } = player;
+  const valid =
+    isRecord(link) &&
+    typeof link.accountId === "string" &&
+    (link.role === "organizer" || link.role === "player");
+  return valid ? { ...rest, link: { accountId: link.accountId, role: link.role } } : rest;
+}
+
+/** Clubs saved before Shared clubs have no `kind`; they are Local clubs. */
+export function normalizeClub(club: Club, kind: ClubKind = "local"): Club {
+  return { ...club, kind, players: club.players.map(normalizeClubPlayer) };
+}
+
+/** Local clubs: the ones that exist only on this device. */
 export function loadClubs(): Club[] {
-  return read(CLUBS_KEY, isClubs) ?? [];
+  return (read(CLUBS_KEY, isClubs) ?? []).map((club) => normalizeClub(club, "local"));
 }
 
 export function saveClubs(clubs: Club[]): void {
-  write(CLUBS_KEY, clubs);
+  write(
+    CLUBS_KEY,
+    clubs.filter((club) => club.kind === "local"),
+  );
+}
+
+/** Shared clubs as last received from the Backend, so they show offline after a reload. */
+export function loadSharedClubs(): Club[] {
+  return (read(SHARED_CLUBS_KEY, isClubs) ?? []).map((club) => normalizeClub(club, "shared"));
+}
+
+export function saveSharedClubs(clubs: Club[]): void {
+  write(
+    SHARED_CLUBS_KEY,
+    clubs.filter((club) => club.kind === "shared"),
+  );
 }
 
 /**

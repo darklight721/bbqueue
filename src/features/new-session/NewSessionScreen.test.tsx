@@ -9,7 +9,7 @@ import {
   getClubs,
   getSession,
   resetStoreForTests,
-  setClubs,
+  setLocalClubs,
   setSession,
 } from "../../storage/store.ts";
 import { defaultSessionName } from "./newSession.ts";
@@ -17,6 +17,7 @@ import { defaultSessionName } from "./newSession.ts";
 const riverside: Club = {
   id: "c1",
   name: "Riverside",
+  kind: "local",
   players: [
     { id: "p1", name: "Zed", skill: "advanced" },
     { id: "p2", name: "amy", skill: "beginner" },
@@ -27,6 +28,7 @@ const riverside: Club = {
 const beacon: Club = {
   id: "c2",
   name: "Beacon",
+  kind: "local",
   players: [{ id: "b1", name: "Kim", skill: "advanced" }],
 };
 
@@ -105,7 +107,7 @@ describe("NewSessionScreen", () => {
   });
 
   it("pre-selects the only Club and lists its players alphabetically, unchecked", () => {
-    setClubs([riverside]);
+    setLocalClubs([riverside]);
     renderScreen();
     expect(clubSelect()).toHaveValue("c1");
     const list = within(screen.getByRole("region", { name: "Club players" }));
@@ -126,7 +128,7 @@ describe("NewSessionScreen", () => {
   });
 
   it("asks to choose when there are several Clubs", async () => {
-    setClubs([riverside, beacon]);
+    setLocalClubs([riverside, beacon]);
     renderScreen();
     expect(clubSelect()).toHaveValue("");
     expect(
@@ -140,7 +142,7 @@ describe("NewSessionScreen", () => {
   });
 
   it("blocks Start until a Club (or No club) is chosen when there are several Clubs", async () => {
-    setClubs([riverside, beacon]);
+    setLocalClubs([riverside, beacon]);
     renderScreen();
     const u = user();
     for (const name of ["Ann", "Bo", "Cy", "Di"]) await addGuest(name);
@@ -154,7 +156,7 @@ describe("NewSessionScreen", () => {
   });
 
   it("selects all / none and shows the count", async () => {
-    setClubs([riverside]);
+    setLocalClubs([riverside]);
     renderScreen();
     const u = user();
     await u.click(checkbox("Bob"));
@@ -166,7 +168,7 @@ describe("NewSessionScreen", () => {
   });
 
   it("clears ticks when the Club changes, keeping Guests", async () => {
-    setClubs([riverside, beacon]);
+    setLocalClubs([riverside, beacon]);
     renderScreen();
     const u = user();
     await u.selectOptions(clubSelect(), "c1");
@@ -185,7 +187,7 @@ describe("NewSessionScreen", () => {
   });
 
   it("offers Save to club, unchecked, when a Club is selected; blocks duplicate names", async () => {
-    setClubs([riverside]);
+    setLocalClubs([riverside]);
     renderScreen();
     expect(checkbox("Save to club")).not.toBeChecked();
     await addGuest("ZED");
@@ -199,7 +201,7 @@ describe("NewSessionScreen", () => {
   });
 
   it("flags a Guest whose name matches a Club player as 'Name taken' and blocks Start", async () => {
-    setClubs([riverside]);
+    setLocalClubs([riverside]);
     renderScreen();
     const u = user();
     await u.selectOptions(clubSelect(), "none");
@@ -245,7 +247,7 @@ describe("NewSessionScreen", () => {
   });
 
   it("follows the suggestion until the Point system is changed by hand", async () => {
-    setClubs([riverside]);
+    setLocalClubs([riverside]);
     renderScreen();
     const u = user();
     await u.click(checkbox("amy"));
@@ -271,7 +273,7 @@ describe("NewSessionScreen", () => {
   });
 
   it("needs a name and at least 4 players to start", async () => {
-    setClubs([riverside]);
+    setLocalClubs([riverside]);
     renderScreen();
     const u = user();
     expect(startButton()).toBeDisabled();
@@ -301,7 +303,7 @@ describe("NewSessionScreen", () => {
   });
 
   it("creates the Session, saves chosen Guests to the Club and opens it", async () => {
-    setClubs([riverside, beacon]);
+    setLocalClubs([riverside, beacon]);
     const location = renderScreen();
     const u = user();
     await u.selectOptions(clubSelect(), "c1");
@@ -343,7 +345,7 @@ describe("NewSessionScreen opened from a Club", () => {
   });
 
   it("locks the Club from ?club=: shown as a fixed value, its players listed", () => {
-    setClubs([riverside, beacon]);
+    setLocalClubs([riverside, beacon]);
     renderScreen("/sessions/new?club=c2");
     expect(screen.queryByRole("combobox", { name: "Club" })).not.toBeInTheDocument();
     const locked = screen.getByRole("textbox", { name: "Club" });
@@ -355,7 +357,7 @@ describe("NewSessionScreen opened from a Club", () => {
   });
 
   it("starts the Session for the locked Club", async () => {
-    setClubs([riverside, beacon]);
+    setLocalClubs([riverside, beacon]);
     renderScreen("/sessions/new?club=c1");
     for (const name of ["amy", "Bob", "Cat", "Zed"]) await user().click(checkbox(name));
     await user().click(startButton());
@@ -363,14 +365,14 @@ describe("NewSessionScreen opened from a Club", () => {
   });
 
   it("Back returns to the Club screen", async () => {
-    setClubs([riverside, beacon]);
+    setLocalClubs([riverside, beacon]);
     const location = renderScreen("/sessions/new?club=c1");
     await user().click(screen.getByRole("button", { name: "Back" }));
     expect(location.current()).toBe("/clubs/c1");
   });
 
   it("an unknown Club falls back to the normal picker, and Back goes Home", async () => {
-    setClubs([riverside, beacon]);
+    setLocalClubs([riverside, beacon]);
     const location = renderScreen("/sessions/new?club=nope");
     expect(clubSelect()).toHaveValue("");
     expect(screen.queryByRole("textbox", { name: "Club" })).not.toBeInTheDocument();

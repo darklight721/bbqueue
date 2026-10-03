@@ -1,5 +1,6 @@
-import type { Account } from "../domain/types.ts";
+import type { Account, Club } from "../domain/types.ts";
 import type { Backend, OnlineSource, SimulatedBackendOptions } from "./backend.ts";
+import type { ClubOp } from "./simulatedClubs.ts";
 import { createSimulatedBackend } from "./simulatedBackend.ts";
 
 export interface InMemoryBackend extends Backend {
@@ -13,6 +14,8 @@ export function createInMemoryBackend(
 ): InMemoryBackend {
   let account: Account | null = null;
   let reserved: string[] = [];
+  let clubs: Club[] = [];
+  let pendingOps: ClubOp[] = [];
   let isOnline = options.online ?? true;
   const onlineListeners = new Set<(online: boolean) => void>();
 
@@ -35,6 +38,14 @@ export function createInMemoryBackend(
       loadReservedIds: () => reserved,
       saveReservedIds: (ids) => {
         reserved = ids;
+      },
+      loadClubs: () => clubs,
+      saveClubs: (next) => {
+        clubs = next;
+      },
+      loadPendingOps: () => pendingOps,
+      savePendingOps: (ops) => {
+        pendingOps = ops;
       },
     },
     { ...options, online },

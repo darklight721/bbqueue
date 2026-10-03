@@ -1,0 +1,99 @@
+rules_version = '2';
+
+// Security Rules for what exists so far (tickets 02 and 04). The rules tests run on the Firebase
+// emulator and are not written yet. See .scratch/accounts/issues/04-shared-clubs-creator.md.
+//
+// Data (see src/backend/firebaseBackend.ts and firebaseClubs.ts):
+//   accounts/{uid}                    { accountId, name, createdAt }
+//   accountIds/{normalised id}        { uid }     reserves an Account ID
+//   clubs/{clubId}                    { name, memberAccountIds, organizerAccountIds, createdAt }
+//   clubs/{clubId}/players/{playerId} { name, skill, link?: { accountId, role } }
+//
+// `memberAccountIds` and `organizerAccountIds` are an index derived from the rows' links (lowercase
+// Account IDs): they let an Account list its Clubs and let these rules see who may read and write.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // The Account ID (lowercase) of the signed-in person.
+    function myAccountId() {
+      return get(/databases/$(database)/documents/accounts/$(request.auth.uid)).data.accountId.lower();
+    }
+
+    // --- Accounts -------------------------------------------------------------------------
+
+    // An Account can only be read and written by the device it belongs to. Its Account ID never
+    // changes, and it must have been reserved in the same write.
+    match /accounts/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['accountId', 'name', 'createdAt'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && getAfter(/databases/$(database)/documents/accountIds/$(request.resource.data.accountId.lower())).data.uid == uid;
+      allow update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.accountId == resource.data.accountId
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0;
+      allow delete: if signedIn() && request.auth.uid == uid;
+    }
+
+    // Account-ID records can be created once (by their owner) and never overwritten.
+    match /accountIds/{accountId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && accountId == accountId.lower()
+        && request.resource.data.keys().hasOnly(['uid'])
+        && request.resource.data.uid == request.auth.uid;
+      allow update: if false;
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    // --- Shared clubs ---------------------------------------------------------------------
+
+    match /clubs/{clubId} {
+      // Only Accounts linked to the Club can read it.
+      allow read: if signedIn() && myAccountId() in resource.data.memberAccountIds;
+
+      // Anyone signed in with an Account can create a Club, as its only member and Organizer.
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['name', 'memberAccountIds', 'organizerAccountIds', 'createdAt'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.memberAccountIds == [myAccountId()]
+        && request.resource.data.organizerAccountIds == [myAccountId()];
+
+      // Only Organizers write it; for now only the name can change (Roles arrive with ticket 05).
+      allow update: if signedIn()
+        && myAccountId() in resource.data.organizerAccountIds
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0;
+      allow delete: if signedIn() && myAccountId() in resource.data.organizerAccountIds;
+
+      // One record per Club player.
+      match /players/{playerId} {
+        allow read: if signedIn()
+          && myAccountId() in get(/databases/$(database)/documents/clubs/$(clubId)).data.memberAccountIds;
+
+        // Organizers write rows. For a new Club the Club is created in the same batch, so look at
+        // how it is after the write. Links to Accounts can't be set yet (ticket 05), except the
+        // creator's own Organizer row.
+        allow create, update: if signedIn()
+          && myAccountId() in getAfter(/databases/$(database)/documents/clubs/$(clubId)).data.organizerAccountIds
+          && request.resource.data.keys().hasOnly(['name', 'skill', 'link'])
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.skill in ['beginner', 'intermediate', 'advanced']
+          && (!('link' in request.resource.data)
+              || (request.resource.data.link.accountId.lower() == myAccountId()
+                  && request.resource.data.link.role == 'organizer'));
+        allow delete: if signedIn()
+          && myAccountId() in get(/databases/$(database)/documents/clubs/$(clubId)).data.organizerAccountIds;
+      }
+    }
+  }
+}

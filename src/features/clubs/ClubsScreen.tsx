@@ -1,5 +1,6 @@
 import { useId, useMemo } from "react";
 import { Link } from "wouter";
+import { getBackend } from "../../backend/index.ts";
 import { ChevronRightIcon, PlusIcon, UsersIcon } from "../../components/icons.tsx";
 import { Screen } from "../../components/Screen.tsx";
 import type { Club } from "../../domain/types.ts";
@@ -32,6 +33,8 @@ export function ClubsScreen() {
 function ClubRow({ club, index }: { club: Club; index: number }) {
   const nameId = useId();
   const countId = useId();
+  // Without a backend every Club is on this device, so there is nothing to tell apart.
+  const deviceOnly = club.kind === "local" && getBackend() !== null;
   const initial = club.name.trim().charAt(0).toLocaleUpperCase() || "?";
   return (
     <Link
@@ -54,6 +57,9 @@ function ClubRow({ club, index }: { club: Club; index: number }) {
         <span id={countId} className="text-sm text-base-content/65">
           {playerCountLabel(club.players.length)}
         </span>
+        {deviceOnly ? (
+          <span className="text-xs font-semibold text-base-content/55">This device only</span>
+        ) : null}
       </span>
       <ChevronRightIcon className="size-6 shrink-0 opacity-50 transition-transform group-hover:translate-x-0.5" />
     </Link>

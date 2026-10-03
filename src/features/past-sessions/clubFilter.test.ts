@@ -34,7 +34,7 @@ function ended(
   };
 }
 
-const club = (id: string, name: string): Club => ({ id, name, players: [] });
+const club = (id: string, name: string): Club => ({ id, name, kind: "local", players: [] });
 
 describe("buildClubFilterOptions", () => {
   it("is only All clubs when there are no sessions", () => {

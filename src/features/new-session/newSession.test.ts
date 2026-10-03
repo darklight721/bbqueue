@@ -15,6 +15,7 @@ import {
 const club = (id: string, names: string[] = []): Club => ({
   id,
   name: id,
+  kind: "local",
   players: names.map((name, index) => ({ id: `${id}-${index}`, name, skill: "intermediate" })),
 });
 

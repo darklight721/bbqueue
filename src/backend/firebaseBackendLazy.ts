@@ -43,5 +43,19 @@ export function createLazyFirebaseBackend(config: FirebaseOptions): Backend {
       observeWhenLoaded((backend) => backend.observeCurrentAccount(listener)),
     createAccount: (name) => loaded.then((backend) => backend.createAccount(name)),
     renameAccount: (name) => loaded.then((backend) => backend.renameAccount(name)),
+
+    // Shared clubs
+    observeSharedClubs: (listener) =>
+      observeWhenLoaded((backend) => backend.observeSharedClubs(listener)),
+    createSharedClub: (input) => loaded.then((backend) => backend.createSharedClub(input)),
+    renameSharedClub: (clubId, name) =>
+      loaded.then((backend) => backend.renameSharedClub(clubId, name)),
+    deleteSharedClub: (clubId) => loaded.then((backend) => backend.deleteSharedClub(clubId)),
+    addClubPlayer: (clubId, player) =>
+      loaded.then((backend) => backend.addClubPlayer(clubId, player)),
+    updateClubPlayer: (clubId, playerId, patch) =>
+      loaded.then((backend) => backend.updateClubPlayer(clubId, playerId, patch)),
+    removeClubPlayer: (clubId, playerId) =>
+      loaded.then((backend) => backend.removeClubPlayer(clubId, playerId)),
   };
 }

@@ -20,15 +20,30 @@ export const DEFAULT_SKILL: SkillLevel = "intermediate";
 
 export type PointSystem = 21 | 31;
 
+/** What an Account may do in a Shared club (GLOSSARY: Role). */
+export type Role = "organizer" | "player";
+
+/** A Club player's link to an Account. Only linked Club players have a Role. */
+export interface AccountLink {
+  accountId: string;
+  role: Role;
+}
+
 export interface ClubPlayer {
   id: string;
   name: string;
   skill: SkillLevel;
+  /** The Account this Club player is, with its Role in the Club; absent when not linked. */
+  link?: AccountLink;
 }
+
+/** Local club: only on this device. Shared club: kept on the server (ADR-0006). */
+export type ClubKind = "local" | "shared";
 
 export interface Club {
   id: string;
   name: string;
+  kind: ClubKind;
   players: ClubPlayer[];
 }
 

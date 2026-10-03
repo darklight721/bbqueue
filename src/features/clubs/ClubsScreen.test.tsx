@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from "vite-plus/test";
 import { Router } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
 import type { Club } from "../../domain/types.ts";
-import { resetStoreForTests, setClubs } from "../../storage/store.ts";
+import { resetStoreForTests, setLocalClubs } from "../../storage/store.ts";
 import { ClubsScreen } from "./ClubsScreen.tsx";
 
 function player(id: string) {
@@ -37,12 +37,12 @@ describe("ClubsScreen", () => {
 
   it("lists Clubs alphabetically (ignoring case) with player counts", () => {
     const clubs: Club[] = [
-      { id: "c1", name: "riverside", players: [player("a"), player("b")] },
-      { id: "c2", name: "Abbey Road", players: [player("c")] },
-      { id: "c3", name: "Mill Lane", players: [] },
-      { id: "c4", name: "BEACON", players: [player("d"), player("e"), player("f")] },
+      { id: "c1", name: "riverside", kind: "local", players: [player("a"), player("b")] },
+      { id: "c2", name: "Abbey Road", kind: "local", players: [player("c")] },
+      { id: "c3", name: "Mill Lane", kind: "local", players: [] },
+      { id: "c4", name: "BEACON", kind: "local", players: [player("d"), player("e"), player("f")] },
     ];
-    setClubs(clubs);
+    setLocalClubs(clubs);
     renderScreen();
 
     const links = within(screen.getByRole("list")).getAllByRole("link");
@@ -67,7 +67,7 @@ describe("ClubsScreen", () => {
   });
 
   it("opens a Club when its row is tapped, and Back goes Home", async () => {
-    setClubs([{ id: "c9", name: "Riverside", players: [] }]);
+    setLocalClubs([{ id: "c9", name: "Riverside", kind: "local", players: [] }]);
     const location = renderScreen();
     await userEvent.click(screen.getByRole("link", { name: "Riverside" }));
     expect(location.history.at(-1)).toBe("/clubs/c9");

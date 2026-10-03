@@ -19,6 +19,8 @@ import { generateAccountId, normalizeAccountId } from "../domain/accountId.ts";
 import { normalizeName } from "../domain/validation.ts";
 import type { Account } from "../domain/types.ts";
 import { BackendError, MAX_ACCOUNT_ID_ATTEMPTS, browserOnline, type Backend } from "./backend.ts";
+import { createFirebaseClubs } from "./firebaseClubs.ts";
+import type { SharedClubsApi } from "./simulatedClubs.ts";
 
 /**
  * Firebase version of {@link Backend}: Anonymous Auth + Firestore with the offline cache on.
@@ -44,7 +46,7 @@ export function createFirebaseBackend(
     return { accountId: data.accountId, name: data.name };
   }
 
-  return {
+  const backend: Omit<Backend, keyof SharedClubsApi> = {
     isOnline: () => browserOnline.get(),
     observeOnline: (listener) => browserOnline.subscribe(listener),
 
@@ -127,6 +129,14 @@ export function createFirebaseBackend(
         throw toBackendError(error);
       }
     },
+  };
+
+  return {
+    ...backend,
+    ...createFirebaseClubs(db, {
+      getAccount: () => backend.getCurrentAccount(),
+      observeAccount: (listener) => backend.observeCurrentAccount(listener),
+    }),
   };
 }
 

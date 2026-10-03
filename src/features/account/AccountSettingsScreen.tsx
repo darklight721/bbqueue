@@ -39,6 +39,7 @@ import { useOnline } from "./useOnline.ts";
 const RENAME_ERROR_MESSAGE: Record<Exclude<BackendErrorCode, "invalid-name">, string> = {
   offline: "You're offline. Connect and try again.",
   "no-account": "Couldn't find your Account. Try again later.",
+  "not-found": "Couldn't find your Account. Try again later.",
   "account-exists": "Couldn't save your name. Try again.",
   "id-unavailable": "Couldn't save your name. Try again.",
   failed: "Couldn't save your name. Try again.",

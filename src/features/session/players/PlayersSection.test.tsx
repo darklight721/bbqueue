@@ -15,7 +15,7 @@ import {
   getClubs,
   getSession,
   resetStoreForTests,
-  setClubs,
+  setLocalClubs,
   setSession,
 } from "../../../storage/store.ts";
 
@@ -192,8 +192,8 @@ describe("PlayersSection", () => {
   });
 
   it("saves a new player to the Session's Club when asked", async () => {
-    const club: Club = { id: "club-1", name: "Riverside", players: [] };
-    setClubs([club]);
+    const club: Club = { id: "club-1", name: "Riverside", kind: "local", players: [] };
+    setLocalClubs([club]);
     renderSession(makeSession({ clubId: "club-1", players: 4 }));
 
     const saveToClub = screen.getByRole("checkbox", { name: "Save to club" });

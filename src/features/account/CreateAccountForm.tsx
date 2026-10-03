@@ -11,6 +11,7 @@ const CREATE_ERROR_MESSAGE: Record<Exclude<BackendErrorCode, "invalid-name">, st
   "id-unavailable": "Couldn't find a free Account ID. Try again.",
   "account-exists": "This device already has an Account.",
   "no-account": "Couldn't create your Account. Try again.",
+  "not-found": "Couldn't create your Account. Try again.",
   failed: "Couldn't create your Account. Try again.",
 };
 

@@ -9,13 +9,14 @@ import {
   addEndedSession,
   getClubs,
   resetStoreForTests,
-  setClubs,
+  setLocalClubs,
   setSession,
 } from "../../storage/store.ts";
 
 const riverside: Club = {
   id: "c1",
   name: "Riverside",
+  kind: "local",
   players: [
     { id: "p1", name: "Zed", skill: "advanced" },
     { id: "p2", name: "alice", skill: "beginner" },
@@ -50,7 +51,7 @@ describe("ClubEditScreen", () => {
   });
 
   it("shows players alphabetically on open", () => {
-    setClubs([riverside]);
+    setLocalClubs([riverside]);
     renderAt("/clubs/c1");
     expect(screen.getByRole("heading", { level: 1, name: "Edit club" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Club name" })).toHaveValue("Riverside");
@@ -59,7 +60,7 @@ describe("ClubEditScreen", () => {
   });
 
   it("appends an empty Intermediate row, focuses it and keeps it in place", async () => {
-    setClubs([riverside]);
+    setLocalClubs([riverside]);
     renderAt("/clubs/c1");
     await userEvent.click(screen.getByRole("button", { name: "Add player" }));
     const added = nameInputs().at(-1)!;
@@ -81,7 +82,7 @@ describe("ClubEditScreen", () => {
   });
 
   it("Enter in a player name adds the next row, or moves to it", async () => {
-    setClubs([riverside]);
+    setLocalClubs([riverside]);
     renderAt("/clubs/c1");
     await userEvent.type(nameInputs()[0]!, "{Enter}");
     expect(nameInputs()[1]).toHaveFocus();
@@ -99,7 +100,7 @@ describe("ClubEditScreen", () => {
   });
 
   it("blocks Save on empty or duplicate Club names", async () => {
-    setClubs([riverside]);
+    setLocalClubs([riverside]);
     const location = renderAt("/clubs/new");
     expect(screen.getByRole("heading", { level: 1, name: "New club" })).toBeInTheDocument();
 
@@ -143,7 +144,7 @@ describe("ClubEditScreen", () => {
   });
 
   it("saves normalised names and returns to the Clubs list", async () => {
-    setClubs([riverside]);
+    setLocalClubs([riverside]);
     const location = renderAt("/clubs/c1");
     const clubName = screen.getByRole("textbox", { name: "Club name" });
     await userEvent.clear(clubName);
@@ -174,7 +175,9 @@ describe("ClubEditScreen", () => {
     await userEvent.type(screen.getByRole("textbox", { name: "Club name" }), "Beacon");
     await save();
     expect(location.current()).toBe("/clubs");
-    expect(getClubs()).toEqual([{ id: expect.any(String), name: "Beacon", players: [] }]);
+    expect(getClubs()).toEqual([
+      { id: expect.any(String), name: "Beacon", kind: "local", players: [] },
+    ]);
   });
 
   it("hides Delete club on New club", () => {
@@ -183,7 +186,7 @@ describe("ClubEditScreen", () => {
   });
 
   it("deletes after confirming", async () => {
-    setClubs([riverside]);
+    setLocalClubs([riverside]);
     const location = renderAt("/clubs/c1");
     await userEvent.click(screen.getByRole("button", { name: "Delete club" }));
     const dialog = screen.getByRole("dialog", { name: "Delete Riverside?" });
@@ -199,7 +202,7 @@ describe("ClubEditScreen", () => {
   });
 
   it("leaves straight away when nothing changed", async () => {
-    setClubs([riverside]);
+    setLocalClubs([riverside]);
     const location = renderAt("/clubs/c1");
     await userEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -207,7 +210,7 @@ describe("ClubEditScreen", () => {
   });
 
   it("asks before discarding changes", async () => {
-    setClubs([riverside]);
+    setLocalClubs([riverside]);
     const location = renderAt("/clubs/c1");
     await userEvent.type(nameInputs()[0]!, "!");
 
@@ -257,7 +260,7 @@ describe("ClubEditScreen sessions link", () => {
   });
 
   it("is hidden without Ended sessions of this Club and on New club", () => {
-    setClubs([riverside]);
+    setLocalClubs([riverside]);
     addEndedSession(endedFor("other", "c2"));
     renderAt("/clubs/c1");
     expect(screen.queryByRole("link", { name: "Sessions" })).not.toBeInTheDocument();
@@ -269,7 +272,7 @@ describe("ClubEditScreen sessions link", () => {
   });
 
   it("shows the count and opens the Club's sessions", async () => {
-    setClubs([riverside]);
+    setLocalClubs([riverside]);
     addEndedSession(endedFor("a", "c1"));
     addEndedSession(endedFor("bb", "c1"));
     addEndedSession(endedFor("other", "c2"));
@@ -283,7 +286,7 @@ describe("ClubEditScreen sessions link", () => {
   });
 
   it("uses the singular for one session", () => {
-    setClubs([riverside]);
+    setLocalClubs([riverside]);
     addEndedSession(endedFor("a", "c1"));
     renderAt("/clubs/c1");
     expect(screen.getByRole("link", { name: "Sessions" })).toHaveAccessibleDescription(
@@ -292,7 +295,7 @@ describe("ClubEditScreen sessions link", () => {
   });
 
   it("asks before discarding unsaved changes", async () => {
-    setClubs([riverside]);
+    setLocalClubs([riverside]);
     addEndedSession(endedFor("a", "c1"));
     const location = renderAt("/clubs/c1");
     await userEvent.type(nameInputs()[0]!, "!");
@@ -313,7 +316,7 @@ describe("ClubEditScreen sessions link", () => {
   });
 
   it("goes straight there when nothing changed", async () => {
-    setClubs([riverside]);
+    setLocalClubs([riverside]);
     addEndedSession(endedFor("a", "c1"));
     const location = renderAt("/clubs/c1");
     await userEvent.click(screen.getByRole("link", { name: "Sessions" }));
@@ -346,7 +349,7 @@ describe("ClubEditScreen session link", () => {
   });
 
   it("reads 'New session' and opens New session for this Club", async () => {
-    setClubs([riverside]);
+    setLocalClubs([riverside]);
     const location = renderAt("/clubs/c1");
     const link = screen.getByRole("link", { name: "New session" });
     expect(link).toHaveAccessibleDescription("Pick players and courts");
@@ -357,7 +360,7 @@ describe("ClubEditScreen session link", () => {
   });
 
   it("warns that New session replaces another Club's Active session", () => {
-    setClubs([riverside]);
+    setLocalClubs([riverside]);
     setSession(activeFor("c2"));
     renderAt("/clubs/c1");
     expect(screen.getByRole("link", { name: "New session" })).toHaveAccessibleDescription(
@@ -366,7 +369,7 @@ describe("ClubEditScreen session link", () => {
   });
 
   it("reads 'Open active session' when this Club has the Active session", async () => {
-    setClubs([riverside]);
+    setLocalClubs([riverside]);
     setSession(activeFor("c1"));
     const location = renderAt("/clubs/c1");
     expect(screen.queryByRole("link", { name: "New session" })).not.toBeInTheDocument();
@@ -384,7 +387,7 @@ describe("ClubEditScreen session link", () => {
   });
 
   it("asks before discarding unsaved changes", async () => {
-    setClubs([riverside]);
+    setLocalClubs([riverside]);
     const location = renderAt("/clubs/c1");
     await userEvent.type(nameInputs()[0]!, "!");
     await userEvent.click(screen.getByRole("link", { name: "New session" }));

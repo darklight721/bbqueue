@@ -1,4 +1,4 @@
-import { setAccount } from "../storage/store.ts";
+import { setAccount, setSharedClubs } from "../storage/store.ts";
 import type { Backend } from "./backend.ts";
 import { createLazyFirebaseBackend, firebaseConfigFromEnv } from "./firebaseBackendLazy.ts";
 import { createLocalFakeBackend } from "./localFakeBackend.ts";
@@ -46,4 +46,10 @@ export function setBackendForTests(backend: Backend | null): void {
 export function startAccountSync(backend: Backend | null = getBackend()): () => void {
   if (!backend) return () => {};
   return backend.observeCurrentAccount(setAccount);
+}
+
+/** Keep the store's Shared clubs in step with the Backend (and so cached on the device). Call once at startup. */
+export function startSharedClubSync(backend: Backend | null = getBackend()): () => void {
+  if (!backend) return () => {};
+  return backend.observeSharedClubs(setSharedClubs);
 }

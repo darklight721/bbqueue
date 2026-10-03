@@ -2,7 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { displayClubName } from "./clubName.ts";
 import type { Club } from "./types.ts";
 
-const clubs: Club[] = [{ id: "c1", name: "Riverside", players: [] }];
+const clubs: Club[] = [{ id: "c1", name: "Riverside", kind: "local", players: [] }];
 
 describe("displayClubName", () => {
   it("uses the Club's current name while the Club exists", () => {

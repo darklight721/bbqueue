@@ -1,4 +1,5 @@
 import { useId, useMemo, useState } from "react";
+import { saveClubs } from "../../../backend/clubs.ts";
 import { AddPlayerForm, type NewPlayer } from "../../../components/AddPlayerForm.tsx";
 import { ConfirmDialog } from "../../../components/ConfirmDialog.tsx";
 import { ChevronDownIcon, CloseIcon } from "../../../components/icons.tsx";
@@ -6,7 +7,7 @@ import { addPlayer, removePlayer, setSittingOut } from "../../../domain/engine/i
 import { newId } from "../../../domain/ids.ts";
 import type { ClubPlayer, SessionPlayer } from "../../../domain/types.ts";
 import { namesEqual, normalizeName } from "../../../domain/validation.ts";
-import { getClubs, setClubs } from "../../../storage/store.ts";
+import { getClubs } from "../../../storage/store.ts";
 import { useSessionActions, useSessionView } from "../context.ts";
 import { SessionPlayerChip } from "../PlayerViews.tsx";
 import { messageForReason } from "../reasons.ts";
@@ -256,7 +257,8 @@ function AddSessionPlayer() {
     if (!ok) return;
     if (club && added) {
       const newPlayer = added;
-      setClubs(
+      saveClubs(
+        clubs,
         clubs.map((c) => (c.id === club.id ? { ...c, players: [...c.players, newPlayer] } : c)),
       );
     }

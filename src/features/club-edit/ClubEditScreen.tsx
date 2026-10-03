@@ -8,16 +8,25 @@ import {
   type ReactNode,
 } from "react";
 import { Link, Redirect, useLocation } from "wouter";
+import {
+  createClub,
+  createsSharedClubs,
+  deleteClub as removeClub,
+  saveClub,
+  useBackendOnline,
+} from "../../backend/clubs.ts";
+import { getBackend } from "../../backend/index.ts";
 import { ConfirmDialog } from "../../components/ConfirmDialog.tsx";
 import { ChevronRightIcon, HistoryIcon, PlayIcon, PlusIcon } from "../../components/icons.tsx";
 import { blurOnEnter } from "../../components/keyboard.ts";
 import { NAME_ERROR_MESSAGE } from "../../components/nameErrors.ts";
 import { PlayerRowEditor } from "../../components/PlayerRowEditor.tsx";
 import { Screen } from "../../components/Screen.tsx";
+import { roleInClub } from "../../domain/clubChanges.ts";
 import { newId } from "../../domain/ids.ts";
 import { DEFAULT_SKILL, type Club } from "../../domain/types.ts";
 import { hasClubErrors, validateClub } from "../../domain/validation.ts";
-import { getClubs, setClubs, useClubs, useEndedSessions, useSession } from "../../storage/store.ts";
+import { useAccount, useClubs, useEndedSessions, useSession } from "../../storage/store.ts";
 import { newSessionForClubPath } from "../new-session/newSession.ts";
 import { countLabel } from "../session-summary/summaryFormat.ts";
 import { clubFromForm, formFromClub, formSignature, type ClubForm } from "./clubForm.ts";
@@ -39,6 +48,16 @@ function ClubEditor({ club }: { club: Club | null }) {
   const isNew = club === null;
   const sessionCount = club ? endedSessions.filter((ended) => ended.clubId === club.id).length : 0;
 
+  const account = useAccount();
+  const online = useBackendOnline();
+  const hasBackend = getBackend() !== null;
+  // A Shared club's rows are separate records: adding one needs a connection.
+  const addBlocked = club?.kind === "shared" && online === false;
+  const canDelete =
+    club?.kind !== "shared" ||
+    (account !== null && roleInClub(club, account.accountId) === "organizer");
+
+  const [initialClub] = useState(club);
   const [initial] = useState(() => formFromClub(club));
   const [form, setForm] = useState<ClubForm>(initial);
   const [attempted, setAttempted] = useState(false);
@@ -103,6 +122,7 @@ function ClubEditor({ club }: { club: Club | null }) {
   }
 
   function addRow() {
+    if (addBlocked) return;
     const id = newId();
     setForm((current) => ({
       ...current,
@@ -131,20 +151,18 @@ function ClubEditor({ club }: { club: Club | null }) {
       setSaveTick((tick) => tick + 1);
       return;
     }
-    const saved = clubFromForm(club?.id ?? newId(), form);
-    const latest = getClubs();
-    setClubs(
-      isNew
-        ? [...latest, saved]
-        : latest.map((existing) => (existing.id === saved.id ? saved : existing)),
-    );
+    if (initialClub) {
+      saveClub(initialClub, clubFromForm(initialClub.id, initialClub.kind, form));
+    } else {
+      createClub(clubFromForm(newId(), createsSharedClubs() ? "shared" : "local", form));
+    }
     navigate("/clubs", { replace: true });
   }
 
   function deleteClub() {
     if (!club) return;
     setConfirmDelete(false);
-    setClubs(getClubs().filter((existing) => existing.id !== club.id));
+    removeClub(club);
     navigate("/clubs", { replace: true });
   }
 
@@ -172,6 +190,7 @@ function ClubEditor({ club }: { club: Club | null }) {
   return (
     <Screen
       title={isNew ? "New club" : "Edit club"}
+      subtitle={club?.kind === "local" && hasBackend ? "This device only" : undefined}
       backTo="/clubs"
       onBack={guardBack}
       footer={
@@ -181,10 +200,16 @@ function ClubEditor({ club }: { club: Club | null }) {
               Fix the highlighted fields to save.
             </p>
           ) : null}
+          {addBlocked ? (
+            <p className="text-center text-sm text-base-content/70">
+              You're offline. Adding players needs a connection.
+            </p>
+          ) : null}
           <div className="grid grid-cols-2 gap-3">
             <button
               type="button"
               className="btn btn-lg btn-outline border-base-300"
+              disabled={addBlocked}
               onClick={addRow}
             >
               <PlusIcon className="size-5" />
@@ -280,7 +305,8 @@ function ClubEditor({ club }: { club: Club | null }) {
                   <PlayerRowEditor
                     value={{ name: row.name, skill: row.skill }}
                     onChange={(value) => updateRow(row.id, value)}
-                    onRemove={() => removeRow(row.id)}
+                    // The Organizer's own row stays: a Shared club always has an Organizer.
+                    onRemove={row.link ? undefined : () => removeRow(row.id)}
                     error={shown?.players[index] ?? null}
                     autoFocus={row.id === focusRowId}
                     onEnter={() => enterFromRow(index)}
@@ -291,7 +317,7 @@ function ClubEditor({ club }: { club: Club | null }) {
           )}
         </section>
 
-        {!isNew ? (
+        {!isNew && canDelete ? (
           <div className="border-t border-base-300 pt-6">
             <button
               type="button"

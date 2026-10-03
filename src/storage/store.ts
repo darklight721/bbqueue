@@ -9,6 +9,7 @@ import {
   loadEndedSessions,
   loadInstallHintDismissed,
   loadSession,
+  loadSharedClubs,
   loadWelcomeDone,
   removeLegacySummary,
   saveAccount,
@@ -16,6 +17,7 @@ import {
   saveEndedSession,
   saveInstallHintDismissed,
   saveSession,
+  saveSharedClubs,
   saveWelcomeDone,
 } from "./storage.ts";
 
@@ -30,7 +32,8 @@ function createSlot<T>(initial: T): Slot<T> {
   return { loaded: false, value: initial, listeners: new Set() };
 }
 
-const clubsSlot = createSlot<Club[]>([]);
+const localClubsSlot = createSlot<Club[]>([]);
+const sharedClubsSlot = createSlot<Club[]>([]);
 const sessionSlot = createSlot<Session | null>(null);
 const endedSessionsSlot = createSlot<EndedSession[]>([]);
 const accountSlot = createSlot<Account | null>(null);
@@ -65,7 +68,16 @@ function subscribeTo(slot: Slot<unknown>) {
   };
 }
 
-const subscribeClubs = subscribeTo(clubsSlot);
+const subscribeLocalClubs = subscribeTo(localClubsSlot);
+const subscribeSharedClubs = subscribeTo(sharedClubsSlot);
+function subscribeClubs(listener: () => void) {
+  const stopLocal = subscribeLocalClubs(listener);
+  const stopShared = subscribeSharedClubs(listener);
+  return () => {
+    stopLocal();
+    stopShared();
+  };
+}
 const subscribeSession = subscribeTo(sessionSlot);
 const subscribeEndedSessions = subscribeTo(endedSessionsSlot);
 const subscribeAccount = subscribeTo(accountSlot);
@@ -77,7 +89,8 @@ if (typeof window !== "undefined") {
   removeLegacySummary();
   window.addEventListener("storage", (event) => {
     const all = event.key === null; // localStorage.clear()
-    if (all || event.key === STORAGE_KEYS.clubs) refresh(clubsSlot);
+    if (all || event.key === STORAGE_KEYS.clubs) refresh(localClubsSlot);
+    if (all || event.key === STORAGE_KEYS.sharedClubs) refresh(sharedClubsSlot);
     if (all || event.key === STORAGE_KEYS.session) refresh(sessionSlot);
     if (all || event.key === STORAGE_KEYS.endedSessions) refresh(endedSessionsSlot);
     if (all || event.key === STORAGE_KEYS.account) refresh(accountSlot);
@@ -91,12 +104,39 @@ function refresh(slot: Slot<unknown>): void {
   notify(slot);
 }
 
-export function getClubs(): Club[] {
-  return get(clubsSlot, loadClubs);
+/** Local clubs: only on this device. */
+export function getLocalClubs(): Club[] {
+  return get(localClubsSlot, loadClubs);
 }
 
-export function setClubs(clubs: Club[]): void {
-  set(clubsSlot, clubs, saveClubs);
+export function setLocalClubs(clubs: Club[]): void {
+  set(localClubsSlot, clubs, saveClubs);
+}
+
+/** Shared clubs as last received from the Backend (also cached on the device). */
+export function getSharedClubs(): Club[] {
+  return get(sharedClubsSlot, loadSharedClubs);
+}
+
+/**
+ * Called when the Backend reports the Account's Shared clubs. Edits to a Shared club never
+ * write here directly: they go out through the Backend, which reports back.
+ */
+export function setSharedClubs(clubs: Club[]): void {
+  if (JSON.stringify(clubs) === JSON.stringify(getSharedClubs())) return;
+  set(sharedClubsSlot, clubs, saveSharedClubs);
+}
+
+let merged: { local: Club[]; shared: Club[]; clubs: Club[] } | null = null;
+
+/** Every Club the UI shows: the device's Local clubs plus the Account's Shared clubs. */
+export function getClubs(): Club[] {
+  const local = getLocalClubs();
+  const shared = getSharedClubs();
+  if (merged?.local !== local || merged.shared !== shared) {
+    merged = { local, shared, clubs: [...local, ...shared] };
+  }
+  return merged.clubs;
 }
 
 export function useClubs(): Club[] {
@@ -176,7 +216,8 @@ export function useInstallHintDismissed(): boolean {
 /** Test helper: drop caches so the next read re-loads from localStorage. */
 export function resetStoreForTests(): void {
   for (const slot of [
-    clubsSlot,
+    localClubsSlot,
+    sharedClubsSlot,
     sessionSlot,
     endedSessionsSlot,
     accountSlot,

@@ -6,14 +6,17 @@ import {
   loadClubs,
   loadEndedSessions,
   loadSession,
+  loadSharedClubs,
   saveClubs,
   saveEndedSession,
   saveSession,
+  saveSharedClubs,
 } from "./storage.ts";
 
 const club: Club = {
   id: "c1",
   name: "Club",
+  kind: "local",
   players: [{ id: "p1", name: "Ann", skill: "intermediate" }],
 };
 
@@ -261,5 +264,72 @@ describe("storage failures", () => {
     expect(loadClubs()).toEqual([]);
     expect(loadSession()).toBeNull();
     expect(loadEndedSessions()).toEqual([]);
+  });
+});
+
+describe("Club kind and Account links", () => {
+  const envelope = (data: unknown) => JSON.stringify({ version: 1, data });
+
+  it("loads Clubs stored without a kind as Local clubs", () => {
+    localStorage.setItem(
+      "bq:v1:clubs",
+      envelope([
+        { id: "c1", name: "Old", players: [{ id: "p1", name: "Ann", skill: "beginner" }] },
+      ]),
+    );
+    expect(loadClubs()).toEqual([
+      {
+        id: "c1",
+        name: "Old",
+        kind: "local",
+        players: [{ id: "p1", name: "Ann", skill: "beginner" }],
+      },
+    ]);
+  });
+
+  it("never lets the Local clubs key hold a Shared club", () => {
+    saveClubs([club, { ...club, id: "c2", kind: "shared" }]);
+    expect(loadClubs().map((c) => c.id)).toEqual(["c1"]);
+    localStorage.setItem("bq:v1:clubs", envelope([{ ...club, id: "c3", kind: "shared" }]));
+    expect(loadClubs().map((c) => [c.id, c.kind])).toEqual([["c3", "local"]]);
+  });
+
+  it("keeps a valid Account link on a Club player and drops a broken one", () => {
+    localStorage.setItem(
+      "bq:v1:shared-clubs",
+      envelope([
+        {
+          id: "c1",
+          name: "Shared",
+          kind: "shared",
+          players: [
+            {
+              id: "p1",
+              name: "Roy",
+              skill: "intermediate",
+              link: { accountId: "roy-7k3f", role: "organizer" },
+            },
+            {
+              id: "p2",
+              name: "Bad",
+              skill: "intermediate",
+              link: { accountId: "x", role: "boss" },
+            },
+            { id: "p3", name: "None", skill: "intermediate" },
+          ],
+        },
+      ]),
+    );
+    const [loaded] = loadSharedClubs();
+    expect(loaded?.players[0]?.link).toEqual({ accountId: "roy-7k3f", role: "organizer" });
+    expect(loaded?.players[1]).toEqual({ id: "p2", name: "Bad", skill: "intermediate" });
+    expect(loaded?.players[2]).toEqual({ id: "p3", name: "None", skill: "intermediate" });
+  });
+
+  it("caches Shared clubs under their own key", () => {
+    const shared: Club = { ...club, id: "s1", kind: "shared" };
+    saveSharedClubs([shared, club]);
+    expect(loadSharedClubs()).toEqual([shared]);
+    expect(loadClubs()).toEqual([]);
   });
 });

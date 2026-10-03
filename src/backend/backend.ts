@@ -1,4 +1,5 @@
-import type { Account } from "../domain/types.ts";
+import type { Account, Club, ClubPlayer } from "../domain/types.ts";
+import type { ClubPlayerPatch } from "../domain/clubChanges.ts";
 
 export type BackendErrorCode =
   /** The action needs a connection and the device is offline. */
@@ -7,10 +8,12 @@ export type BackendErrorCode =
   | "account-exists"
   /** The name is empty. */
   | "invalid-name"
-  /** Every Account ID that was tried was already taken. */
-  | "id-unavailable"
   /** The action needs an Account and this device has none. */
   | "no-account"
+  /** The Club or Club player doesn't exist (any more). */
+  | "not-found"
+  /** Every Account ID that was tried was already taken. */
+  | "id-unavailable"
   | "failed";
 
 export class BackendError extends Error {
@@ -53,6 +56,30 @@ export interface Backend {
    * Resolves with the renamed Account; rejects with a {@link BackendError}.
    */
   renameAccount(name: string): Promise<Account>;
+
+  // --- Shared clubs (ADR-0006) -------------------------------------------------------------
+  //
+  // Each Club player row and the Club name are separate records, so the most recent change to
+  // each wins. Changes work offline: they show up in the observer straight away and sync when
+  // the connection is back. Adding a row is the exception: it needs a connection.
+
+  /**
+   * Calls `listener` with the Shared clubs the current Account is linked to (empty without an
+   * Account), right away and then on every change.
+   */
+  observeSharedClubs(listener: (clubs: Club[]) => void): Unsubscribe;
+  /**
+   * Creates a Shared club. The creator's Club player row (the Account's name, Intermediate,
+   * linked as Organizer) is added first, before `players`. Needs an Account.
+   */
+  createSharedClub(input: { id: string; name: string; players: ClubPlayer[] }): Promise<Club>;
+  renameSharedClub(clubId: string, name: string): Promise<void>;
+  /** Deletes the Club and its Club players. Organizer rules arrive with Roles (ticket 05). */
+  deleteSharedClub(clubId: string): Promise<void>;
+  /** Needs a connection: rejects with `offline` otherwise. */
+  addClubPlayer(clubId: string, player: ClubPlayer): Promise<void>;
+  updateClubPlayer(clubId: string, playerId: string, patch: ClubPlayerPatch): Promise<void>;
+  removeClubPlayer(clubId: string, playerId: string): Promise<void>;
 }
 
 /** How many Account IDs to try before giving up. */
