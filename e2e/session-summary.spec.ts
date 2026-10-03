@@ -50,10 +50,10 @@ test.describe("Totals", () => {
   const HOUR = 3_600_000;
   const MINUTE = 60_000;
   const durations: [string, number, string][] = [
-    ["hours and minutes", 2 * HOUR + 15 * MINUTE, "2 h 15 min"],
-    ["minutes only", 45 * MINUTE, "45 min"],
+    ["quarter past rounds up to the half", 2 * HOUR + 15 * MINUTE, "2.5 h"],
+    ["minutes only", 45 * MINUTE, "1 h"],
     ["whole hours", HOUR, "1 h"],
-    ["under a minute", 30_000, "Under 1 min"],
+    ["under a quarter hour", 10 * MINUTE, "0.5 h"],
   ];
   for (const [label, ms, expected] of durations) {
     test(`duration: ${label} → ${expected}`, async ({ page }) => {
@@ -289,7 +289,7 @@ test.describe("Full journey", () => {
     await expect(page.getByText("Journey night", { exact: true })).toBeVisible();
     await expect(stat(page, /^Matches$/)).toHaveText("2");
     await expect(stat(page, /^Players$/)).toHaveText("8");
-    await expect(stat(page, /^Duration$/)).toHaveText(/^(Under 1 min|\d+ min|\d+ h( \d+ min)?)$/);
+    await expect(stat(page, /^Duration$/)).toHaveText(/^\d+(\.5)? h$/);
 
     // The winning pair (Team A, 21–15) share 1st: one scored match each.
     const rows = winnerRows(page);

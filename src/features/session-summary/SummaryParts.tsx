@@ -16,8 +16,7 @@ const MEDAL: Record<number, { bg: string; ring: string }> = {
 /**
  * Matches, Players and Duration as three number tiles on one row at every width.
  * The list is its own size container: numbers, labels and spacing scale with its width
- * (so a 320px phone and the phone-width shared image both fit "12 h 45 min" on one line).
- * Duration gets a wider column since it holds the longest value.
+ * (so a 320px phone and the phone-width shared image both fit "12.5 h" on one line).
  */
 export function Totals({ summary }: { summary: SessionSummary }) {
   const tiles = [
@@ -26,7 +25,7 @@ export function Totals({ summary }: { summary: SessionSummary }) {
     { label: "Duration", value: formatSessionDuration(summary.endedAt - summary.startedAt) },
   ];
   return (
-    <dl className="@container grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.3fr)] gap-[clamp(0.5rem,2.5cqw,0.75rem)]">
+    <dl className="@container grid grid-cols-3 gap-[clamp(0.5rem,2.5cqw,0.75rem)]">
       {tiles.map((tile, index) => (
         <div
           key={tile.label}
@@ -46,13 +45,13 @@ export function Totals({ summary }: { summary: SessionSummary }) {
 }
 
 /**
- * Numbers at full size, words ("h", "min", "Under") smaller so a duration fits its tile.
- * The text stays the same ("2 h 15 min"); only the look changes.
+ * Numbers at full size, the unit ("h") smaller.
+ * The text stays the same ("2.5 h"); only the look changes.
  */
 function TotalValue({ value }: { value: string }) {
-  const parts = value.split(/(\d+)/).filter((part) => part !== "");
+  const parts = value.split(/(\d+(?:\.\d+)?)/).filter((part) => part !== "");
   return parts.map((part, index) =>
-    /^\d+$/.test(part) ? (
+    /^\d+(?:\.\d+)?$/.test(part) ? (
       <span key={index}>{part}</span>
     ) : (
       <span

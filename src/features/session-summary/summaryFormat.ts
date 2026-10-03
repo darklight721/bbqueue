@@ -1,14 +1,9 @@
 import type { CSSProperties } from "react";
 
-/** "2 h 15 min", "45 min", "1 h"; whole minutes (rounded); under a minute → "Under 1 min". */
+/** Hours rounded to the nearest half hour: "2.5 h", "1 h"; never less than "0.5 h". */
 export function formatSessionDuration(ms: number): string {
-  if (!Number.isFinite(ms) || ms < 60_000) return "Under 1 min";
-  const totalMinutes = Math.round(ms / 60_000);
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  if (hours === 0) return `${minutes} min`;
-  if (minutes === 0) return `${hours} h`;
-  return `${hours} h ${minutes} min`;
+  const halfHours = Number.isFinite(ms) ? Math.round(ms / 1_800_000) : 0;
+  return `${Math.max(halfHours, 1) / 2} h`;
 }
 
 /** 1 → "1st", 2 → "2nd", 3 → "3rd", 4 → "4th" … */

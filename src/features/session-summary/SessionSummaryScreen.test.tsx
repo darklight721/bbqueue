@@ -96,16 +96,17 @@ function renderAt(path = "/sessions/s1/summary") {
 }
 
 describe("formatSessionDuration", () => {
-  it("formats hours and minutes", () => {
-    expect(formatSessionDuration(135 * MIN)).toBe("2 h 15 min");
-    expect(formatSessionDuration(45 * MIN)).toBe("45 min");
+  it("rounds to the nearest half hour, at least 0.5 h", () => {
+    expect(formatSessionDuration(135 * MIN)).toBe("2.5 h");
+    expect(formatSessionDuration(134 * MIN)).toBe("2 h");
+    expect(formatSessionDuration(45 * MIN)).toBe("1 h");
+    expect(formatSessionDuration(44 * MIN)).toBe("0.5 h");
     expect(formatSessionDuration(60 * MIN)).toBe("1 h");
-    expect(formatSessionDuration(119.6 * MIN)).toBe("2 h");
-    expect(formatSessionDuration(89.4 * MIN)).toBe("1 h 29 min");
-    expect(formatSessionDuration(61_000)).toBe("1 min");
-    expect(formatSessionDuration(59_999)).toBe("Under 1 min");
-    expect(formatSessionDuration(0)).toBe("Under 1 min");
-    expect(formatSessionDuration(-5 * MIN)).toBe("Under 1 min");
+    expect(formatSessionDuration(100 * MIN)).toBe("1.5 h");
+    expect(formatSessionDuration(5 * MIN)).toBe("0.5 h");
+    expect(formatSessionDuration(0)).toBe("0.5 h");
+    expect(formatSessionDuration(-5 * MIN)).toBe("0.5 h");
+    expect(formatSessionDuration(Number.NaN)).toBe("0.5 h");
   });
 
   it("writes ordinals", () => {
@@ -147,7 +148,7 @@ describe("SessionSummaryScreen", () => {
         .getAllByRole("term")
         .map((term) => [term.textContent, term.nextElementSibling?.textContent]),
     );
-    expect(totals).toEqual({ Matches: "7", Players: "8", Duration: "2 h 15 min" });
+    expect(totals).toEqual({ Matches: "7", Players: "8", Duration: "2.5 h" });
   });
 
   it("lists top winners with shared places, showing everyone placed 3rd or better", () => {
