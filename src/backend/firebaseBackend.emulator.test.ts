@@ -6,7 +6,7 @@ import { adminGetDoc, adminSetDoc, clearEmulator } from "../test/emulatorAdmin.t
 import { runSharedClubsContract } from "./backend.clubs.contract.ts";
 import { runRolesContract } from "./backend.roles.contract.ts";
 import { runBackendContract, type ContractOptions } from "./backend.contract.ts";
-import type { Backend, OnlineSource } from "./backend.ts";
+import type { Backend, BackendError, OnlineSource } from "./backend.ts";
 import { createFirebaseBackend } from "./firebaseBackend.ts";
 import { FIREBASE_EMULATOR_CONFIG } from "./firebaseEmulator.ts";
 
@@ -107,6 +107,79 @@ describe("Firebase emulator: what reaches the server", () => {
     const reservation = await adminGetDoc(`accountIds/${account.accountId.toLowerCase()}`);
     const stored = await adminGetDoc(`accounts/${reservation!.uid as string}`);
     expect(stored).toMatchObject({ accountId: account.accountId, name: "Roy Smith" });
+  });
+
+  it("identifies people by uid: the Club's lists and every link hold the uid, and the Account ID for display", async () => {
+    const roy = createDevice();
+    const ana = createDevice();
+    const royAccount = await roy.backend.createAccount("Roy");
+    const anaAccount = await ana.backend.createAccount("Ana");
+    const royUid = (await adminGetDoc(`accountIds/${royAccount.accountId.toLowerCase()}`))!
+      .uid as string;
+    const anaUid = (await adminGetDoc(`accountIds/${anaAccount.accountId.toLowerCase()}`))!
+      .uid as string;
+
+    await roy.backend.createSharedClub({
+      id: "c1",
+      name: "Tuesday",
+      players: [{ id: "p-cat", name: "Cat", skill: "beginner" }],
+    });
+    expect(await adminGetDoc("clubs/c1")).toMatchObject({
+      memberUids: [royUid],
+      organizerUids: [royUid],
+    });
+
+    await roy.backend.linkClubPlayer(
+      "c1",
+      "p-cat",
+      anaAccount.accountId.toUpperCase(),
+      "organizer",
+    );
+    expect(await adminGetDoc("clubs/c1")).toMatchObject({
+      memberUids: [royUid, anaUid],
+      organizerUids: [royUid, anaUid],
+    });
+    expect((await adminGetDoc("clubs/c1/players/p-cat"))?.link).toEqual({
+      accountId: anaAccount.accountId,
+      uid: anaUid,
+      role: "organizer",
+    });
+  });
+
+  it("only finds an Account through a reservation that agrees with the Account", async () => {
+    const roy = createDevice();
+    await roy.backend.createAccount("Roy");
+    const ana = createDevice();
+    const anaAccount = await ana.backend.createAccount("Ana");
+    const anaUid = (await adminGetDoc(`accountIds/${anaAccount.accountId.toLowerCase()}`))!
+      .uid as string;
+
+    // A reservation for another Account ID that points at Ana doesn't make Ana findable by it.
+    await adminSetDoc("accountIds/ghost-2222", { uid: anaUid });
+    expect(await roy.backend.lookupAccount("ghost-2222")).toBeNull();
+    expect(await roy.backend.lookupAccount(anaAccount.accountId)).toEqual(anaAccount);
+  });
+
+  it("lets somebody leave a Club whose lists have them but whose rows don't link them", async () => {
+    const roy = createDevice();
+    const ana = createDevice();
+    const royAccount = await roy.backend.createAccount("Roy");
+    const anaAccount = await ana.backend.createAccount("Ana");
+    const uid = async (accountId: string) =>
+      (await adminGetDoc(`accountIds/${accountId.toLowerCase()}`))!.uid as string;
+    await adminSetDoc("clubs/c1", {
+      name: "Tuesday",
+      memberUids: [await uid(royAccount.accountId), await uid(anaAccount.accountId)],
+      organizerUids: [await uid(royAccount.accountId)],
+    });
+    await adminSetDoc("clubs/c1/players/p-cat", { name: "Cat", skill: "beginner" });
+
+    await ana.backend.leaveClub("c1");
+    expect((await adminGetDoc("clubs/c1"))?.memberUids).toEqual([await uid(royAccount.accountId)]);
+
+    // The only Organizer without a linked row still can't leave.
+    const error = await roy.backend.leaveClub("c1").catch((caught: unknown) => caught);
+    expect((error as BackendError).code).toBe("last-organizer");
   });
 
   it("sends changes made offline once the connection is back, the latest change to a row winning", async () => {

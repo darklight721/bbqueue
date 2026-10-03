@@ -435,7 +435,9 @@ function ClubEditor({ club }: { club: Club | null }) {
           />
           {shown?.name ? (
             <p id={nameErrorId} className="pl-1 text-sm font-semibold text-error">
-              {shown.name === "duplicate" ? "Club name already used" : NAME_ERROR_MESSAGE.required}
+              {shown.name === "duplicate"
+                ? "Club name already used"
+                : NAME_ERROR_MESSAGE[shown.name]}
             </p>
           ) : null}
         </div>

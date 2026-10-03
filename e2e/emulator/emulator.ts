@@ -51,32 +51,52 @@ export async function serverAccountFor(accountId: string) {
   return account ? { uid: reservation.uid as string, ...account } : null;
 }
 
+/** The uid that owns an Account ID on the server (the Account must exist). */
+async function uidOf(accountId: string): Promise<string> {
+  const reservation = await adminGetDoc(`accountIds/${accountId.toLowerCase()}`);
+  if (!reservation) throw new Error(`No Account on the server has the Account ID ${accountId}`);
+  return reservation.uid as string;
+}
+
 /**
- * Put a Shared club on the server, with Security Rules out of the way. The member and Organizer
- * lists are worked out from the rows' links, like the app does.
+ * Put a Shared club on the server, with Security Rules out of the way. Every linked Account must
+ * exist (see `signUp`). The member and Organizer lists (of uids) are worked out from the rows'
+ * links, like the app does.
  */
 export async function seedSharedClub(club: Club): Promise<void> {
-  const linked = club.players.flatMap((player) => (player.link ? [player.link] : []));
-  const lower = (ids: string[]) => ids.map((id) => id.toLowerCase());
+  const linked = await Promise.all(
+    club.players.flatMap((player) =>
+      player.link
+        ? [uidOf(player.link.accountId).then((uid) => ({ playerId: player.id, uid }))]
+        : [],
+    ),
+  );
+  const uidOfRow = new Map(linked.map(({ playerId, uid }) => [playerId, uid]));
   await adminSetDoc(`clubs/${club.id}`, {
     name: club.name,
-    memberAccountIds: lower(linked.map((link) => link.accountId)),
-    organizerAccountIds: lower(
-      linked.filter((link) => link.role === "organizer").map((link) => link.accountId),
-    ),
+    memberUids: linked.map(({ uid }) => uid),
+    organizerUids: club.players
+      .filter((player) => player.link?.role === "organizer")
+      .map((player) => uidOfRow.get(player.id)!),
   });
   for (const player of club.players) {
     await adminSetDoc(`clubs/${club.id}/players/${player.id}`, {
       name: player.name,
       skill: player.skill,
       ...(player.link
-        ? { link: { accountId: player.link.accountId, role: player.link.role } }
+        ? {
+            link: {
+              accountId: player.link.accountId,
+              uid: uidOfRow.get(player.id)!,
+              role: player.link.role,
+            },
+          }
         : {}),
     });
   }
 }
 
-/** A Shared club as the server has it (rows in no particular order), or null. */
+/** A Shared club as the server has it (rows in no particular order, links without their uid), or null. */
 export async function readServerClub(clubId: string): Promise<Club | null> {
   const club = await adminGetDoc(`clubs/${clubId}`);
   if (!club) return null;
@@ -86,12 +106,14 @@ export async function readServerClub(clubId: string): Promise<Club | null> {
     name: club.name as string,
     kind: "shared",
     players: rows.map(({ id, data }): ClubPlayer => {
-      const link = data.link as { accountId: string; role: "organizer" | "player" } | undefined;
+      const link = data.link as
+        | { accountId: string; uid: string; role: "organizer" | "player" }
+        | undefined;
       return {
         id,
         name: data.name as string,
         skill: data.skill as ClubPlayer["skill"],
-        ...(link ? { link } : {}),
+        ...(link ? { link: { accountId: link.accountId, role: link.role } } : {}),
       };
     }),
   };

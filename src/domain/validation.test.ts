@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   findDuplicateName,
   hasClubErrors,
+  MAX_NAME_LENGTH,
   namesEqual,
   normalizeName,
   validateClub,
@@ -31,6 +32,12 @@ describe("validateName", () => {
   it("flags empty and whitespace-only names as required", () => {
     expect(validateName("", [])).toBe("required");
     expect(validateName("   ", ["x"])).toBe("required");
+  });
+
+  it("flags names longer than the maximum, counted after normalizing", () => {
+    expect(validateName("a".repeat(MAX_NAME_LENGTH), [])).toBeNull();
+    expect(validateName(`  ${"a".repeat(MAX_NAME_LENGTH)}   `, [])).toBeNull();
+    expect(validateName("a".repeat(MAX_NAME_LENGTH + 1), [])).toBe("too-long");
   });
 
   it("flags duplicates, ignoring case and padding", () => {

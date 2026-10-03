@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { ACCOUNT_ID_ALPHABET, validateAccountId } from "../domain/accountId.ts";
+import { MAX_NAME_LENGTH } from "../domain/validation.ts";
 import type { Account } from "../domain/types.ts";
 import { eventually } from "../test/eventually.ts";
 import { BackendError, type Backend } from "./backend.ts";
@@ -127,6 +128,15 @@ export function runBackendContract(name: string, create: (options: ContractOptio
       expect(((await rejection(backend.createAccount("   "))) as BackendError).code).toBe(
         "invalid-name",
       );
+      expect(await backend.getCurrentAccount()).toBeNull();
+    });
+
+    it("rejects a name that is too long", async () => {
+      const backend = make();
+
+      const error = await rejection(backend.createAccount("x".repeat(MAX_NAME_LENGTH + 1)));
+
+      expect((error as BackendError).code).toBe("invalid-name");
       expect(await backend.getCurrentAccount()).toBeNull();
     });
 

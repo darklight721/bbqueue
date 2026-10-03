@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import type { Club, ClubPlayer } from "../domain/types.ts";
+import { MAX_NAME_LENGTH } from "../domain/validation.ts";
 import { eventually } from "../test/eventually.ts";
 import { BackendError, type Backend } from "./backend.ts";
 
@@ -96,6 +97,30 @@ export function runSharedClubsContract(name: string, create: () => ClubsContract
       );
 
       expect((error as BackendError).code).toBe("invalid-name");
+    });
+
+    it("rejects a Club name or Club player name that is too long", async () => {
+      const { backend } = await signedIn();
+      const tooLong = "x".repeat(MAX_NAME_LENGTH + 1);
+
+      const create = await rejection(
+        backend.createSharedClub({ id: "c1", name: tooLong, players: [] }),
+      );
+      expect((create as BackendError).code).toBe("invalid-name");
+
+      await backend.createSharedClub({
+        id: "c2",
+        name: "x".repeat(MAX_NAME_LENGTH),
+        players: [ana],
+      });
+      const rename = await rejection(backend.renameSharedClub("c2", tooLong));
+      expect((rename as BackendError).code).toBe("invalid-name");
+      const add = await rejection(
+        backend.addClubPlayer("c2", { id: "p-long", name: tooLong, skill: "beginner" }),
+      );
+      expect((add as BackendError).code).toBe("invalid-name");
+      const edit = await rejection(backend.updateClubPlayer("c2", ana.id, { name: tooLong }));
+      expect((edit as BackendError).code).toBe("invalid-name");
     });
 
     it("tells observers about the Club right away when they subscribe later", async () => {

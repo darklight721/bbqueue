@@ -15,6 +15,7 @@ import {
   getDocs,
   collection,
   query,
+  serverTimestamp,
   setDoc,
   updateDoc,
   where,
@@ -22,6 +23,7 @@ import {
 } from "firebase/firestore";
 import rules from "../../firestore.rules?raw";
 import { afterAll, beforeAll, beforeEach, describe, it } from "vite-plus/test";
+import { MAX_NAME_LENGTH } from "../domain/validation.ts";
 import { FIREBASE_EMULATOR } from "./firebaseEmulator.ts";
 
 /**
@@ -61,8 +63,16 @@ async function seed(write: (db: Firestore) => Promise<void>) {
 const ROY = { uid: "roy-uid", accountId: "roy-7k3f", name: "Roy" };
 const ANA = { uid: "ana-uid", accountId: "ana-2222", name: "Ana" };
 const BEN = { uid: "ben-uid", accountId: "ben-3333", name: "Ben" };
+type Person = typeof ROY;
 
-async function seedAccounts(...people: (typeof ROY)[]) {
+/** A link as the app writes it: the Account ID for display, the uid as the identity. */
+const link = (person: Person, role: "organizer" | "player") => ({
+  accountId: person.accountId,
+  uid: person.uid,
+  role,
+});
+
+async function seedAccounts(...people: Person[]) {
   await seed(async (db) => {
     for (const person of people) {
       await setDoc(doc(db, "accounts", person.uid), {
@@ -74,19 +84,33 @@ async function seedAccounts(...people: (typeof ROY)[]) {
   });
 }
 
+/** Create an Account the way the app does: the reservation and the Account in one batch. */
+function signUp(person: Person, accountId = person.accountId, extra: Record<string, unknown> = {}) {
+  const db = as(person.uid);
+  const batch = writeBatch(db);
+  batch.set(doc(db, "accountIds", accountId.toLowerCase()), { uid: person.uid });
+  batch.set(doc(db, "accounts", person.uid), {
+    accountId,
+    name: person.name,
+    createdAt: serverTimestamp(),
+    ...extra,
+  });
+  return batch.commit();
+}
+
 describe("Account rules", () => {
   it("lets a person create their own Account together with its Account ID record", async () => {
-    const db = as(ROY.uid);
-    const batch = writeBatch(db);
-    batch.set(doc(db, "accountIds", ROY.accountId), { uid: ROY.uid });
-    batch.set(doc(db, "accounts", ROY.uid), { accountId: "Roy-7K3F", name: ROY.name });
-    await assertSucceeds(batch.commit());
+    await assertSucceeds(signUp(ROY, "Roy-7K3F"));
   });
 
   it("refuses an Account without its Account ID record", async () => {
     const db = as(ROY.uid);
     await assertFails(
-      setDoc(doc(db, "accounts", ROY.uid), { accountId: ROY.accountId, name: "Roy" }),
+      setDoc(doc(db, "accounts", ROY.uid), {
+        accountId: ROY.accountId,
+        name: "Roy",
+        createdAt: serverTimestamp(),
+      }),
     );
   });
 
@@ -94,7 +118,21 @@ describe("Account rules", () => {
     const db = as(ROY.uid);
     const batch = writeBatch(db);
     batch.set(doc(db, "accountIds", ROY.accountId), { uid: ROY.uid });
-    batch.set(doc(db, "accounts", ANA.uid), { accountId: ROY.accountId, name: "Roy" });
+    batch.set(doc(db, "accounts", ANA.uid), {
+      accountId: ROY.accountId,
+      name: "Roy",
+      createdAt: serverTimestamp(),
+    });
+    await assertFails(batch.commit());
+  });
+
+  it("refuses an Account whose createdAt isn't the time of the write, or that has other fields", async () => {
+    await assertFails(signUp(ROY, ROY.accountId, { createdAt: new Date("2020-01-01") }));
+    await assertFails(signUp(ROY, ROY.accountId, { isAdmin: true }));
+    const db = as(ROY.uid);
+    const batch = writeBatch(db);
+    batch.set(doc(db, "accountIds", ROY.accountId), { uid: ROY.uid });
+    batch.set(doc(db, "accounts", ROY.uid), { accountId: ROY.accountId, name: "Roy" });
     await assertFails(batch.commit());
   });
 
@@ -110,11 +148,68 @@ describe("Account rules", () => {
     await assertFails(setDoc(doc(as(ANA.uid), "accountIds", ROY.accountId), { uid: ANA.uid }));
   });
 
-  it("lets only the owner change their name, never their Account ID", async () => {
+  it("never lets an Account ID be released: the owner can't delete the reservation, not even without an Account", async () => {
+    await seedAccounts(ROY);
+    await assertFails(deleteDoc(doc(as(ROY.uid), "accountIds", ROY.accountId)));
+    await assertFails(deleteDoc(doc(as(ANA.uid), "accountIds", ROY.accountId)));
+    await assertSucceeds(deleteDoc(doc(as(ROY.uid), "accounts", ROY.uid)));
+    await assertFails(deleteDoc(doc(as(ROY.uid), "accountIds", ROY.accountId)));
+  });
+
+  it("keeps a second person from reserving an Account ID that is taken, even after its Account is gone", async () => {
+    await seedAccounts(ROY);
+    await assertFails(signUp({ ...ANA, name: "Ana" }, ROY.accountId));
+    await seed(async (db) => {
+      await deleteDoc(doc(db, "accounts", ROY.uid));
+    });
+    await assertFails(signUp(ANA, ROY.accountId));
+  });
+
+  it("gives a person one Account ID: they can't reserve a second one", async () => {
+    await seedAccounts(ROY);
+    const db = as(ROY.uid);
+    // A second reservation next to the existing Account…
+    await assertFails(setDoc(doc(db, "accountIds", "roy-9999"), { uid: ROY.uid }));
+    // …or with a new Account record replacing it.
+    const batch = writeBatch(db);
+    batch.set(doc(db, "accountIds", "roy-9999"), { uid: ROY.uid });
+    batch.set(doc(db, "accounts", ROY.uid), {
+      accountId: "roy-9999",
+      name: "Roy",
+      createdAt: serverTimestamp(),
+    });
+    await assertFails(batch.commit());
+  });
+
+  it("refuses a reservation that isn't the Account ID of the Account written with it", async () => {
+    const db = as(ROY.uid);
+    const batch = writeBatch(db);
+    batch.set(doc(db, "accountIds", "roy-9999"), { uid: ROY.uid });
+    batch.set(doc(db, "accounts", ROY.uid), {
+      accountId: ROY.accountId,
+      name: "Roy",
+      createdAt: serverTimestamp(),
+    });
+    await assertFails(batch.commit());
+  });
+
+  it("lets only the owner change their name, and nothing else", async () => {
     await seedAccounts(ROY, ANA);
-    await assertSucceeds(updateDoc(doc(as(ROY.uid), "accounts", ROY.uid), { name: "Royston" }));
-    await assertFails(updateDoc(doc(as(ROY.uid), "accounts", ROY.uid), { accountId: "roy-9999" }));
+    const own = doc(as(ROY.uid), "accounts", ROY.uid);
+    await assertSucceeds(updateDoc(own, { name: "Royston" }));
+    await assertFails(updateDoc(own, { accountId: "roy-9999" }));
+    await assertFails(updateDoc(own, { createdAt: serverTimestamp() }));
+    await assertFails(updateDoc(own, { name: "Roy", isAdmin: true }));
     await assertFails(updateDoc(doc(as(ANA.uid), "accounts", ROY.uid), { name: "Mine now" }));
+  });
+
+  it("keeps names to a sensible length", async () => {
+    await assertSucceeds(signUp({ ...ROY, name: "x".repeat(MAX_NAME_LENGTH) }));
+    await assertFails(signUp({ ...ANA, name: "x".repeat(MAX_NAME_LENGTH + 1) }));
+    await assertFails(signUp({ ...BEN, name: "" }));
+    const own = doc(as(ROY.uid), "accounts", ROY.uid);
+    await assertFails(updateDoc(own, { name: "x".repeat(MAX_NAME_LENGTH + 1) }));
+    await assertFails(updateDoc(own, { name: "" }));
   });
 
   it("lets anyone signed in look an Account up one at a time, but not list them", async () => {
@@ -139,18 +234,18 @@ async function seedClub() {
   await seed(async (db) => {
     await setDoc(doc(db, "clubs", "c1"), {
       name: "Tuesday",
-      memberAccountIds: [ROY.accountId, ANA.accountId],
-      organizerAccountIds: [ROY.accountId],
+      memberUids: [ROY.uid, ANA.uid],
+      organizerUids: [ROY.uid],
     });
     await setDoc(doc(db, "clubs", "c1", "players", "p-roy"), {
       name: "Roy",
       skill: "intermediate",
-      link: { accountId: ROY.accountId, role: "organizer" },
+      link: link(ROY, "organizer"),
     });
     await setDoc(doc(db, "clubs", "c1", "players", "p-ana"), {
       name: "Ana",
       skill: "beginner",
-      link: { accountId: ANA.accountId, role: "player" },
+      link: link(ANA, "player"),
     });
     await setDoc(doc(db, "clubs", "c1", "players", "p-cat"), { name: "Cat", skill: "advanced" });
   });
@@ -163,13 +258,14 @@ describe("Shared club rules", () => {
     const batch = writeBatch(db);
     batch.set(doc(db, "clubs", "c1"), {
       name: "Tuesday",
-      memberAccountIds: [ROY.accountId],
-      organizerAccountIds: [ROY.accountId],
+      memberUids: [ROY.uid],
+      organizerUids: [ROY.uid],
+      createdAt: serverTimestamp(),
     });
     batch.set(doc(db, "clubs", "c1", "players", "p-roy"), {
       name: "Roy",
       skill: "intermediate",
-      link: { accountId: ROY.accountId, role: "organizer" },
+      link: link(ROY, "organizer"),
     });
     await assertSucceeds(batch.commit());
   });
@@ -180,25 +276,68 @@ describe("Shared club rules", () => {
     await assertFails(
       setDoc(doc(db, "clubs", "c1"), {
         name: "Tuesday",
-        memberAccountIds: [ROY.accountId, ANA.accountId],
-        organizerAccountIds: [ROY.accountId],
+        memberUids: [ROY.uid, ANA.uid],
+        organizerUids: [ROY.uid],
       }),
     );
     await assertFails(
       setDoc(doc(db, "clubs", "c2"), {
         name: "Tuesday",
-        memberAccountIds: [ANA.accountId],
-        organizerAccountIds: [ANA.accountId],
+        memberUids: [ANA.uid],
+        organizerUids: [ANA.uid],
       }),
     );
+  });
+
+  it("refuses a Club creation batch with a row linked to somebody else", async () => {
+    await seedAccounts(ROY, ANA);
+    const db = as(ROY.uid);
+    const newClub = (row: Record<string, unknown>) => {
+      const batch = writeBatch(db);
+      batch.set(doc(db, "clubs", "c1"), {
+        name: "Tuesday",
+        memberUids: [ROY.uid],
+        organizerUids: [ROY.uid],
+      });
+      batch.set(doc(db, "clubs", "c1", "players", "p-x"), row);
+      return batch.commit();
+    };
+    // Ana, as a Player or even as an Organizer, with the lists not naming her…
+    await assertFails(newClub({ name: "Ana", skill: "beginner", link: link(ANA, "player") }));
+    await assertFails(newClub({ name: "Ana", skill: "beginner", link: link(ANA, "organizer") }));
+    // …Ana's Account ID with Roy's uid, or Roy's Account ID with Ana's uid…
+    await assertFails(
+      newClub({
+        name: "Ana",
+        skill: "beginner",
+        link: { accountId: ANA.accountId, uid: ROY.uid, role: "organizer" },
+      }),
+    );
+    await assertFails(
+      newClub({
+        name: "Ana",
+        skill: "beginner",
+        link: { accountId: ROY.accountId, uid: ANA.uid, role: "organizer" },
+      }),
+    );
+    // …and an Account ID that nobody reserved.
+    await assertFails(
+      newClub({
+        name: "Ghost",
+        skill: "beginner",
+        link: { accountId: "ghost-9999", uid: ROY.uid, role: "organizer" },
+      }),
+    );
+    // The creator's own row is fine.
+    await assertSucceeds(newClub({ name: "Roy", skill: "beginner", link: link(ROY, "organizer") }));
   });
 
   it("refuses a Club from somebody without an Account", async () => {
     await assertFails(
       setDoc(doc(as("nobody"), "clubs", "c1"), {
         name: "Tuesday",
-        memberAccountIds: ["x"],
-        organizerAccountIds: ["x"],
+        memberUids: ["nobody"],
+        organizerUids: ["nobody"],
       }),
     );
   });
@@ -215,12 +354,10 @@ describe("Shared club rules", () => {
 
   it("lets an Account list only its own Clubs", async () => {
     await seedClub();
-    const mine = (uid: string, accountId: string) =>
-      getDocs(
-        query(collection(as(uid), "clubs"), where("memberAccountIds", "array-contains", accountId)),
-      );
-    await assertSucceeds(mine(ANA.uid, ANA.accountId));
-    await assertFails(mine(BEN.uid, ANA.accountId));
+    const mine = (uid: string, asUid: string) =>
+      getDocs(query(collection(as(uid), "clubs"), where("memberUids", "array-contains", asUid)));
+    await assertSucceeds(mine(ANA.uid, ANA.uid));
+    await assertFails(mine(BEN.uid, ANA.uid));
     await assertFails(getDocs(collection(as(ANA.uid), "clubs")));
   });
 
@@ -278,16 +415,104 @@ describe("Shared club rules", () => {
     await assertFails(
       setDoc(doc(db, "clubs", "c1", "players", "p-x"), { name: "X", skill: "beginner", extra: 1 }),
     );
+    // A link needs the uid as well as the Account ID and the Role.
+    await assertFails(
+      setDoc(doc(db, "clubs", "c1", "players", "p-x"), {
+        name: "X",
+        skill: "beginner",
+        link: { accountId: ANA.accountId, role: "player" },
+      }),
+    );
   });
 
-  it("lets an Organizer rename but never empty the Organizer list or name nobody an Organizer without making them a member", async () => {
+  it("keeps Club and Club player names to a sensible length", async () => {
     await seedClub();
     const db = as(ROY.uid);
-    await assertFails(updateDoc(doc(db, "clubs", "c1"), { organizerAccountIds: [] }));
-    await assertFails(
-      updateDoc(doc(db, "clubs", "c1"), { organizerAccountIds: [ROY.accountId, BEN.accountId] }),
+    const tooLong = "x".repeat(MAX_NAME_LENGTH + 1);
+    await assertSucceeds(updateDoc(doc(db, "clubs", "c1"), { name: "x".repeat(MAX_NAME_LENGTH) }));
+    await assertFails(updateDoc(doc(db, "clubs", "c1"), { name: tooLong }));
+    await assertFails(updateDoc(doc(db, "clubs", "c1"), { name: "" }));
+    await assertSucceeds(
+      setDoc(doc(db, "clubs", "c1", "players", "p-x"), {
+        name: "x".repeat(MAX_NAME_LENGTH),
+        skill: "beginner",
+      }),
     );
-    await assertFails(updateDoc(doc(db, "clubs", "c1"), { createdBy: ROY.accountId }));
+    await assertFails(
+      setDoc(doc(db, "clubs", "c1", "players", "p-y"), { name: tooLong, skill: "beginner" }),
+    );
+    await assertFails(updateDoc(doc(db, "clubs", "c1", "players", "p-cat"), { name: tooLong }));
+    await assertFails(
+      setDoc(doc(db, "clubs", "c9"), {
+        name: tooLong,
+        memberUids: [ROY.uid],
+        organizerUids: [ROY.uid],
+      }),
+    );
+  });
+
+  it("lets an Organizer never empty the Organizer list or make somebody an Organizer without making them a member", async () => {
+    await seedClub();
+    const db = as(ROY.uid);
+    await assertFails(updateDoc(doc(db, "clubs", "c1"), { organizerUids: [] }));
+    await assertFails(updateDoc(doc(db, "clubs", "c1"), { organizerUids: [ROY.uid, BEN.uid] }));
+    await assertFails(updateDoc(doc(db, "clubs", "c1"), { createdBy: ROY.uid }));
+  });
+
+  it("still lets an Organizer write the lists directly, without a row: only to add or remove who can read", async () => {
+    // Pinned on purpose. The rules check each row against the lists, but not the lists against
+    // the rows, so an Organizer can add any uid they know (read access, no write access unless
+    // they make it an Organizer) or take a member off while their row stays linked. Tightening
+    // this later should change this test.
+    await seedClub();
+    const db = as(ROY.uid);
+    await assertSucceeds(updateDoc(doc(db, "clubs", "c1"), { memberUids: arrayUnion(BEN.uid) }));
+    await assertSucceeds(getDoc(doc(as(BEN.uid), "clubs", "c1")));
+    await assertFails(
+      setDoc(doc(as(BEN.uid), "clubs", "c1", "players", "p-x"), { name: "X", skill: "beginner" }),
+    );
+    // Any string counts, even one that is nobody's uid.
+    await assertSucceeds(
+      updateDoc(doc(db, "clubs", "c1"), { memberUids: arrayUnion("someone-else") }),
+    );
+    // Taking Ana off the lists while her row stays linked.
+    await assertSucceeds(updateDoc(doc(db, "clubs", "c1"), { memberUids: arrayRemove(ANA.uid) }));
+    await assertFails(getDoc(doc(as(ANA.uid), "clubs", "c1")));
+    // What it can't do: leave nobody in charge, or make an Organizer who isn't a member.
+    await assertFails(updateDoc(doc(db, "clubs", "c1"), { organizerUids: [] }));
+    await assertFails(
+      updateDoc(doc(db, "clubs", "c1"), { organizerUids: arrayUnion("not-a-member") }),
+    );
+    // A Player can't write the lists beyond taking themselves off.
+    await assertFails(
+      updateDoc(doc(as(BEN.uid), "clubs", "c1"), { memberUids: arrayUnion("someone-else") }),
+    );
+  });
+
+  it("lets an Organizer create and delete a roster of 30 rows in one batch", async () => {
+    await seedAccounts(ROY);
+    const db = as(ROY.uid);
+    const rowIds = Array.from({ length: 30 }, (_, index) => `p-${index}`);
+
+    const create = writeBatch(db);
+    create.set(doc(db, "clubs", "big"), {
+      name: "Big",
+      memberUids: [ROY.uid],
+      organizerUids: [ROY.uid],
+    });
+    rowIds.forEach((id, index) => {
+      create.set(doc(db, "clubs", "big", "players", id), {
+        name: `Player ${index}`,
+        skill: "beginner",
+        ...(index === 0 ? { link: link(ROY, "organizer") } : {}),
+      });
+    });
+    await assertSucceeds(create.commit());
+
+    const remove = writeBatch(db);
+    for (const id of rowIds) remove.delete(doc(db, "clubs", "big", "players", id));
+    remove.delete(doc(db, "clubs", "big"));
+    await assertSucceeds(remove.commit());
   });
 });
 
@@ -299,10 +524,8 @@ describe("Linking Accounts and Roles", () => {
     await seedClub();
     const db = as(ROY.uid);
     const batch = writeBatch(db);
-    batch.update(doc(db, "clubs", "c1", "players", "p-cat"), {
-      link: { accountId: BEN.accountId, role: "player" },
-    });
-    batch.update(doc(db, "clubs", "c1"), { memberAccountIds: arrayUnion(BEN.accountId) });
+    batch.update(doc(db, "clubs", "c1", "players", "p-cat"), { link: link(BEN, "player") });
+    batch.update(doc(db, "clubs", "c1"), { memberUids: arrayUnion(BEN.uid) });
     await assertSucceeds(batch.commit());
   });
 
@@ -310,12 +533,10 @@ describe("Linking Accounts and Roles", () => {
     await seedClub();
     const db = as(ROY.uid);
     const batch = writeBatch(db);
-    batch.update(doc(db, "clubs", "c1", "players", "p-cat"), {
-      link: { accountId: BEN.accountId, role: "organizer" },
-    });
+    batch.update(doc(db, "clubs", "c1", "players", "p-cat"), { link: link(BEN, "organizer") });
     batch.update(doc(db, "clubs", "c1"), {
-      memberAccountIds: arrayUnion(BEN.accountId),
-      organizerAccountIds: arrayUnion(BEN.accountId),
+      memberUids: arrayUnion(BEN.uid),
+      organizerUids: arrayUnion(BEN.uid),
     });
     await assertSucceeds(batch.commit());
   });
@@ -324,33 +545,132 @@ describe("Linking Accounts and Roles", () => {
     await seedClub();
     const db = as(ROY.uid);
     await assertFails(
-      updateDoc(doc(db, "clubs", "c1", "players", "p-cat"), {
-        link: { accountId: BEN.accountId, role: "player" },
-      }),
+      updateDoc(doc(db, "clubs", "c1", "players", "p-cat"), { link: link(BEN, "player") }),
     );
     // Linked as Organizer but listed only as a member.
     const batch = writeBatch(db);
-    batch.update(doc(db, "clubs", "c1", "players", "p-cat"), {
-      link: { accountId: BEN.accountId, role: "organizer" },
-    });
-    batch.update(doc(db, "clubs", "c1"), { memberAccountIds: arrayUnion(BEN.accountId) });
+    batch.update(doc(db, "clubs", "c1", "players", "p-cat"), { link: link(BEN, "organizer") });
+    batch.update(doc(db, "clubs", "c1"), { memberUids: arrayUnion(BEN.uid) });
     await assertFails(batch.commit());
+  });
+
+  it("refuses a link to a uid that doesn't own the Account ID, or to an Account ID nobody reserved", async () => {
+    await seedClub();
+    const db = as(ROY.uid);
+    const attempt = (who: Record<string, unknown>, uid: string) => {
+      const batch = writeBatch(db);
+      batch.update(doc(db, "clubs", "c1", "players", "p-cat"), { link: who });
+      batch.update(doc(db, "clubs", "c1"), { memberUids: arrayUnion(uid) });
+      return batch.commit();
+    };
+    // Ben's uid under Ana's Account ID, and the other way round.
+    await assertFails(attempt({ accountId: ANA.accountId, uid: BEN.uid, role: "player" }, BEN.uid));
+    await assertFails(attempt({ accountId: BEN.accountId, uid: ANA.uid, role: "player" }, ANA.uid));
+    // An Account ID nobody has reserved.
+    await assertFails(
+      attempt({ accountId: "ghost-9999", uid: "ghost-uid", role: "player" }, "ghost-uid"),
+    );
+    // Capitalisation is only for show: the reservation is found in lowercase.
+    await assertSucceeds(attempt({ accountId: "Ben-3333", uid: BEN.uid, role: "player" }, BEN.uid));
   });
 
   it("refuses a Player linking anybody, even themselves", async () => {
     await seedClub();
     const db = as(ANA.uid);
     const batch = writeBatch(db);
-    batch.update(doc(db, "clubs", "c1", "players", "p-cat"), {
-      link: { accountId: BEN.accountId, role: "player" },
-    });
-    batch.update(doc(db, "clubs", "c1"), { memberAccountIds: arrayUnion(BEN.accountId) });
+    batch.update(doc(db, "clubs", "c1", "players", "p-cat"), { link: link(BEN, "player") });
+    batch.update(doc(db, "clubs", "c1"), { memberUids: arrayUnion(BEN.uid) });
     await assertFails(batch.commit());
 
     const promote = writeBatch(db);
     promote.update(doc(db, "clubs", "c1", "players", "p-ana"), { "link.role": "organizer" });
-    promote.update(doc(db, "clubs", "c1"), { organizerAccountIds: arrayUnion(ANA.accountId) });
+    promote.update(doc(db, "clubs", "c1"), { organizerUids: arrayUnion(ANA.uid) });
     await assertFails(promote.commit());
+  });
+
+  describe("adding a row that is already linked", () => {
+    const addRow = (role: "organizer" | "player", person: Person) => {
+      const db = as(ROY.uid);
+      const batch = writeBatch(db);
+      batch.set(doc(db, "clubs", "c1", "players", "p-new"), {
+        name: "New",
+        skill: "beginner",
+        link: link(person, role),
+      });
+      return { batch };
+    };
+
+    it("is allowed for an Account the lists already agree with, and for a new one added with the lists", async () => {
+      await seedClub();
+      // Ana is already on the lists as a Player and linked from p-ana. The rules look at the
+      // lists, not at other rows, so a second row for her goes through: the app prevents it
+      // (`already-linked`), the rules don't. Pinned so that changing it is deliberate.
+      await assertSucceeds(addRow("player", ANA).batch.commit());
+
+      const db = as(ROY.uid);
+      const fresh = writeBatch(db);
+      fresh.set(doc(db, "clubs", "c1", "players", "p-ben"), {
+        name: "Ben",
+        skill: "beginner",
+        link: link(BEN, "player"),
+      });
+      fresh.update(doc(db, "clubs", "c1"), { memberUids: arrayUnion(BEN.uid) });
+      await assertSucceeds(fresh.commit());
+    });
+
+    it("is refused when the lists don't agree with the link", async () => {
+      await seedClub();
+      // Ben isn't on the lists.
+      await assertFails(addRow("player", BEN).batch.commit());
+      // Ana is a Player, not an Organizer.
+      await assertFails(addRow("organizer", ANA).batch.commit());
+      // Ben is added as a member but linked as Organizer.
+      const db = as(ROY.uid);
+      const batch = writeBatch(db);
+      batch.set(doc(db, "clubs", "c1", "players", "p-ben"), {
+        name: "Ben",
+        skill: "beginner",
+        link: link(BEN, "organizer"),
+      });
+      batch.update(doc(db, "clubs", "c1"), { memberUids: arrayUnion(BEN.uid) });
+      await assertFails(batch.commit());
+    });
+
+    it("is refused for a Player", async () => {
+      await seedClub();
+      const db = as(ANA.uid);
+      await assertFails(
+        setDoc(doc(db, "clubs", "c1", "players", "p-new"), {
+          name: "New",
+          skill: "beginner",
+          link: link(ANA, "player"),
+        }),
+      );
+    });
+  });
+
+  it("refuses relinking a row from one Account to another while the first stays on the lists", async () => {
+    await seedClub();
+    const db = as(ROY.uid);
+    // Ben is added, Ana is not removed.
+    const keepsAna = writeBatch(db);
+    keepsAna.update(doc(db, "clubs", "c1", "players", "p-ana"), { link: link(BEN, "player") });
+    keepsAna.update(doc(db, "clubs", "c1"), { memberUids: arrayUnion(BEN.uid) });
+    await assertFails(keepsAna.commit());
+
+    // Ben is already on the lists (say, from another row), Ana stays.
+    const alreadyBen = writeBatch(db);
+    alreadyBen.update(doc(db, "clubs", "c1", "players", "p-ana"), { link: link(BEN, "player") });
+    await seed(async (admin) => {
+      await updateDoc(doc(admin, "clubs", "c1"), { memberUids: arrayUnion(BEN.uid) });
+    });
+    await assertFails(alreadyBen.commit());
+
+    // Taking Ana off in the same batch makes it a proper move.
+    const moves = writeBatch(db);
+    moves.update(doc(db, "clubs", "c1", "players", "p-ana"), { link: link(BEN, "player") });
+    moves.update(doc(db, "clubs", "c1"), { memberUids: arrayRemove(ANA.uid) });
+    await assertSucceeds(moves.commit());
   });
 
   it("lets an Organizer change a Role, with the Organizer list in step", async () => {
@@ -358,7 +678,7 @@ describe("Linking Accounts and Roles", () => {
     const db = as(ROY.uid);
     const promote = writeBatch(db);
     promote.update(doc(db, "clubs", "c1", "players", "p-ana"), { "link.role": "organizer" });
-    promote.update(doc(db, "clubs", "c1"), { organizerAccountIds: arrayUnion(ANA.accountId) });
+    promote.update(doc(db, "clubs", "c1"), { organizerUids: arrayUnion(ANA.uid) });
     await assertSucceeds(promote.commit());
   });
 
@@ -367,7 +687,7 @@ describe("Linking Accounts and Roles", () => {
     const db = as(ROY.uid);
     const batch = writeBatch(db);
     batch.update(doc(db, "clubs", "c1", "players", "p-ana"), { link: deleteField() });
-    batch.update(doc(db, "clubs", "c1"), { memberAccountIds: arrayRemove(ANA.accountId) });
+    batch.update(doc(db, "clubs", "c1"), { memberUids: arrayRemove(ANA.uid) });
     await assertSucceeds(batch.commit());
   });
 
@@ -383,7 +703,7 @@ describe("Linking Accounts and Roles", () => {
     const db = as(ROY.uid);
     const batch = writeBatch(db);
     batch.delete(doc(db, "clubs", "c1", "players", "p-ana"));
-    batch.update(doc(db, "clubs", "c1"), { memberAccountIds: arrayRemove(ANA.accountId) });
+    batch.update(doc(db, "clubs", "c1"), { memberUids: arrayRemove(ANA.uid) });
     await assertSucceeds(batch.commit());
   });
 
@@ -399,7 +719,7 @@ describe("The last Organizer", () => {
     const db = as(ROY.uid);
     const batch = writeBatch(db);
     batch.update(doc(db, "clubs", "c1", "players", "p-roy"), { "link.role": "player" });
-    batch.update(doc(db, "clubs", "c1"), { organizerAccountIds: arrayRemove(ROY.accountId) });
+    batch.update(doc(db, "clubs", "c1"), { organizerUids: arrayRemove(ROY.uid) });
     await assertFails(batch.commit());
   });
 
@@ -409,16 +729,16 @@ describe("The last Organizer", () => {
     const unlink = writeBatch(db);
     unlink.update(doc(db, "clubs", "c1", "players", "p-roy"), { link: deleteField() });
     unlink.update(doc(db, "clubs", "c1"), {
-      memberAccountIds: arrayRemove(ROY.accountId),
-      organizerAccountIds: arrayRemove(ROY.accountId),
+      memberUids: arrayRemove(ROY.uid),
+      organizerUids: arrayRemove(ROY.uid),
     });
     await assertFails(unlink.commit());
 
     const remove = writeBatch(db);
     remove.delete(doc(db, "clubs", "c1", "players", "p-roy"));
     remove.update(doc(db, "clubs", "c1"), {
-      memberAccountIds: arrayRemove(ROY.accountId),
-      organizerAccountIds: arrayRemove(ROY.accountId),
+      memberUids: arrayRemove(ROY.uid),
+      organizerUids: arrayRemove(ROY.uid),
     });
     await assertFails(remove.commit());
   });
@@ -426,39 +746,37 @@ describe("The last Organizer", () => {
   it("can step down once another Organizer exists", async () => {
     await seedClub();
     await seed(async (db) => {
-      await updateDoc(doc(db, "clubs", "c1"), {
-        organizerAccountIds: [ROY.accountId, ANA.accountId],
-      });
+      await updateDoc(doc(db, "clubs", "c1"), { organizerUids: [ROY.uid, ANA.uid] });
       await updateDoc(doc(db, "clubs", "c1", "players", "p-ana"), { "link.role": "organizer" });
     });
     const db = as(ROY.uid);
     const batch = writeBatch(db);
     batch.update(doc(db, "clubs", "c1", "players", "p-roy"), { "link.role": "player" });
-    batch.update(doc(db, "clubs", "c1"), { organizerAccountIds: arrayRemove(ROY.accountId) });
+    batch.update(doc(db, "clubs", "c1"), { organizerUids: arrayRemove(ROY.uid) });
     await assertSucceeds(batch.commit());
   });
 });
 
 describe("Leaving a Club", () => {
   const leave = (
-    uid: string,
+    person: Person,
     rowId: string,
-    accountId: string,
+    uid: string,
     extra: Record<string, unknown> = {},
   ) => {
-    const db = as(uid);
+    const db = as(person.uid);
     const batch = writeBatch(db);
     batch.update(doc(db, "clubs", "c1", "players", rowId), { link: deleteField(), ...extra });
     batch.update(doc(db, "clubs", "c1"), {
-      memberAccountIds: arrayRemove(accountId),
-      organizerAccountIds: arrayRemove(accountId),
+      memberUids: arrayRemove(uid),
+      organizerUids: arrayRemove(uid),
     });
     return batch.commit();
   };
 
   it("lets a linked Account unlink itself: its row stays, and it leaves the lists", async () => {
     await seedClub();
-    await assertSucceeds(leave(ANA.uid, "p-ana", ANA.accountId));
+    await assertSucceeds(leave(ANA, "p-ana", ANA.uid));
     // The row is still on the roster.
     await env.withSecurityRulesDisabled(async (context) => {
       const row = await getDoc(doc(context.firestore(), "clubs", "c1", "players", "p-ana"));
@@ -466,6 +784,16 @@ describe("Leaving a Club", () => {
         Promise.resolve(row.exists() ? row : Promise.reject(new Error("row gone"))),
       );
     });
+  });
+
+  it("lets somebody on the lists with no linked row take themselves off", async () => {
+    await seedClub();
+    await seed(async (db) => {
+      await updateDoc(doc(db, "clubs", "c1"), { memberUids: arrayUnion(BEN.uid) });
+    });
+    await assertSucceeds(
+      updateDoc(doc(as(BEN.uid), "clubs", "c1"), { memberUids: arrayRemove(BEN.uid) }),
+    );
   });
 
   it("refuses leaving without taking the Account off the lists", async () => {
@@ -477,36 +805,34 @@ describe("Leaving a Club", () => {
 
   it("refuses changing the row while leaving", async () => {
     await seedClub();
-    await assertFails(leave(ANA.uid, "p-ana", ANA.accountId, { name: "Somebody else" }));
+    await assertFails(leave(ANA, "p-ana", ANA.uid, { name: "Somebody else" }));
   });
 
   it("refuses unlinking somebody else", async () => {
     await seedClub();
-    await assertFails(leave(ANA.uid, "p-roy", ROY.accountId));
-    await assertFails(leave(ANA.uid, "p-roy", ANA.accountId));
+    await assertFails(leave(ANA, "p-roy", ROY.uid));
+    await assertFails(leave(ANA, "p-roy", ANA.uid));
   });
 
   it("refuses taking others off the lists", async () => {
     await seedClub();
     const db = as(ANA.uid);
-    await assertFails(updateDoc(doc(db, "clubs", "c1"), { memberAccountIds: [ANA.accountId] }));
-    await assertFails(updateDoc(doc(db, "clubs", "c1"), { organizerAccountIds: [] }));
+    await assertFails(updateDoc(doc(db, "clubs", "c1"), { memberUids: [ANA.uid] }));
+    await assertFails(updateDoc(doc(db, "clubs", "c1"), { organizerUids: [] }));
   });
 
   it("is open to an Organizer when another Organizer remains", async () => {
     await seedClub();
     await seed(async (db) => {
-      await updateDoc(doc(db, "clubs", "c1"), {
-        organizerAccountIds: [ROY.accountId, ANA.accountId],
-      });
+      await updateDoc(doc(db, "clubs", "c1"), { organizerUids: [ROY.uid, ANA.uid] });
       await updateDoc(doc(db, "clubs", "c1", "players", "p-ana"), { "link.role": "organizer" });
     });
-    await assertSucceeds(leave(ROY.uid, "p-roy", ROY.accountId));
+    await assertSucceeds(leave(ROY, "p-roy", ROY.uid));
   });
 
   it("lets a Club that has been left no longer be read by the one who left", async () => {
     await seedClub();
-    await leave(ANA.uid, "p-ana", ANA.accountId);
+    await leave(ANA, "p-ana", ANA.uid);
     await assertFails(getDoc(club(ANA.uid)));
   });
 });

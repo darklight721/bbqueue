@@ -1,3 +1,9 @@
+/**
+ * The longest name (Account, Club or Club player) the app and the Security Rules accept, in
+ * characters. `firestore.rules` repeats this number: change both together.
+ */
+export const MAX_NAME_LENGTH = 40;
+
 /** Trim and collapse inner whitespace. */
 export function normalizeName(name: string): string {
   return name.trim().replace(/\s+/g, " ");
@@ -13,10 +19,12 @@ export function findDuplicateName(name: string, others: readonly string[]): numb
   return others.findIndex((other) => namesEqual(name, other));
 }
 
-export type NameError = "required" | "duplicate";
+export type NameError = "required" | "too-long" | "duplicate";
 
 export function validateName(name: string, others: readonly string[]): NameError | null {
-  if (normalizeName(name) === "") return "required";
+  const normalized = normalizeName(name);
+  if (normalized === "") return "required";
+  if (normalized.length > MAX_NAME_LENGTH) return "too-long";
   if (findDuplicateName(name, others) !== -1) return "duplicate";
   return null;
 }

@@ -278,6 +278,30 @@ export function runRolesContract(name: string, createWorld: () => RolesContractW
       await eventually(() => expect(roy.row("c1", cat.id)).toBeUndefined());
     });
 
+    it("moves a link from one Account to another: the first leaves the Club, the second joins it", async () => {
+      const { world, roy, ana } = await setup();
+      const ben = await person(world, "Ben");
+      await roy.backend.linkClubPlayer("c1", cat.id, ana.account.accountId, "player");
+      await eventually(() => expect(ana.club("c1")).toBeDefined());
+
+      await roy.backend.linkClubPlayer("c1", cat.id, ben.account.accountId, "organizer");
+
+      await eventually(() => expect(ben.row("c1", cat.id)?.link?.role).toBe("organizer"));
+      await eventually(() => expect(ana.club("c1")).toBeUndefined());
+      expect(roy.row("c1", cat.id)?.link?.accountId).toBe(ben.account.accountId);
+    });
+
+    it("only finds an Account by the Account ID it really has", async () => {
+      const { roy, ana } = await setup();
+      const [slug, suffix] = ana.account.accountId.split("-") as [string, string];
+
+      expect(await roy.backend.lookupAccount(`${slug}-${suffix}x`)).toBeNull();
+      expect(await roy.backend.lookupAccount(`x${slug}-${suffix}`)).toBeNull();
+      expect(await roy.backend.lookupAccount(ana.account.accountId.toUpperCase())).toEqual(
+        ana.account,
+      );
+    });
+
     it("shows a Player what an Organizer does, live", async () => {
       const { roy, ana } = await setup();
       await roy.backend.linkClubPlayer("c1", cat.id, ana.account.accountId, "player");

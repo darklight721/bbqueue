@@ -189,6 +189,16 @@ test.describe("Validation", () => {
     expect(await readStored(page, "clubs")).toBeNull();
   });
 
+  test("a club name longer than 40 characters blocks Save", async ({ page }) => {
+    await page.goto("/clubs/new");
+    await clubNameField(page).fill("x".repeat(41));
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page).toHaveURL(/\/clubs\/new$/);
+    await expect(page.getByText("Name is too long (at most 40 characters)")).toBeVisible();
+    await expect(clubNameField(page)).toHaveAttribute("aria-invalid", "true");
+    expect(await readStored(page, "clubs")).toBeNull();
+  });
+
   test("duplicate club name (case-insensitive) blocks Save", async ({ page }) => {
     await seedStorage(page, { clubs: [makeClub({ name: "Friday Club" })] });
     await page.goto("/clubs/new");

@@ -19,7 +19,7 @@ import {
   type Firestore,
 } from "firebase/firestore";
 import { generateAccountId, normalizeAccountId } from "../domain/accountId.ts";
-import { normalizeName } from "../domain/validation.ts";
+import { MAX_NAME_LENGTH, normalizeName } from "../domain/validation.ts";
 import type { Account } from "../domain/types.ts";
 import {
   BackendError,
@@ -37,7 +37,8 @@ import type { SharedClubsApi } from "./simulatedClubs.ts";
  *
  * Records:
  * - `accounts/{uid}`: `{ accountId, name, createdAt }`
- * - `accountIds/{normalised Account ID}`: `{ uid }`, the reservation that keeps IDs unique
+ * - `accountIds/{normalised Account ID}`: `{ uid }`, the reservation that keeps IDs unique. It is
+ *   never deleted, so an Account ID is never given out twice.
  *
  * This is the only module (with `firebaseBackendLazy.ts`) that imports Firebase.
  */
@@ -144,7 +145,8 @@ export function createFirebaseBackend(
 
     async createAccount(name) {
       const trimmed = normalizeName(name);
-      if (trimmed === "") throw new BackendError("invalid-name");
+      if (trimmed === "" || trimmed.length > MAX_NAME_LENGTH)
+        throw new BackendError("invalid-name");
       if (!online.get()) throw new BackendError("offline");
 
       try {
@@ -165,7 +167,8 @@ export function createFirebaseBackend(
 
     async renameAccount(name) {
       const trimmed = normalizeName(name);
-      if (trimmed === "") throw new BackendError("invalid-name");
+      if (trimmed === "" || trimmed.length > MAX_NAME_LENGTH)
+        throw new BackendError("invalid-name");
       if (!online.get()) throw new BackendError("offline");
 
       try {
@@ -189,6 +192,7 @@ export function createFirebaseBackend(
     ...createFirebaseClubs(db, {
       online,
       getAccount: () => backend.getCurrentAccount(),
+      currentUid: () => auth.currentUser?.uid ?? null,
       observeAccount: (listener) => backend.observeCurrentAccount(listener),
     }),
   };

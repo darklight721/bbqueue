@@ -7,6 +7,7 @@ import {
   doc,
   getDoc,
   getDocFromCache,
+  getDocFromServer,
   getDocs,
   onSnapshot,
   query,
@@ -16,26 +17,38 @@ import {
   where,
   writeBatch,
   type DocumentData,
+  type DocumentReference,
   type DocumentSnapshot,
   type Firestore,
+  type QuerySnapshot,
 } from "firebase/firestore";
+import { normalizeAccountId } from "../domain/accountId.ts";
 import { creatorPlayer, type ClubChange } from "../domain/clubChanges.ts";
 import { clubChangeProblem, ownRow } from "../domain/permissions.ts";
 import { newId } from "../domain/ids.ts";
 import type { Account, AccountLink, Club, ClubPlayer, Role, SkillLevel } from "../domain/types.ts";
-import { normalizeName } from "../domain/validation.ts";
+import { MAX_NAME_LENGTH, normalizeName } from "../domain/validation.ts";
 import { BackendError, type OnlineSource, type Unsubscribe } from "./backend.ts";
 import type { SharedClubsApi } from "./simulatedClubs.ts";
 
-const MAX_LISTEN_RETRIES = 6;
+/** Listeners that fail are tried again after 250 ms, doubling each time up to this. */
+const MAX_RETRY_DELAY_MS = 30_000;
+const retryDelay = (attempt: number) => Math.min(250 * 2 ** attempt, MAX_RETRY_DELAY_MS);
+
+/** How long to wait for the server before treating a write as queued (see {@link settle}). */
+export const SETTLE_TIMEOUT_MS = 8_000;
+/** How long to wait for the cache before giving up on it. */
+const CACHE_TIMEOUT_MS = 2_000;
 
 /**
  * Shared clubs on Firestore:
- * - `clubs/{clubId}`: `{ name, memberAccountIds, organizerAccountIds, createdAt }`. The two arrays
- *   are an index derived from the rows' links, so an Account can list its Clubs (array-contains)
- *   and Security Rules can tell who may read and write. They are kept in step with the rows.
- * - `clubs/{clubId}/players/{clubPlayerId}`: `{ name, skill, link?: { accountId, role } }`. One
- *   record per Club player, so the most recent change to a row wins.
+ * - `clubs/{clubId}`: `{ name, memberUids, organizerUids, createdAt }`. The two arrays hold the
+ *   Firebase uids of the linked Accounts and are an index derived from the rows' links, so an
+ *   Account can list its Clubs (array-contains) and Security Rules can tell who may read and
+ *   write. They are kept in step with the rows.
+ * - `clubs/{clubId}/players/{clubPlayerId}`: `{ name, skill, link?: { accountId, uid, role } }`.
+ *   One record per Club player, so the most recent change to a row wins. The Account ID is for
+ *   display and lookup; the uid is the identity, and the rules check that it owns that Account ID.
  *
  * Writes go through Firestore's offline queue: they show up in listeners at once and sync later.
  */
@@ -44,6 +57,8 @@ export function createFirebaseClubs(
   deps: {
     online: OnlineSource;
     getAccount(): Promise<Account | null>;
+    /** The signed-in Firebase user's uid (known once `getAccount` has answered), or null. */
+    currentUid(): string | null;
     observeAccount(listener: (account: Account | null) => void): Unsubscribe;
   },
 ): SharedClubsApi {
@@ -52,43 +67,63 @@ export function createFirebaseClubs(
   const playerRef = (clubId: string, playerId: string) =>
     doc(db, "clubs", clubId, "players", playerId);
 
-  async function requireAccount(): Promise<Account> {
+  /** The signed-in Account and its uid, or `no-account`. */
+  async function requireViewer(): Promise<{ account: Account; uid: string }> {
     const account = await deps.getAccount();
-    if (!account) throw new BackendError("no-account");
-    return account;
+    const uid = deps.currentUid();
+    if (!account || !uid) throw new BackendError("no-account");
+    return { account, uid };
+  }
+
+  /** A record from the server, or from the cache when it can't be reached; null when neither answers. */
+  async function readDoc(ref: DocumentReference): Promise<DocumentSnapshot | null> {
+    if (deps.online.get()) {
+      try {
+        return await getDoc(ref);
+      } catch {
+        // Fall back to the cache.
+      }
+    }
+    try {
+      // Reading the cache can stall in some browsers, so don't wait for it for long.
+      return await withTimeout(getDocFromCache(ref), CACHE_TIMEOUT_MS);
+    } catch {
+      return null;
+    }
   }
 
   /** Fails with `not-found` when the Club is known not to exist. Unknown (offline, uncached) passes. */
   async function requireClub(clubId: string): Promise<void> {
     // Offline there is nothing to check against: the write waits in the queue, and the
-    // server has the last word. (Reading the cache here can stall in some browsers.)
+    // server has the last word.
     if (!deps.online.get()) return;
-    let snapshot: DocumentSnapshot;
-    try {
-      snapshot = await getDoc(clubRef(clubId));
-    } catch {
-      try {
-        snapshot = await getDocFromCache(clubRef(clubId));
-      } catch {
-        return;
-      }
-    }
-    if (!snapshot.exists()) throw new BackendError("not-found");
+    const snapshot = await readDoc(clubRef(clubId));
+    if (snapshot && !snapshot.exists()) throw new BackendError("not-found");
   }
 
-  /** The Club and its rows as the server has them (or the cache, offline). */
-  async function loadClub(clubId: string): Promise<Club> {
+  /** The Club and its rows as the server has them (or the cache, offline), with who is behind each link. */
+  async function loadClub(clubId: string): Promise<LoadedClub> {
     try {
       const [club, rows] = await Promise.all([
         getDoc(clubRef(clubId)),
         getDocs(playersRef(clubId)),
       ]);
       if (!club.exists()) throw new BackendError("not-found");
+      const linkUids = new Map<string, string>();
+      for (const row of rows.docs) {
+        const uid = (row.data().link as { uid?: unknown } | undefined)?.uid;
+        if (typeof uid === "string") linkUids.set(row.id, uid);
+      }
       return {
-        id: clubId,
-        name: String(club.data().name ?? ""),
-        kind: "shared",
-        players: rows.docs.map((row) => toClubPlayer(row.id, row.data())),
+        club: {
+          id: clubId,
+          name: String(club.data().name ?? ""),
+          kind: "shared",
+          players: rows.docs.map((row) => toClubPlayer(row.id, row.data())),
+        },
+        linkUids,
+        memberUids: stringList(club.data().memberUids),
+        organizerUids: stringList(club.data().organizerUids),
       };
     } catch (error) {
       // A Club you can't read is, as far as you can tell, not there.
@@ -99,67 +134,63 @@ export function createFirebaseClubs(
     }
   }
 
+  const lists = (uid: string, role: Role | null) => ({
+    memberUids: role ? arrayUnion(uid) : arrayRemove(uid),
+    organizerUids: role === "organizer" ? arrayUnion(uid) : arrayRemove(uid),
+  });
+
   /**
    * Make one change that touches who is linked to the Club: the row and the Club's member and
    * Organizer lists go out in one batch, so they never disagree. Checks the rules of the domain
-   * first for a plain message; Security Rules check the same on the server.
+   * first for a plain message; Security Rules check the same on the server. `linkUid` is the uid
+   * of the Account a new link points at (for `addPlayer` and `link`).
    */
-  async function changeLinks(clubId: string, change: ClubChange): Promise<void> {
+  async function changeLinks(clubId: string, change: ClubChange, linkUid?: string): Promise<void> {
     if (!deps.online.get()) throw new BackendError("offline");
-    const viewer = await requireAccount();
-    const club = await loadClub(clubId);
+    const { account: viewer } = await requireViewer();
+    const { club, linkUids } = await loadClub(clubId);
     const problem = clubChangeProblem(club, viewer.accountId, change);
     if (problem) throw new BackendError(problem);
 
     const batch = writeBatch(db);
-    const lists = (accountId: string, role: Role | null) => ({
-      memberAccountIds: role
-        ? arrayUnion(accountId.toLowerCase())
-        : arrayRemove(accountId.toLowerCase()),
-      organizerAccountIds:
-        role === "organizer"
-          ? arrayUnion(accountId.toLowerCase())
-          : arrayRemove(accountId.toLowerCase()),
-    });
     const existing = (playerId: string) => club.players.find((player) => player.id === playerId);
 
     switch (change.type) {
       case "addPlayer":
-        batch.set(playerRef(clubId, change.player.id), toRecord(change.player));
+        batch.set(playerRef(clubId, change.player.id), toRecord(change.player, linkUid));
         if (change.player.link) {
-          batch.update(
-            clubRef(clubId),
-            lists(change.player.link.accountId, change.player.link.role),
-          );
+          if (!linkUid) throw new BackendError("failed");
+          batch.update(clubRef(clubId), lists(linkUid, change.player.link.role));
         }
         break;
       case "link": {
-        const old = existing(change.playerId)?.link;
-        if (old && old.accountId.toLowerCase() !== change.link.accountId.toLowerCase()) {
-          batch.update(clubRef(clubId), lists(old.accountId, null));
-        }
-        batch.update(playerRef(clubId, change.playerId), { link: toLink(change.link) });
-        batch.update(clubRef(clubId), lists(change.link.accountId, change.link.role));
+        if (!linkUid) throw new BackendError("failed");
+        const oldUid = existing(change.playerId)?.link ? linkUids.get(change.playerId) : undefined;
+        if (oldUid && oldUid !== linkUid) batch.update(clubRef(clubId), lists(oldUid, null));
+        batch.update(playerRef(clubId, change.playerId), {
+          link: toLink(change.link, linkUid),
+        });
+        batch.update(clubRef(clubId), lists(linkUid, change.link.role));
         break;
       }
       case "setRole": {
-        const link = existing(change.playerId)?.link;
-        if (!link) throw new BackendError("not-found");
+        const uid = linkUids.get(change.playerId);
+        if (!existing(change.playerId)?.link || !uid) throw new BackendError("not-found");
         batch.update(playerRef(clubId, change.playerId), { "link.role": change.role });
-        batch.update(clubRef(clubId), lists(link.accountId, change.role));
+        batch.update(clubRef(clubId), lists(uid, change.role));
         break;
       }
       case "unlink": {
-        const link = existing(change.playerId)?.link;
-        if (!link) return;
+        const uid = linkUids.get(change.playerId);
+        if (!existing(change.playerId)?.link || !uid) return;
         batch.update(playerRef(clubId, change.playerId), { link: deleteField() });
-        batch.update(clubRef(clubId), lists(link.accountId, null));
+        batch.update(clubRef(clubId), lists(uid, null));
         break;
       }
       case "removePlayer": {
-        const link = existing(change.playerId)?.link;
+        const uid = linkUids.get(change.playerId);
         batch.delete(playerRef(clubId, change.playerId));
-        if (link) batch.update(clubRef(clubId), lists(link.accountId, null));
+        if (existing(change.playerId)?.link && uid) batch.update(clubRef(clubId), lists(uid, null));
         break;
       }
       default:
@@ -168,26 +199,33 @@ export function createFirebaseClubs(
     await settle(deps.online, batch.commit());
   }
 
-  /** The Account's own spelling of its ID, or `unknown-account`. */
-  async function knownAccountId(accountId: string): Promise<string> {
-    const account = await lookup(accountId);
-    if (!account) throw new BackendError("unknown-account");
-    return account.accountId;
-  }
-
-  async function lookup(accountId: string): Promise<Account | null> {
+  /**
+   * The Account with this Account ID and the uid that owns it, or null. The Account found must
+   * have exactly the Account ID that was typed (any capitalisation), so a reservation that points
+   * at a different Account never counts.
+   */
+  async function findAccount(accountId: string): Promise<{ account: Account; uid: string } | null> {
     if (!deps.online.get()) throw new BackendError("offline");
+    const wanted = normalizeAccountId(accountId);
     try {
-      const reservation = await getDoc(doc(db, "accountIds", accountId.trim().toLowerCase()));
-      if (!reservation.exists()) return null;
-      const account = (await getDoc(doc(db, "accounts", String(reservation.data().uid)))).data();
+      const reservation = await getDoc(doc(db, "accountIds", wanted));
+      const uid = reservation.data()?.uid;
+      if (typeof uid !== "string") return null;
+      const account = (await getDoc(doc(db, "accounts", uid))).data();
       if (!account || typeof account.accountId !== "string" || typeof account.name !== "string") {
         return null;
       }
-      return { accountId: account.accountId, name: account.name };
+      if (normalizeAccountId(account.accountId) !== wanted) return null;
+      return { account: { accountId: account.accountId, name: account.name }, uid };
     } catch (error) {
       throw toBackendError(error);
     }
+  }
+
+  async function knownAccount(accountId: string): Promise<{ account: Account; uid: string }> {
+    const found = await findAccount(accountId);
+    if (!found) throw new BackendError("unknown-account");
+    return found;
   }
 
   return {
@@ -196,23 +234,29 @@ export function createFirebaseClubs(
       let watching: string | null | undefined;
       const stopAccount = deps.observeAccount((account) => {
         // The Account record changes now and then (its name); that's no reason to start over.
-        const accountId = account?.accountId.toLowerCase() ?? null;
-        if (accountId === watching) return;
-        watching = accountId;
+        const uid = account ? deps.currentUid() : null;
+        if (uid === watching) return;
+        watching = uid;
         stopClubs();
-        stopClubs = accountId ? watchClubs(accountId) : () => {};
-        if (!accountId) listener([]);
+        stopClubs = uid ? watchClubs(uid) : () => {};
+        if (!uid) listener([]);
       });
 
-      function watchClubs(accountId: string): Unsubscribe {
-        const members = query(
-          collection(db, "clubs"),
-          where("memberAccountIds", "array-contains", accountId.toLowerCase()),
-        );
-        const clubs = new Map<
-          string,
-          { name: string; players: ClubPlayer[] | null; stop: Unsubscribe }
-        >();
+      function watchClubs(uid: string): Unsubscribe {
+        const members = query(collection(db, "clubs"), where("memberUids", "array-contains", uid));
+        interface Entry {
+          name: string;
+          /** The Club's rows as last heard; null until they have loaded once. */
+          players: ClubPlayer[] | null;
+          /** The Club's own record has a change that the server hasn't confirmed yet. */
+          pending: boolean;
+          stop: Unsubscribe;
+          /** Try the rows listener again now, if it is waiting to. */
+          retryNow: () => void;
+        }
+        const clubs = new Map<string, Entry>();
+        let stopped = false;
+        let reported = false;
 
         function emit() {
           // Report only once every Club's rows are in, or a half-loaded list would look like
@@ -226,77 +270,136 @@ export function createFirebaseClubs(
           listener(ready);
         }
 
-        /**
-         * Watch one Club's rows. A Club that was just created is on this device before it is on the
-         * server, and the server refuses to list the rows of a Club it doesn't know yet, so a
-         * refused listener is tried again shortly instead of giving up.
-         */
-        function watchPlayers(
-          clubId: string,
-          entry: { players: ClubPlayer[] | null; stop: Unsubscribe },
-          attempt: number,
-        ) {
-          let retry: ReturnType<typeof setTimeout> | undefined;
-          const stop = onSnapshot(
-            playersRef(clubId),
-            (players) => {
-              entry.players = players.docs.map((row) => toClubPlayer(row.id, row.data()));
-              emit();
-            },
-            (error) => {
-              if (clubs.get(clubId) !== entry || attempt >= MAX_LISTEN_RETRIES) {
-                console.error("Club players listener failed", error);
-                // Don't hold up the rest of the list for one Club that won't load.
-                if (clubs.get(clubId) === entry) {
-                  clubs.delete(clubId);
-                  emit();
-                }
-                return;
-              }
-              retry = setTimeout(
-                () => watchPlayers(clubId, entry, attempt + 1),
-                250 * (attempt + 1),
-              );
-            },
-          );
-          entry.stop = () => {
-            clearTimeout(retry);
-            stop();
-          };
+        /** Whether the server says this Club isn't mine (any more): it is gone or I was taken off it. */
+        async function clubIsGone(clubId: string): Promise<boolean> {
+          if (!deps.online.get()) return false;
+          try {
+            return !(await getDocFromServer(clubRef(clubId))).exists();
+          } catch (error) {
+            return (error as { code?: unknown } | null)?.code === "permission-denied";
+          }
         }
 
-        const stopMembers = onSnapshot(
-          members,
-          (snapshot) => {
-            const seen = new Set<string>();
-            for (const clubDoc of snapshot.docs) {
-              seen.add(clubDoc.id);
-              const name = String(clubDoc.data().name ?? "");
-              const known = clubs.get(clubDoc.id);
-              if (known) {
-                known.name = name;
-                continue;
-              }
-              const entry = {
-                name,
-                players: null as ClubPlayer[] | null,
-                stop: () => {},
-              };
-              clubs.set(clubDoc.id, entry);
-              watchPlayers(clubDoc.id, entry, 0);
-            }
+        /**
+         * Watch one Club's rows. A Club that was just created is on this device before it is on the
+         * server, and the server refuses to list the rows of a Club it doesn't know yet. That ends
+         * the listener, and nothing wakes it again when the Club's write lands, so a refused
+         * listener is tried again, with growing pauses (and at once when the Club's own record is
+         * confirmed), for as long as the Club is on the list. Until it works the Club keeps the
+         * rows it last had and is never dropped from the list.
+         *
+         * Only a Club the server has confirmed and still refuses is dropped: that is how this
+         * device hears that an Organizer took the Account off the Club, which the Clubs listener
+         * doesn't report.
+         */
+        function watchPlayers(clubId: string, entry: Entry) {
+          let attempt = 0;
+          let retry: ReturnType<typeof setTimeout> | undefined;
+          let waiting = false;
+          let stopSnapshot: Unsubscribe = () => {};
+          const listen = () => {
+            clearTimeout(retry);
+            waiting = false;
+            stopSnapshot = onSnapshot(
+              playersRef(clubId),
+              (players) => {
+                attempt = 0;
+                entry.players = players.docs.map((row) => toClubPlayer(row.id, row.data()));
+                emit();
+              },
+              (error) => {
+                if (clubs.get(clubId) !== entry) return;
+                void (async () => {
+                  if (!entry.pending && (await clubIsGone(clubId))) {
+                    if (clubs.get(clubId) !== entry) return;
+                    entry.stop();
+                    clubs.delete(clubId);
+                    emit();
+                    return;
+                  }
+                  if (clubs.get(clubId) !== entry) return;
+                  console.warn("Club players listener failed, trying again", error);
+                  waiting = true;
+                  retry = setTimeout(listen, retryDelay(attempt++));
+                })();
+              },
+            );
+          };
+          entry.stop = () => {
+            clearTimeout(retry);
+            stopSnapshot();
+          };
+          entry.retryNow = () => {
+            if (waiting) listen();
+          };
+          listen();
+        }
 
-            for (const [id, club] of clubs) {
-              if (seen.has(id)) continue;
-              club.stop();
-              clubs.delete(id);
+        function handleMembers(snapshot: QuerySnapshot) {
+          let changed = false;
+          const seen = new Set<string>();
+          for (const clubDoc of snapshot.docs) {
+            seen.add(clubDoc.id);
+            const name = String(clubDoc.data().name ?? "");
+            const pending = clubDoc.metadata.hasPendingWrites;
+            const known = clubs.get(clubDoc.id);
+            if (known) {
+              if (known.name !== name) changed = true;
+              known.name = name;
+              const confirmed = known.pending && !pending;
+              known.pending = pending;
+              if (confirmed) known.retryNow();
+              continue;
             }
+            const entry: Entry = {
+              name,
+              players: null,
+              pending,
+              stop: () => {},
+              retryNow: () => {},
+            };
+            clubs.set(clubDoc.id, entry);
+            watchPlayers(clubDoc.id, entry);
+            changed = true;
+          }
+
+          for (const [id, club] of clubs) {
+            if (seen.has(id)) continue;
+            club.stop();
+            clubs.delete(id);
+            changed = true;
+          }
+          if (changed || !reported) {
+            reported = true;
             emit();
-          },
-          (error) => console.error("Clubs listener failed", error),
-        );
+          }
+        }
+
+        // The Clubs listener ends when it fails, so it is started again with growing pauses. It
+        // also hears about metadata changes, to learn when a new Club's write reaches the server.
+        let membersAttempt = 0;
+        let membersRetry: ReturnType<typeof setTimeout> | undefined;
+        let stopMembers: Unsubscribe = () => {};
+        const listenMembers = () => {
+          stopMembers = onSnapshot(
+            members,
+            { includeMetadataChanges: true },
+            (snapshot) => {
+              membersAttempt = 0;
+              handleMembers(snapshot);
+            },
+            (error) => {
+              if (stopped) return;
+              console.warn("Clubs listener failed, trying again", error);
+              membersRetry = setTimeout(listenMembers, retryDelay(membersAttempt++));
+            },
+          );
+        };
+        listenMembers();
 
         return () => {
+          stopped = true;
+          clearTimeout(membersRetry);
           stopMembers();
           for (const club of clubs.values()) club.stop();
           clubs.clear();
@@ -310,27 +413,31 @@ export function createFirebaseClubs(
     },
 
     async createSharedClub(input) {
-      const account = await requireAccount();
+      const { account, uid } = await requireViewer();
       const name = normalizeName(input.name);
-      if (name === "") throw new BackendError("invalid-name");
-      const players = [creatorPlayer(account, newId()), ...input.players];
-      const accountId = account.accountId.toLowerCase();
+      if (name === "" || name.length > MAX_NAME_LENGTH) throw new BackendError("invalid-name");
+      const creator = creatorPlayer(account, newId());
+      const players = [creator, ...input.players];
 
       const batch = writeBatch(db);
       batch.set(clubRef(input.id), {
         name,
-        memberAccountIds: [accountId],
-        organizerAccountIds: [accountId],
+        memberUids: [uid],
+        organizerUids: [uid],
         createdAt: serverTimestamp(),
       });
-      for (const player of players) batch.set(playerRef(input.id, player.id), toRecord(player));
+      batch.set(playerRef(input.id, creator.id), toRecord(creator, uid));
+      for (const player of input.players)
+        batch.set(playerRef(input.id, player.id), toRecord(player));
       await settle(deps.online, batch.commit());
       return { id: input.id, name, kind: "shared", players };
     },
 
     async renameSharedClub(clubId, name) {
       const trimmed = normalizeName(name);
-      if (trimmed === "") throw new BackendError("invalid-name");
+      if (trimmed === "" || trimmed.length > MAX_NAME_LENGTH) {
+        throw new BackendError("invalid-name");
+      }
       await requireClub(clubId);
       await settle(deps.online, updateDoc(clubRef(clubId), { name: trimmed }));
     },
@@ -345,12 +452,17 @@ export function createFirebaseClubs(
 
     async addClubPlayer(clubId, player) {
       if (!deps.online.get()) throw new BackendError("offline");
+      requireRowName(player.name);
       if (player.link) {
-        const accountId = await knownAccountId(player.link.accountId);
-        await changeLinks(clubId, {
-          type: "addPlayer",
-          player: { ...player, link: { ...player.link, accountId } },
-        });
+        const { account, uid } = await knownAccount(player.link.accountId);
+        await changeLinks(
+          clubId,
+          {
+            type: "addPlayer",
+            player: { ...player, link: { ...player.link, accountId: account.accountId } },
+          },
+          uid,
+        );
         return;
       }
       await requireClub(clubId);
@@ -359,30 +471,34 @@ export function createFirebaseClubs(
 
     async updateClubPlayer(clubId, playerId, patch) {
       if (Object.keys(patch).length === 0) return;
+      if (patch.name !== undefined) requireRowName(patch.name);
       await requireClub(clubId);
       await settle(deps.online, updateDoc(playerRef(clubId, playerId), { ...patch }));
     },
 
     async removeClubPlayer(clubId, playerId) {
       await requireClub(clubId);
-      let linked = false;
-      try {
-        linked = !!toClubPlayer(playerId, (await getDoc(playerRef(clubId, playerId))).data() ?? {})
-          .link;
-      } catch {
-        // Offline with nothing cached: an unlinked row is the usual case.
-      }
+      // Online this reads the server, offline the cache (nothing cached: an unlinked row is the
+      // usual case).
+      const row = await readDoc(playerRef(clubId, playerId));
+      const linked = !!row?.exists() && !!toClubPlayer(playerId, row.data() ?? {}).link;
       // A linked row also changes who is on the Club, which needs the connection and a check.
       if (linked) return changeLinks(clubId, { type: "removePlayer", playerId });
       await settle(deps.online, deleteDoc(playerRef(clubId, playerId)));
     },
 
-    lookupAccount: lookup,
+    async lookupAccount(accountId) {
+      return (await findAccount(accountId))?.account ?? null;
+    },
 
     async linkClubPlayer(clubId, playerId, accountId, role) {
       if (!deps.online.get()) throw new BackendError("offline");
-      const known = await knownAccountId(accountId);
-      await changeLinks(clubId, { type: "link", playerId, link: { accountId: known, role } });
+      const { account, uid } = await knownAccount(accountId);
+      await changeLinks(
+        clubId,
+        { type: "link", playerId, link: { accountId: account.accountId, role } },
+        uid,
+      );
     },
 
     setClubPlayerRole: (clubId, playerId, role) =>
@@ -392,37 +508,109 @@ export function createFirebaseClubs(
 
     async leaveClub(clubId) {
       if (!deps.online.get()) throw new BackendError("offline");
-      const viewer = await requireAccount();
-      const row = ownRow(await loadClub(clubId), viewer.accountId);
-      if (!row) throw new BackendError("not-found");
-      await changeLinks(clubId, { type: "unlink", playerId: row.id });
+      const { account, uid } = await requireViewer();
+      const loaded = await loadClub(clubId);
+      const row =
+        loaded.club.players.find((player) => loaded.linkUids.get(player.id) === uid) ??
+        ownRow(loaded.club, account.accountId);
+      if (row) {
+        await changeLinks(clubId, { type: "unlink", playerId: row.id });
+        return;
+      }
+      // No row is linked to me, but I may still be on the Club's lists (they are what the rules
+      // go by), so leaving takes me off them.
+      if (!loaded.memberUids.includes(uid)) throw new BackendError("not-found");
+      if (loaded.organizerUids.includes(uid) && loaded.organizerUids.length <= 1) {
+        throw new BackendError("last-organizer");
+      }
+      const batch = writeBatch(db);
+      batch.update(clubRef(clubId), lists(uid, null));
+      await settle(deps.online, batch.commit());
     },
   };
+}
+
+/** What `loadClub` returns: the Club, and the lists and link uids that Security Rules go by. */
+interface LoadedClub {
+  club: Club;
+  /** Row id → the uid its link points at. */
+  linkUids: Map<string, string>;
+  memberUids: string[];
+  organizerUids: string[];
+}
+
+const stringList = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+
+/** A Club player's name must be there and not longer than the rules allow. */
+function requireRowName(name: string) {
+  if (name.trim() === "" || normalizeName(name).length > MAX_NAME_LENGTH) {
+    throw new BackendError("invalid-name");
+  }
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("timeout")), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error instanceof Error ? error : new Error(String(error)));
+      },
+    );
+  });
 }
 
 /**
  * Online, wait for the server so failures (e.g. Security Rules) reach the caller. Offline the
  * write waits in Firestore's queue and never settles until the connection is back, so don't wait.
+ * Online but with a network that is really down (`navigator.onLine` can say true), the write
+ * would hang too: after `timeoutMs` it counts as queued and Save carries on.
  */
-async function settle(online: OnlineSource, write: Promise<unknown>): Promise<void> {
+export async function settle(
+  online: OnlineSource,
+  write: Promise<unknown>,
+  timeoutMs = SETTLE_TIMEOUT_MS,
+): Promise<void> {
   if (online.get()) {
+    const queued = Symbol("queued");
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      await write;
+      const result = await Promise.race([
+        write,
+        new Promise<typeof queued>((resolve) => {
+          timer = setTimeout(() => resolve(queued), timeoutMs);
+        }),
+      ]);
+      if (result === queued) {
+        write.catch((error: unknown) => console.error("Queued write failed", error));
+      }
     } catch (error) {
       throw toBackendError(error);
+    } finally {
+      clearTimeout(timer);
     }
     return;
   }
   write.catch((error: unknown) => console.error("Queued write failed", error));
 }
 
-const toLink = (link: AccountLink) => ({ accountId: link.accountId, role: link.role });
+const toLink = (link: AccountLink, uid: string) => ({
+  accountId: link.accountId,
+  uid,
+  role: link.role,
+});
 
-function toRecord(player: ClubPlayer): DocumentData {
+/** The record for a row. A link is only written with the uid of the Account it points at. */
+function toRecord(player: ClubPlayer, linkUid?: string): DocumentData {
   return {
     name: player.name,
     skill: player.skill,
-    ...(player.link ? { link: toLink(player.link) } : {}),
+    ...(player.link && linkUid ? { link: toLink(player.link, linkUid) } : {}),
   };
 }
 
@@ -438,7 +626,7 @@ function toBackendError(error: unknown): BackendError {
 }
 
 function toClubPlayer(id: string, data: DocumentData): ClubPlayer {
-  const link = data.link as { accountId?: unknown; role?: unknown } | undefined;
+  const link = data.link as { accountId?: unknown; uid?: unknown; role?: unknown } | undefined;
   const player: ClubPlayer = {
     id,
     name: String(data.name ?? ""),
@@ -447,6 +635,7 @@ function toClubPlayer(id: string, data: DocumentData): ClubPlayer {
   if (
     link &&
     typeof link.accountId === "string" &&
+    typeof link.uid === "string" &&
     (link.role === "organizer" || link.role === "player")
   ) {
     player.link = { accountId: link.accountId, role: link.role };

@@ -1,5 +1,5 @@
 import { accountIdsEqual, generateAccountId, normalizeAccountId } from "../domain/accountId.ts";
-import { normalizeName } from "../domain/validation.ts";
+import { MAX_NAME_LENGTH, normalizeName } from "../domain/validation.ts";
 import type { Account } from "../domain/types.ts";
 import { createSimulatedClubs, type SimulatedClubsState } from "./simulatedClubs.ts";
 import {
@@ -87,7 +87,8 @@ export function createSimulatedBackend(
 
     createAccount(name) {
       const trimmed = normalizeName(name);
-      if (trimmed === "") return Promise.reject(new BackendError("invalid-name"));
+      if (trimmed === "" || trimmed.length > MAX_NAME_LENGTH)
+        return Promise.reject(new BackendError("invalid-name"));
       if (!online.get()) return Promise.reject(new BackendError("offline"));
       if (state.loadAccount()) return Promise.reject(new BackendError("account-exists"));
 
@@ -110,7 +111,8 @@ export function createSimulatedBackend(
 
     renameAccount(name) {
       const trimmed = normalizeName(name);
-      if (trimmed === "") return Promise.reject(new BackendError("invalid-name"));
+      if (trimmed === "" || trimmed.length > MAX_NAME_LENGTH)
+        return Promise.reject(new BackendError("invalid-name"));
       if (!online.get()) return Promise.reject(new BackendError("offline"));
       const current = state.loadAccount();
       if (!current) return Promise.reject(new BackendError("no-account"));

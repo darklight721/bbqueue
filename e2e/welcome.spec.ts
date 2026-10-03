@@ -45,6 +45,18 @@ test.describe("Welcome", () => {
     expect(await readFakeAccount(page)).toBeNull();
   });
 
+  test("Continue with a name longer than 40 characters asks for a shorter one", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await page.getByLabel("Your name").fill("x".repeat(41));
+    await page.getByRole("button", { name: "Continue" }).click();
+
+    await expect(page.getByText("Name is too long (at most 40 characters)")).toBeVisible();
+    await expect(welcome(page)).toBeVisible();
+    expect(await readFakeAccount(page)).toBeNull();
+  });
+
   test("Enter in the name field creates the Account and goes Home", async ({ page }) => {
     await page.goto("/");
     const name = page.getByLabel("Your name");
