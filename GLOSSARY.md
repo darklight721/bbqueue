@@ -31,7 +31,7 @@ One evening of play, for one Club or for no Club (guests only), from Start to En
 _Avoid_: Event, game night
 
 **Ended session**:
-A Session that has been ended and kept, with its Session players and Ended matches, for looking back on. A Session ended without any Ended match is not kept. Only the 50 most recently ended are kept; older ones are dropped.
+A Session that has been ended and kept, with its Session players and Ended matches, for looking back on. A Session ended without any Ended match is not kept. Only the 50 most recently ended are kept; older ones are dropped. The app labels the list of Ended sessions "Past sessions"; that is UI copy only, not a separate term.
 _Avoid_: Past session, archived session, old session
 
 **Session summary**:
