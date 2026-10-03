@@ -27,3 +27,11 @@ Spec: `.scratch/accounts/spec.md` (stories 19–29, Implementation Decisions: Pe
 - Organizer adds a Club player with a valid Account ID → "✓ Name" → saves as Player. An unknown ID shows an error.
 - In a second context, the linked Account sees the Club → read-only Club screen with "You" → Leave club → the Club is gone from their list.
 - The last Organizer tries to demote themselves → blocked with the reason.
+
+## Comments
+
+Carried over from ticket 04 (Shared clubs):
+- Firestore keeps `memberAccountIds` / `organizerAccountIds` on the Club record as an index derived from the rows' links. Every link or Role change must update them in the same batch as the row.
+- Nothing yet stops the last Organizer's row being removed or demoted on the server; the UI only hides Remove on linked rows. The rules and the domain check belong here.
+- Saving a Guest to a Shared club from New session or a running Session needs a connection; offline, the Club row is silently not added (only logged). Decide whether to surface it.
+- Club screen saves to a Shared club are fire-and-forget: server rejections are only logged. Permission errors from this ticket's rules need to reach the user.
