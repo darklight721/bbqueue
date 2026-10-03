@@ -3,6 +3,7 @@ import { useLocation, useSearch } from "wouter";
 import { saveClubs, useBackendOnline } from "../../backend/clubs.ts";
 import { AddPlayerForm, type NewPlayer } from "../../components/AddPlayerForm.tsx";
 import { ConfirmDialog } from "../../components/ConfirmDialog.tsx";
+import { OfflineNote } from "../../components/OfflineNote.tsx";
 import { CloseIcon, UsersIcon } from "../../components/icons.tsx";
 import { blurOnEnter } from "../../components/keyboard.ts";
 import { NAME_ERROR_MESSAGE } from "../../components/nameErrors.ts";
@@ -283,10 +284,9 @@ export function NewSessionScreen() {
           </ul>
         ) : null}
         {club?.kind === "shared" && online === false && guests.some((guest) => guest.saveToClub) ? (
-          <p role="status" className="text-sm font-semibold text-base-content/70">
-            You're offline, so guests marked "Save to club" won't be added to {club.name}. They
-            still join this session.
-          </p>
+          <OfflineNote role="status">
+            You're offline. Guests still join, but won't be saved to {club.name}.
+          </OfflineNote>
         ) : null}
         <div className="rounded-box bg-base-200 p-4">
           <AddPlayerForm

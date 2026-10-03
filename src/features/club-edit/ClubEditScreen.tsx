@@ -1,13 +1,5 @@
-import {
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-  type MouseEvent,
-  type ReactNode,
-} from "react";
-import { Link, Redirect, useLocation } from "wouter";
+import { useEffect, useId, useMemo, useRef, useState, type MouseEvent } from "react";
+import { Redirect, useLocation } from "wouter";
 import {
   createClub,
   createsSharedClubs,
@@ -18,13 +10,14 @@ import {
 } from "../../backend/clubs.ts";
 import { getBackend } from "../../backend/index.ts";
 import { ConfirmDialog } from "../../components/ConfirmDialog.tsx";
-import { ChevronRightIcon, HistoryIcon, PlayIcon, PlusIcon } from "../../components/icons.tsx";
+import { HistoryIcon, PlayIcon, PlusIcon, WarningIcon } from "../../components/icons.tsx";
 import { blurOnEnter } from "../../components/keyboard.ts";
 import { NAME_ERROR_MESSAGE } from "../../components/nameErrors.ts";
+import { OfflineNote } from "../../components/OfflineNote.tsx";
 import { PlayerRowEditor } from "../../components/PlayerRowEditor.tsx";
 import { Screen } from "../../components/Screen.tsx";
 import { normalizeAccountId, validateAccountId } from "../../domain/accountId.ts";
-import { canChangeRoles, canDeleteClub, canEditClub } from "../../domain/permissions.ts";
+import { canChangeRoles, canDeleteClub, canEditClub, ownRow } from "../../domain/permissions.ts";
 import { newId } from "../../domain/ids.ts";
 import { DEFAULT_SKILL, type Account, type Club, type Role } from "../../domain/types.ts";
 import { hasClubErrors, validateClub } from "../../domain/validation.ts";
@@ -32,10 +25,11 @@ import { useAccount, useClubs, useEndedSessions, useSession } from "../../storag
 import { newSessionForClubPath } from "../new-session/newSession.ts";
 import { countLabel } from "../session-summary/summaryFormat.ts";
 import { AccountLinkSection } from "./AccountLinkSection.tsx";
+import { ClubCardLink } from "./ClubCardLink.tsx";
 import { linkBlocksSave, type LinkState } from "./linkState.ts";
 import { clubErrorMessage } from "./clubErrors.ts";
 import { ClubReadOnly } from "./ClubReadOnly.tsx";
-import { LeaveClub } from "./LeaveClub.tsx";
+import { DangerZone, LEAVE_MESSAGE, LeaveClub } from "./LeaveClub.tsx";
 import {
   clubFromForm,
   formFromClub,
@@ -71,6 +65,7 @@ function ClubEditor({ club }: { club: Club | null }) {
   const addBlocked = club?.kind === "shared" && online === false;
   const viewer = account?.accountId;
   const canDelete = !club || canDeleteClub(club, viewer);
+  const canLeave = club?.kind === "shared" && !!ownRow(club, viewer);
   // Organizers of a Shared club link Accounts to rows and give them Roles.
   const linking = !!club && canChangeRoles(club, viewer);
 
@@ -186,6 +181,7 @@ function ClubEditor({ club }: { club: Club | null }) {
           role: row.link.role,
           isYou: !!viewer && key === normalizeAccountId(viewer),
           exists: key in lookups ? lookups[key] !== null : null,
+          name: lookups[key]?.name ?? null,
         });
         continue;
       }
@@ -304,6 +300,7 @@ function ClubEditor({ club }: { club: Club | null }) {
   async function save() {
     if (saving) return;
     if (invalid || linkProblem) {
+      setProblem(null);
       setAttempted(true);
       setSaveTick((tick) => tick + 1);
       return;
@@ -379,20 +376,19 @@ function ClubEditor({ club }: { club: Club | null }) {
       onBack={guardBack}
       footer={
         <div className="flex flex-col gap-2">
-          {attempted && (invalid || linkProblem) ? (
-            <p role="alert" className="text-center text-sm font-semibold text-error">
-              Fix the highlighted fields to save.
+          {/* One line at a time, most pressing first, so the footer grows by a line at most. */}
+          {problem || (attempted && (invalid || linkProblem)) ? (
+            <p
+              role="alert"
+              className="flex items-start justify-center gap-1.5 text-center text-sm font-semibold text-error"
+            >
+              <WarningIcon className="mt-0.5 size-4 shrink-0" />
+              <span>{problem ?? "Fix the highlighted fields to save."}</span>
             </p>
-          ) : null}
-          {problem ? (
-            <p role="alert" className="text-center text-sm font-semibold text-error">
-              {problem}
-            </p>
-          ) : null}
-          {addBlocked ? (
-            <p className="text-center text-sm text-base-content/70">
+          ) : addBlocked ? (
+            <OfflineNote className="justify-center text-center">
               You're offline. Adding players needs a connection.
-            </p>
+            </OfflineNote>
           ) : null}
           <div className="grid grid-cols-2 gap-3">
             <button
@@ -489,9 +485,9 @@ function ClubEditor({ club }: { club: Club | null }) {
           </div>
 
           {linking && online === false ? (
-            <p className="text-sm text-base-content/70">
+            <OfflineNote className="rounded-box bg-base-200 px-3 py-2">
               You're offline. Linking Accounts and changing Roles need a connection.
-            </p>
+            </OfflineNote>
           ) : null}
 
           {playerCount === 0 ? (
@@ -499,7 +495,7 @@ function ClubEditor({ club }: { club: Club | null }) {
               No players yet. Tap <span className="font-semibold">Add player</span> below.
             </p>
           ) : (
-            <ul className="flex flex-col gap-3">
+            <ul className={`flex flex-col ${linking ? "gap-4" : "gap-3"}`}>
               {form.rows.map((row, index) => {
                 const state = linkStates.get(row.id);
                 const onlyOrganizer =
@@ -508,13 +504,14 @@ function ClubEditor({ club }: { club: Club | null }) {
                   <li
                     key={row.id}
                     data-row-id={row.id}
-                    className="flex scroll-mb-32 flex-col gap-2"
+                    className="flex scroll-mb-32 flex-col gap-1"
                   >
                     <PlayerRowEditor
                       value={{ name: row.name, skill: row.skill }}
                       onChange={(value) => updateRow(row.id, value)}
                       // The only Organizer stays: a Shared club always has one.
                       onRemove={onlyOrganizer ? undefined : () => removeRow(row.id)}
+                      keepRemoveSpace
                       error={shown?.players[index] ?? null}
                       autoFocus={row.id === focusRowId}
                       onEnter={() => enterFromRow(index)}
@@ -540,25 +537,26 @@ function ClubEditor({ club }: { club: Club | null }) {
           )}
         </section>
 
-        {club?.kind === "shared" ? (
-          <LeaveClub
-            club={club}
-            viewer={viewer}
-            online={online !== false}
-            onLeave={() => setConfirmLeave(true)}
-          />
-        ) : null}
-
-        {!isNew && canDelete ? (
-          <div className="border-t border-base-300 pt-6">
-            <button
-              type="button"
-              className="btn btn-ghost w-full text-error"
-              onClick={() => setConfirmDelete(true)}
-            >
-              Delete club
-            </button>
-          </div>
+        {club && (canLeave || canDelete) ? (
+          <DangerZone>
+            {canLeave ? (
+              <LeaveClub
+                club={club}
+                viewer={viewer}
+                online={online !== false}
+                onLeave={() => setConfirmLeave(true)}
+              />
+            ) : null}
+            {canDelete ? (
+              <button
+                type="button"
+                className="btn w-full text-error btn-ghost"
+                onClick={() => setConfirmDelete(true)}
+              >
+                Delete club
+              </button>
+            ) : null}
+          </DangerZone>
         ) : null}
       </div>
 
@@ -574,7 +572,7 @@ function ClubEditor({ club }: { club: Club | null }) {
       <ConfirmDialog
         open={confirmLeave}
         title={`Leave ${club?.name ?? "club"}?`}
-        message="Your row stays on the roster, but it's no longer linked to your Account, and the Club leaves your list."
+        message={LEAVE_MESSAGE}
         confirmLabel="Leave club"
         tone="danger"
         onConfirm={() => void leave()}
@@ -591,64 +589,5 @@ function ClubEditor({ club }: { club: Club | null }) {
         onCancel={() => settleDiscard(false)}
       />
     </Screen>
-  );
-}
-
-/**
- * Card link from the Club screen (New session / Open active session / Sessions). Same shape as
- * Home's actions; "active" mirrors Home's Resume session card so a running Session stands out.
- */
-function ClubCardLink({
-  href,
-  tone,
-  icon,
-  label,
-  detail,
-  onClick,
-}: {
-  href: string;
-  tone: "plain" | "active";
-  icon: ReactNode;
-  label: string;
-  detail: string;
-  onClick: (event: MouseEvent<HTMLAnchorElement>) => void;
-}) {
-  const labelId = useId();
-  const detailId = useId();
-  const active = tone === "active";
-  return (
-    <Link
-      href={href}
-      onClick={onClick}
-      aria-labelledby={labelId}
-      aria-describedby={detailId}
-      className={`group flex min-h-20 items-center gap-4 rounded-box p-4 pr-3 transition-transform active:scale-[0.98] ${
-        active
-          ? "bg-neutral text-neutral-content shadow-lg ring-1 ring-black/5"
-          : "border-[1.5px] border-base-300 bg-base-100 text-base-content shadow-sm"
-      }`}
-    >
-      <span
-        className={`grid size-12 shrink-0 place-items-center rounded-full ${
-          active ? "bg-volt text-[#14201a]" : "bg-base-200 text-primary"
-        }`}
-      >
-        {icon}
-      </span>
-      <span className="flex min-w-0 flex-1 flex-col">
-        <span id={labelId} className="font-display text-2xl leading-tight font-bold uppercase">
-          {label}
-        </span>
-        <span
-          id={detailId}
-          className={`truncate text-sm ${active ? "text-neutral-content/75" : "text-base-content/65"}`}
-        >
-          {detail}
-        </span>
-      </span>
-      <ChevronRightIcon
-        className={`size-6 shrink-0 transition-transform group-hover:translate-x-0.5 ${active ? "opacity-60" : "opacity-50"}`}
-      />
-    </Link>
   );
 }

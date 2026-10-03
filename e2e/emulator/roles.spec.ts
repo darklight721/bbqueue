@@ -5,6 +5,11 @@ import { readServerClub, signUp, uniqueId } from "./emulator.ts";
 
 const idField = (page: Page, who: string) =>
   page.getByRole("textbox", { name: new RegExp(`Account ID.* for ${who}`) });
+/** Opens the Account ID field with "Link Account", then returns it. */
+async function linkField(page: Page, who: string) {
+  await page.getByRole("button", { name: `Link Account for ${who}` }).click();
+  return idField(page, who);
+}
 const role = (page: Page, who: string) => page.getByRole("combobox", { name: `Role for ${who}` });
 
 /** Roy creates a Club with a row for Cat; returns its id. */
@@ -37,7 +42,7 @@ test.describe("Linking Accounts between two people", () => {
     await page.goto(`/clubs/${clubId}`);
     await expect(role(page, "Roy Smith")).toHaveValue("organizer");
 
-    await idField(page, "Cat").fill("nobody-abcd");
+    await (await linkField(page, "Cat")).fill("nobody-abcd");
     await expect(page.getByText("No Account has that Account ID.")).toBeVisible();
     await idField(page, "Cat").fill(ana.accountId.toUpperCase());
     await expect(page.getByText("✓ Ana Bell")).toBeVisible();
@@ -96,7 +101,7 @@ test.describe("Linking Accounts between two people", () => {
     await expect(page.getByRole("button", { name: "Leave club" })).toBeDisabled();
 
     // Make Ana an Organizer too and step down in the same Save.
-    await idField(page, "Cat").fill(ana.accountId);
+    await (await linkField(page, "Cat")).fill(ana.accountId);
     await expect(page.getByText("✓ Ana Bell")).toBeVisible();
     await role(page, "Cat").selectOption("organizer");
     await role(page, "Roy Smith").selectOption("player");

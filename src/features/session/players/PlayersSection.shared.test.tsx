@@ -94,9 +94,7 @@ describe("Adding a player to a running Session of a Shared club", () => {
 
     expect(getSession()!.players.some((p) => p.name === "Kim")).toBe(true);
     expect(
-      await screen.findByText(
-        "Kim joined, but wasn't saved to Riverside: that needs a connection.",
-      ),
+      await screen.findByText("Kim joined, but wasn't saved to Riverside. You're offline."),
     ).toBeInTheDocument();
   });
 });

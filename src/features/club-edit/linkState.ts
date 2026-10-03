@@ -2,8 +2,18 @@ import type { Role } from "../../domain/types.ts";
 
 /** Where a row's Account ID stands. */
 export type LinkState =
-  /** Linked to an Account. `exists` is false once a lookup shows it is gone, null while unknown. */
-  | { kind: "linked"; accountId: string; role: Role; isYou: boolean; exists: boolean | null }
+  /**
+   * Linked to an Account. `exists` is false once a lookup shows it is gone, null while unknown;
+   * `name` is the Account's name once looked up.
+   */
+  | {
+      kind: "linked";
+      accountId: string;
+      role: Role;
+      isYou: boolean;
+      exists: boolean | null;
+      name: string | null;
+    }
   /** Nothing typed. */
   | { kind: "empty" }
   | { kind: "invalid" }

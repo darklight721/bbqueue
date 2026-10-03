@@ -13,7 +13,7 @@ export function clubErrorMessage(error: unknown): string {
     case "unknown-account":
       return "No Account has that Account ID.";
     case "already-linked":
-      return "That Account is already on this Club's roster.";
+      return "That Account is already on this roster.";
     case "not-found":
       return "This Club or player is no longer there.";
     default:

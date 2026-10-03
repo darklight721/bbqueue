@@ -18,6 +18,8 @@ export interface PlayerRowEditorProps {
   autoFocus?: boolean;
   /** Enter in the name field (e.g. move on to the next player). */
   onEnter?: () => void;
+  /** With no Remove button, still leave its space so this row lines up with the others. */
+  keepRemoveSpace?: boolean;
 }
 
 /** One editable player: name + Skill level + Remove. Used for Club rosters. */
@@ -28,6 +30,7 @@ export function PlayerRowEditor({
   error = null,
   autoFocus = false,
   onEnter,
+  keepRemoveSpace = false,
 }: PlayerRowEditorProps) {
   const nameId = useId();
   const errorId = useId();
@@ -76,6 +79,9 @@ export function PlayerRowEditor({
           >
             <CloseIcon className="size-6" />
           </button>
+        ) : keepRemoveSpace ? (
+          // Same width as Remove, so Skill levels stay lined up down the roster.
+          <span aria-hidden="true" className="w-12 shrink-0" />
         ) : null}
       </div>
       {error ? (

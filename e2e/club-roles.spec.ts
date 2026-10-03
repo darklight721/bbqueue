@@ -24,6 +24,11 @@ const club: Club = makeClub({
 
 const idField = (page: Page, who: string) =>
   page.getByRole("textbox", { name: new RegExp(`Account ID.* for ${who}`) });
+/** Opens the Account ID field with "Link Account", then returns it. */
+async function linkField(page: Page, who: string) {
+  await page.getByRole("button", { name: `Link Account for ${who}` }).click();
+  return idField(page, who);
+}
 const role = (page: Page, who: string) => page.getByRole("combobox", { name: `Role for ${who}` });
 
 test.describe("Linking Accounts (one device)", () => {
@@ -36,7 +41,7 @@ test.describe("Linking Accounts (one device)", () => {
   test("an Organizer links a Club player by Account ID in any capitalisation: ✓ Name, saved as Player", async ({
     page,
   }) => {
-    await idField(page, "Cat").fill("ANA-2222");
+    await (await linkField(page, "Cat")).fill("ANA-2222");
     await expect(page.getByText("✓ Ana Bell")).toBeVisible();
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page).toHaveURL(/\/clubs$/);
@@ -52,7 +57,7 @@ test.describe("Linking Accounts (one device)", () => {
   });
 
   test("an unknown or already-linked Account ID is rejected", async ({ page }) => {
-    await idField(page, "Cat").fill("nobody-abcd");
+    await (await linkField(page, "Cat")).fill("nobody-abcd");
     await expect(page.getByText("No Account has that Account ID.")).toBeVisible();
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page.getByText("Fix the highlighted fields to save.")).toBeVisible();
@@ -78,7 +83,7 @@ test.describe("Linking Accounts (one device)", () => {
   }) => {
     await context.setOffline(true);
 
-    await expect(idField(page, "Cat")).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Link Account for Cat" })).toBeDisabled();
     await expect(role(page, roy.name)).toBeDisabled();
     await expect(
       page.getByText("You're offline. Linking Accounts and changing Roles need a connection."),

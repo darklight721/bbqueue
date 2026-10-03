@@ -69,6 +69,7 @@ afterEach(() => {
 const save = () => userEvent.click(screen.getByRole("button", { name: "Save" }));
 const idField = (who: string) =>
   screen.getByRole("textbox", { name: new RegExp(`Account ID.* for ${who}`) });
+const linkButton = (who: string) => screen.getByRole("button", { name: `Link Account for ${who}` });
 const roleSelect = (who: string) => screen.getByRole("combobox", { name: `Role for ${who}` });
 const clubOf = (backend: Backend) =>
   new Promise<Club | undefined>((resolve) => {
@@ -91,6 +92,7 @@ describe("Club screen for an Organizer", () => {
     const user = userEvent.setup();
     renderAt("/clubs/c1");
 
+    await user.click(linkButton("Cat"));
     await user.type(idField("Cat"), anaAccount.accountId.toUpperCase());
     expect(await screen.findByText("✓ Ana Bell")).toBeInTheDocument();
     await save();
@@ -104,10 +106,29 @@ describe("Club screen for an Organizer", () => {
     });
   });
 
+  it("shows only Link Account on a row with no link, and Don't link closes the field again", async () => {
+    const user = userEvent.setup();
+    renderAt("/clubs/c1");
+
+    expect(screen.queryByRole("textbox", { name: /Account ID/ })).not.toBeInTheDocument();
+    await user.click(linkButton("Cat"));
+    expect(idField("Cat")).toHaveFocus();
+    await user.type(idField("Cat"), "nobody-abcd");
+    await screen.findByText("No Account has that Account ID.");
+
+    await user.click(screen.getByRole("button", { name: "Don't link Cat" }));
+
+    expect(screen.queryByRole("textbox", { name: /Account ID/ })).not.toBeInTheDocument();
+    expect(linkButton("Cat")).toHaveFocus();
+    await save();
+    expect(screen.getByRole("heading", { level: 1, name: "Clubs" })).toBeInTheDocument();
+  });
+
   it("links as Organizer when that Role is picked", async () => {
     const user = userEvent.setup();
     renderAt("/clubs/c1");
 
+    await user.click(linkButton("Cat"));
     await user.type(idField("Cat"), anaAccount.accountId);
     await screen.findByText("✓ Ana Bell");
     await user.selectOptions(roleSelect("Cat"), "organizer");
@@ -120,6 +141,7 @@ describe("Club screen for an Organizer", () => {
     const user = userEvent.setup();
     renderAt("/clubs/c1");
 
+    await user.click(linkButton("Cat"));
     await user.type(idField("Cat"), "nobody-abcd");
     expect(await screen.findByText("No Account has that Account ID.")).toBeInTheDocument();
     expect(idField("Cat")).toHaveAttribute("aria-invalid", "true");
@@ -133,6 +155,7 @@ describe("Club screen for an Organizer", () => {
     const user = userEvent.setup();
     renderAt("/clubs/c1");
 
+    await user.click(linkButton("Cat"));
     await user.type(idField("Cat"), royAccount.accountId.toUpperCase());
 
     expect(await screen.findByText("That Account is already on this roster.")).toBeInTheDocument();
@@ -142,6 +165,7 @@ describe("Club screen for an Organizer", () => {
     const user = userEvent.setup();
     renderAt("/clubs/c1");
 
+    await user.click(linkButton("Cat"));
     await user.type(idField("Cat"), "ana");
     await save();
 
@@ -162,6 +186,7 @@ describe("Club screen for an Organizer", () => {
     const user = userEvent.setup();
     renderAt("/clubs/c1");
 
+    await user.click(linkButton("Cat"));
     await user.type(idField("Cat"), anaAccount.accountId);
     await screen.findByText("✓ Ana Bell");
     await user.selectOptions(roleSelect("Cat"), "organizer");
@@ -179,7 +204,7 @@ describe("Club screen for an Organizer", () => {
 
     act(() => roy.setOnline(false));
 
-    expect(idField("Cat")).toBeDisabled();
+    expect(linkButton("Cat")).toBeDisabled();
     expect(roleSelect("Roy Smith")).toBeDisabled();
     expect(
       screen.getByText("You're offline. Linking Accounts and changing Roles need a connection."),
@@ -266,6 +291,7 @@ describe("Club screen for a Player", () => {
       expect.stringContaining("Roy Smith"),
     ]);
     expect(within(rows[0]!).getByText("You")).toBeInTheDocument();
+    expect(within(rows[2]!).getByText("Organizer")).toBeInTheDocument();
     expect(screen.getAllByText("You")).toHaveLength(1);
     expect(screen.queryByText(royAccount.accountId)).not.toBeInTheDocument();
     expect(screen.queryByText(anaAccount.accountId)).not.toBeInTheDocument();

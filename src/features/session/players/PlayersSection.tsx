@@ -264,11 +264,12 @@ function AddSessionPlayer() {
       ).catch((error: unknown) => {
         // The player is in the Session; only the Club's roster missed out.
         console.error("Failed to save the player to the Club", error);
-        const why =
+        const who = normalizeName(name);
+        actions.notify(
           error instanceof BackendError && error.code === "offline"
-            ? "that needs a connection"
-            : "it couldn't be saved";
-        actions.notify(`${normalizeName(name)} joined, but wasn't saved to ${club.name}: ${why}.`);
+            ? `${who} joined, but wasn't saved to ${club.name}. You're offline.`
+            : `${who} joined, but couldn't be saved to ${club.name}.`,
+        );
       });
     }
     if (returning) actions.notify(`Welcome back, ${normalizeName(name)}`);

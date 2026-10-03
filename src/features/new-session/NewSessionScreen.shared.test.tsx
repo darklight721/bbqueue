@@ -44,14 +44,14 @@ describe("New session with a Shared club", () => {
     expect(screen.getByRole("option", { name: /Riverside/ })).toBeInTheDocument();
   });
 
-  it("warns, while offline, that guests marked Save to club won't be added to the Club", async () => {
+  it("warns, while offline, that guests marked Save to club won't be saved to the Club", async () => {
     await addGuestToSave();
-    expect(screen.queryByText(/won't be added to Riverside/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/won't be saved to Riverside/)).not.toBeInTheDocument();
 
     act(() => backend.setOnline(false));
 
     expect(screen.getByRole("status")).toHaveTextContent(
-      `You're offline, so guests marked "Save to club" won't be added to Riverside. They still join this session.`,
+      "You're offline. Guests still join, but won't be saved to Riverside.",
     );
   });
 });
