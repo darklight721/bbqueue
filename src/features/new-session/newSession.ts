@@ -37,6 +37,21 @@ export function initialClubChoice(clubs: readonly Club[]): string {
   return NO_CHOICE;
 }
 
+/** Query param naming the Club New session was opened from (`/sessions/new?club=<id>`). */
+export const CLUB_PARAM = "club";
+
+/** Path to New session with `clubId` chosen and locked. */
+export function newSessionForClubPath(clubId: string): string {
+  return `/sessions/new?${new URLSearchParams({ [CLUB_PARAM]: clubId }).toString()}`;
+}
+
+/** The Club id from `?club=`, or null when absent or not one of `clubs`. */
+export function sessionClubParam(search: string, clubs: readonly Club[]): string | null {
+  const id = new URLSearchParams(search).get(CLUB_PARAM);
+  if (id === null) return null;
+  return clubs.some((candidate) => candidate.id === id) ? id : null;
+}
+
 export function byName<T extends { name: string }>(items: readonly T[]): T[] {
   return [...items].sort((a, b) =>
     a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),

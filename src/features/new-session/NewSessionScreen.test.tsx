@@ -45,8 +45,8 @@ const oldSession: Session = {
   streakResetAt: {},
 };
 
-function renderScreen() {
-  const location = memoryLocation({ path: "/sessions/new", record: true });
+function renderScreen(path = "/sessions/new") {
+  const location = memoryLocation({ path, record: true });
   render(
     <Router hook={location.hook}>
       <App />
@@ -333,5 +333,48 @@ describe("NewSessionScreen", () => {
     expect(session.players[2]?.clubPlayerId).toBe(dana?.id);
     expect(session.players[3]?.clubPlayerId).toBeNull();
     expect(session.players[0]?.clubPlayerId).toBe("p2");
+  });
+});
+
+describe("NewSessionScreen opened from a Club", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetStoreForTests();
+  });
+
+  it("locks the Club from ?club=: shown as a fixed value, its players listed", () => {
+    setClubs([riverside, beacon]);
+    renderScreen("/sessions/new?club=c2");
+    expect(screen.queryByRole("combobox", { name: "Club" })).not.toBeInTheDocument();
+    const locked = screen.getByRole("textbox", { name: "Club" });
+    expect(locked).toHaveValue("Beacon");
+    expect(locked).toHaveAttribute("readonly");
+    expect(checkbox("Kim")).not.toBeChecked();
+    expect(screen.queryByRole("checkbox", { name: "Zed" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Choose a club")).not.toBeInTheDocument();
+  });
+
+  it("starts the Session for the locked Club", async () => {
+    setClubs([riverside, beacon]);
+    renderScreen("/sessions/new?club=c1");
+    for (const name of ["amy", "Bob", "Cat", "Zed"]) await user().click(checkbox(name));
+    await user().click(startButton());
+    expect(getSession()?.clubId).toBe("c1");
+  });
+
+  it("Back returns to the Club screen", async () => {
+    setClubs([riverside, beacon]);
+    const location = renderScreen("/sessions/new?club=c1");
+    await user().click(screen.getByRole("button", { name: "Back" }));
+    expect(location.current()).toBe("/clubs/c1");
+  });
+
+  it("an unknown Club falls back to the normal picker, and Back goes Home", async () => {
+    setClubs([riverside, beacon]);
+    const location = renderScreen("/sessions/new?club=nope");
+    expect(clubSelect()).toHaveValue("");
+    expect(screen.queryByRole("textbox", { name: "Club" })).not.toBeInTheDocument();
+    await user().click(screen.getByRole("button", { name: "Back" }));
+    expect(location.current()).toBe("/");
   });
 });

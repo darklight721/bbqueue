@@ -1,8 +1,8 @@
 import { type ReactNode, useId, useMemo, useState } from "react";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { AddPlayerForm, type NewPlayer } from "../../components/AddPlayerForm.tsx";
 import { ConfirmDialog } from "../../components/ConfirmDialog.tsx";
-import { CloseIcon } from "../../components/icons.tsx";
+import { CloseIcon, UsersIcon } from "../../components/icons.tsx";
 import { blurOnEnter } from "../../components/keyboard.ts";
 import { NAME_ERROR_MESSAGE } from "../../components/nameErrors.ts";
 import { NumberStepper } from "../../components/NumberStepper.tsx";
@@ -27,16 +27,23 @@ import {
   NO_CHOICE,
   NO_CLUB,
   planStart,
+  sessionClubParam,
   selectedLabel,
 } from "./newSession.ts";
 
+/**
+ * `/sessions/new`, optionally `?club=<id>` (opened from a Club screen): that Club is chosen and
+ * can't be changed, and Back returns to the Club. An unknown id gives the normal screen.
+ */
 export function NewSessionScreen() {
   const [, navigate] = useLocation();
+  const search = useSearch();
   const clubs = useClubs();
   const sortedClubs = useMemo(() => byName(clubs), [clubs]);
+  const lockedClubId = sessionClubParam(search, clubs);
 
   const [name, setName] = useState(() => defaultSessionName(new Date()));
-  const [clubChoice, setClubChoice] = useState(() => initialClubChoice(clubs));
+  const [clubChoice, setClubChoice] = useState(() => lockedClubId ?? initialClubChoice(clubs));
   const [checked, setChecked] = useState<ReadonlySet<string>>(() => new Set());
   const [guests, setGuests] = useState<Guest[]>([]);
   const [courts, setCourts] = useState(1);
@@ -131,7 +138,7 @@ export function NewSessionScreen() {
   return (
     <Screen
       title="New session"
-      backTo="/"
+      backTo={lockedClubId ? `/clubs/${encodeURIComponent(lockedClubId)}` : "/"}
       footer={
         <div className="flex items-center gap-3">
           <div className="min-w-0 flex-1">
@@ -182,29 +189,33 @@ export function NewSessionScreen() {
       </div>
 
       {/* Club */}
-      <div className="flex flex-col gap-1">
-        <label htmlFor={clubId} className="text-sm font-semibold text-base-content/80">
-          Club
-        </label>
-        <select
-          id={clubId}
-          className="select select-lg w-full text-base"
-          value={clubChoice}
-          onChange={(event) => chooseClub(event.target.value)}
-        >
-          {clubChoice === NO_CHOICE ? (
-            <option value={NO_CHOICE} disabled>
-              Choose a club
-            </option>
-          ) : null}
-          {sortedClubs.map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.name}
-            </option>
-          ))}
-          <option value={NO_CLUB}>No club (guests only)</option>
-        </select>
-      </div>
+      {lockedClubId && club ? (
+        <LockedClub id={clubId} name={club.name} />
+      ) : (
+        <div className="flex flex-col gap-1">
+          <label htmlFor={clubId} className="text-sm font-semibold text-base-content/80">
+            Club
+          </label>
+          <select
+            id={clubId}
+            className="select select-lg w-full text-base"
+            value={clubChoice}
+            onChange={(event) => chooseClub(event.target.value)}
+          >
+            {clubChoice === NO_CHOICE ? (
+              <option value={NO_CHOICE} disabled>
+                Choose a club
+              </option>
+            ) : null}
+            {sortedClubs.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.name}
+              </option>
+            ))}
+            <option value={NO_CLUB}>No club (guests only)</option>
+          </select>
+        </div>
+      )}
 
       {clubChoice !== NO_CLUB ? (
         <Section
@@ -306,6 +317,34 @@ export function NewSessionScreen() {
         onCancel={() => setConfirmReplace(null)}
       />
     </Screen>
+  );
+}
+
+/**
+ * The Club when New session was opened from a Club screen: shown as a fixed value (no chevron,
+ * filled background, Club icon) so it reads as already decided rather than as a broken picker.
+ */
+function LockedClub({ id, name }: { id: string; name: string }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <label htmlFor={id} className="text-sm font-semibold text-base-content/80">
+        Club
+      </label>
+      <div className="relative">
+        <UsersIcon
+          aria-hidden="true"
+          className="pointer-events-none absolute top-1/2 left-4 z-10 size-5 -translate-y-1/2 text-primary"
+        />
+        <input
+          id={id}
+          type="text"
+          readOnly
+          value={name}
+          title={name}
+          className="input input-lg w-full cursor-default border-transparent bg-base-200 pl-12 font-semibold text-ellipsis"
+        />
+      </div>
+    </div>
   );
 }
 

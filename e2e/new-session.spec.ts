@@ -457,3 +457,77 @@ test("Back goes Home", async ({ page }) => {
   await page.getByRole("button", { name: "Back" }).click();
   await expect(page).toHaveURL(/\/$/);
 });
+
+test.describe("Opened from a Club", () => {
+  test("Club screen → New session → Club locked → pick players → Start → the Session", async ({
+    page,
+  }) => {
+    const club = friday();
+    const other = makeClub({ name: "Alpha Club", players: [makeClubPlayer({ name: "Xena" })] });
+    await seedStorage(page, { clubs: [club, other] });
+    await page.goto(`/clubs/${club.id}`);
+
+    await page.getByRole("link", { name: "New session" }).click();
+    await expect(page).toHaveURL(new RegExp(`/sessions/new\\?club=${club.id}$`));
+    await expect(page.getByRole("heading", { level: 1, name: "New session" })).toBeVisible();
+
+    // Locked: the Club is a fixed value, not a picker.
+    await expect(page.getByRole("combobox", { name: "Club" })).toHaveCount(0);
+    const locked = page.getByRole("textbox", { name: "Club" });
+    await expect(locked).toHaveValue("Friday Club");
+    await expect(locked).not.toBeEditable();
+    await expect(page.getByRole("checkbox", { name: "Xena" })).toHaveCount(0);
+
+    await page.getByRole("textbox", { name: "Session name" }).fill("Club night");
+    for (const name of ["Amy", "Ben", "Cat", "Dan"]) {
+      await page.getByRole("checkbox", { name, exact: true }).check();
+    }
+    await startButton(page).click();
+    await expect(page).toHaveURL(/\/sessions\/(?!new$)[^/]+$/);
+    await expect(page.getByRole("heading", { level: 1, name: "Club night" })).toBeVisible();
+    expect((await readStoredData<Session>(page, "session"))!.clubId).toBe(club.id);
+  });
+
+  test("Back returns to the Club screen", async ({ page }) => {
+    const club = friday();
+    await seedStorage(page, { clubs: [club] });
+    await page.goto(`/clubs/${club.id}`);
+    await page.getByRole("link", { name: "New session" }).click();
+    await expect(page.getByRole("textbox", { name: "Club" })).toHaveValue("Friday Club");
+
+    await page.getByRole("button", { name: "Back" }).click();
+    await expect(page).toHaveURL(new RegExp(`/clubs/${club.id}$`));
+    await expect(page.getByRole("heading", { level: 1, name: "Edit club" })).toBeVisible();
+  });
+
+  test("starting still asks to replace another Club's Active session", async ({ page }) => {
+    const club = friday();
+    const old = makeSession({ name: "Old night", clubId: "someone-else" });
+    await seedStorage(page, { clubs: [club], session: old });
+    await page.goto(`/clubs/${club.id}`);
+    await expect(page.getByRole("link", { name: "New session" })).toHaveAccessibleDescription(
+      "Replaces the current session",
+    );
+    await page.getByRole("link", { name: "New session" }).click();
+    for (const name of ["Amy", "Ben", "Cat", "Dan"]) {
+      await page.getByRole("checkbox", { name, exact: true }).check();
+    }
+    await startButton(page).click();
+    await page
+      .getByRole("dialog", { name: "End the current session 'Old night'?" })
+      .getByRole("button", { name: "Discard and start" })
+      .click();
+    await expect(page).toHaveURL(/\/sessions\/(?!new$)[^/]+$/);
+    const stored = (await readStoredData<Session>(page, "session"))!;
+    expect(stored.id).not.toBe(old.id);
+    expect(stored.clubId).toBe(club.id);
+  });
+
+  test("an unknown Club in the URL gives the normal screen", async ({ page }) => {
+    await seedStorage(page, { clubs: [friday()] });
+    await page.goto("/sessions/new?club=nope");
+    await expect(page.getByRole("combobox", { name: "Club" })).toBeEnabled();
+    await page.getByRole("button", { name: "Back" }).click();
+    await expect(page).toHaveURL(/\/$/);
+  });
+});

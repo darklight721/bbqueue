@@ -4,14 +4,14 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] New session accepts a Club in the URL; when present, that Club is chosen and the picker is locked
-- [ ] An unknown Club in the URL falls back to the normal New session screen
-- [ ] The Club screen (existing Club, not a new one) shows "New session", or "Open active session" when the Active session belongs to this Club
-- [ ] Back from New session returns to the Club screen it was opened from
-- [ ] Starting the Session still asks to confirm replacing a different Active session, as today
-- [ ] Component tests for the locked picker and the link label
+- [x] New session accepts a Club in the URL; when present, that Club is chosen and the picker is locked
+- [x] An unknown Club in the URL falls back to the normal New session screen
+- [x] The Club screen (existing Club, not a new one) shows "New session", or "Open active session" when the Active session belongs to this Club
+- [x] Back from New session returns to the Club screen it was opened from
+- [x] Starting the Session still asks to confirm replacing a different Active session, as today
+- [x] Component tests for the locked picker and the link label
 
 ## E2E workflows
 

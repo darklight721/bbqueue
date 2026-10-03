@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { makeClub, makeClubPlayer, readStored, seedStorage } from "./fixtures.ts";
+import { makeClub, makeClubPlayer, makeSession, readStored, seedStorage } from "./fixtures.ts";
 
 const playerNames = (page: Page) => page.getByRole("textbox", { name: "Player name" });
 const clubNameField = (page: Page) => page.getByRole("textbox", { name: "Club name" });
@@ -312,4 +312,28 @@ test("unknown club id redirects to /clubs", async ({ page }) => {
   await page.goto("/clubs/does-not-exist");
   await expect(page).toHaveURL(/\/clubs$/);
   await expect(page.getByRole("heading", { level: 1, name: "Clubs" })).toBeVisible();
+});
+
+test.describe("Session link", () => {
+  test("Club with the Active session → 'Open active session' → opens that Session", async ({
+    page,
+  }) => {
+    const club = seedClub();
+    const session = makeSession({ name: "Friday night", clubId: club.id, clubName: club.name });
+    await seedStorage(page, { clubs: [club], session });
+    await page.goto(`/clubs/${club.id}`);
+
+    await expect(page.getByRole("link", { name: "New session" })).toHaveCount(0);
+    const link = page.getByRole("link", { name: "Open active session" });
+    await expect(link).toHaveAccessibleDescription("Friday night");
+    await link.click();
+    await expect(page).toHaveURL(new RegExp(`/sessions/${session.id}$`));
+    await expect(page.getByRole("heading", { level: 1, name: "Friday night" })).toBeVisible();
+  });
+
+  test("New club has no session link", async ({ page }) => {
+    await page.goto("/clubs/new");
+    await expect(page.getByRole("heading", { level: 1, name: "New club" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "New session" })).toHaveCount(0);
+  });
 });

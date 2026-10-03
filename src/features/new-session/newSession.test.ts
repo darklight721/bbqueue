@@ -4,10 +4,12 @@ import {
   clashingGuestIds,
   defaultSessionName,
   initialClubChoice,
+  newSessionForClubPath,
   NO_CHOICE,
   NO_CLUB,
   planStart,
   selectedLabel,
+  sessionClubParam,
 } from "./newSession.ts";
 
 const club = (id: string, names: string[] = []): Club => ({
@@ -33,6 +35,21 @@ describe("newSession helpers", () => {
     expect(initialClubChoice([])).toBe(NO_CLUB);
     expect(initialClubChoice([club("a")])).toBe("a");
     expect(initialClubChoice([club("a"), club("b")])).toBe(NO_CHOICE);
+  });
+
+  it("reads a known Club from ?club= and ignores unknown or missing ones", () => {
+    const clubs = [club("a"), club("b")];
+    expect(sessionClubParam("?club=b", clubs)).toBe("b");
+    expect(sessionClubParam("club=a", clubs)).toBe("a");
+    expect(sessionClubParam("?club=nope", clubs)).toBeNull();
+    expect(sessionClubParam("", clubs)).toBeNull();
+  });
+
+  it("builds the New session path for a Club, round-tripping odd ids", () => {
+    const odd = club("a b&c");
+    expect(newSessionForClubPath("c1")).toBe("/sessions/new?club=c1");
+    const search = newSessionForClubPath(odd.id).split("?")[1]!;
+    expect(sessionClubParam(search, [odd])).toBe(odd.id);
   });
 
   it("pluralises the selected count", () => {

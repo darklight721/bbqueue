@@ -1,7 +1,15 @@
-import { useEffect, useId, useMemo, useRef, useState, type MouseEvent } from "react";
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import { Link, Redirect, useLocation } from "wouter";
 import { ConfirmDialog } from "../../components/ConfirmDialog.tsx";
-import { ChevronRightIcon, HistoryIcon, PlusIcon } from "../../components/icons.tsx";
+import { ChevronRightIcon, HistoryIcon, PlayIcon, PlusIcon } from "../../components/icons.tsx";
 import { blurOnEnter } from "../../components/keyboard.ts";
 import { NAME_ERROR_MESSAGE } from "../../components/nameErrors.ts";
 import { PlayerRowEditor } from "../../components/PlayerRowEditor.tsx";
@@ -9,7 +17,8 @@ import { Screen } from "../../components/Screen.tsx";
 import { newId } from "../../domain/ids.ts";
 import { DEFAULT_SKILL, type Club } from "../../domain/types.ts";
 import { hasClubErrors, validateClub } from "../../domain/validation.ts";
-import { getClubs, setClubs, useClubs, useEndedSessions } from "../../storage/store.ts";
+import { getClubs, setClubs, useClubs, useEndedSessions, useSession } from "../../storage/store.ts";
+import { newSessionForClubPath } from "../new-session/newSession.ts";
 import { countLabel } from "../session-summary/summaryFormat.ts";
 import { clubFromForm, formFromClub, formSignature, type ClubForm } from "./clubForm.ts";
 
@@ -26,6 +35,7 @@ function ClubEditor({ club }: { club: Club | null }) {
   const [, navigate] = useLocation();
   const clubs = useClubs();
   const endedSessions = useEndedSessions();
+  const activeSession = useSession();
   const isNew = club === null;
   const sessionCount = club ? endedSessions.filter((ended) => ended.clubId === club.id).length : 0;
 
@@ -148,6 +158,15 @@ function ClubEditor({ club }: { club: Club | null }) {
     setDiscardResolver(null);
   }
 
+  /** Click handler for a link off this screen: with unsaved changes, confirm like Back first. */
+  function leaveVia(href: string) {
+    return async (event: MouseEvent<HTMLAnchorElement>) => {
+      if (!dirty) return;
+      event.preventDefault();
+      if (await guardBack()) navigate(href);
+    };
+  }
+
   const playerCount = form.rows.length;
 
   return (
@@ -206,17 +225,38 @@ function ClubEditor({ club }: { club: Club | null }) {
           ) : null}
         </div>
 
-        {club && sessionCount > 0 ? (
-          <ClubSessionsLink
-            href={`/clubs/${encodeURIComponent(club.id)}/sessions`}
-            count={sessionCount}
-            // Unsaved changes: confirm like Back before leaving.
-            onClick={async (event) => {
-              if (!dirty) return;
-              event.preventDefault();
-              if (await guardBack()) navigate(`/clubs/${encodeURIComponent(club.id)}/sessions`);
-            }}
-          />
+        {club ? (
+          <nav aria-label="Club sessions" className="flex flex-col gap-3">
+            {activeSession?.clubId === club.id ? (
+              <ClubCardLink
+                href={`/sessions/${encodeURIComponent(activeSession.id)}`}
+                tone="active"
+                icon={<PlayIcon className="size-6 translate-x-0.5" />}
+                label="Open active session"
+                detail={activeSession.name}
+                onClick={leaveVia(`/sessions/${encodeURIComponent(activeSession.id)}`)}
+              />
+            ) : (
+              <ClubCardLink
+                href={newSessionForClubPath(club.id)}
+                tone="plain"
+                icon={<PlusIcon className="size-6" />}
+                label="New session"
+                detail={activeSession ? "Replaces the current session" : "Pick players and courts"}
+                onClick={leaveVia(newSessionForClubPath(club.id))}
+              />
+            )}
+            {sessionCount > 0 ? (
+              <ClubCardLink
+                href={`/clubs/${encodeURIComponent(club.id)}/sessions`}
+                tone="plain"
+                icon={<HistoryIcon className="size-6" />}
+                label="Sessions"
+                detail={countLabel(sessionCount, "past session", "past sessions")}
+                onClick={leaveVia(`/clubs/${encodeURIComponent(club.id)}/sessions`)}
+              />
+            ) : null}
+          </nav>
         ) : null}
 
         <section aria-labelledby={playersHeadingId} className="flex flex-col gap-3">
@@ -287,38 +327,61 @@ function ClubEditor({ club }: { club: Club | null }) {
   );
 }
 
-/** Card link to this Club's Ended sessions. */
-function ClubSessionsLink({
+/**
+ * Card link from the Club screen (New session / Open active session / Sessions). Same shape as
+ * Home's actions; "active" mirrors Home's Resume session card so a running Session stands out.
+ */
+function ClubCardLink({
   href,
-  count,
+  tone,
+  icon,
+  label,
+  detail,
   onClick,
 }: {
   href: string;
-  count: number;
+  tone: "plain" | "active";
+  icon: ReactNode;
+  label: string;
+  detail: string;
   onClick: (event: MouseEvent<HTMLAnchorElement>) => void;
 }) {
   const labelId = useId();
   const detailId = useId();
+  const active = tone === "active";
   return (
     <Link
       href={href}
       onClick={onClick}
       aria-labelledby={labelId}
       aria-describedby={detailId}
-      className="group flex min-h-20 items-center gap-4 rounded-box border-[1.5px] border-base-300 bg-base-100 p-4 pr-3 text-base-content shadow-sm transition-transform active:scale-[0.98]"
+      className={`group flex min-h-20 items-center gap-4 rounded-box p-4 pr-3 transition-transform active:scale-[0.98] ${
+        active
+          ? "bg-neutral text-neutral-content shadow-lg ring-1 ring-black/5"
+          : "border-[1.5px] border-base-300 bg-base-100 text-base-content shadow-sm"
+      }`}
     >
-      <span className="grid size-12 shrink-0 place-items-center rounded-full bg-base-200 text-primary">
-        <HistoryIcon className="size-6" />
+      <span
+        className={`grid size-12 shrink-0 place-items-center rounded-full ${
+          active ? "bg-volt text-[#14201a]" : "bg-base-200 text-primary"
+        }`}
+      >
+        {icon}
       </span>
       <span className="flex min-w-0 flex-1 flex-col">
         <span id={labelId} className="font-display text-2xl leading-tight font-bold uppercase">
-          Sessions
+          {label}
         </span>
-        <span id={detailId} className="truncate text-sm text-base-content/65">
-          {countLabel(count, "past session", "past sessions")}
+        <span
+          id={detailId}
+          className={`truncate text-sm ${active ? "text-neutral-content/75" : "text-base-content/65"}`}
+        >
+          {detail}
         </span>
       </span>
-      <ChevronRightIcon className="size-6 shrink-0 opacity-50 transition-transform group-hover:translate-x-0.5" />
+      <ChevronRightIcon
+        className={`size-6 shrink-0 transition-transform group-hover:translate-x-0.5 ${active ? "opacity-60" : "opacity-50"}`}
+      />
     </Link>
   );
 }

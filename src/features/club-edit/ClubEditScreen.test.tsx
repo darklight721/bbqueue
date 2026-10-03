@@ -4,8 +4,14 @@ import { beforeEach, describe, expect, it } from "vite-plus/test";
 import { Router } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
 import { App } from "../../app/App.tsx";
-import type { Club, EndedSession } from "../../domain/types.ts";
-import { addEndedSession, getClubs, resetStoreForTests, setClubs } from "../../storage/store.ts";
+import type { Club, EndedSession, Session } from "../../domain/types.ts";
+import {
+  addEndedSession,
+  getClubs,
+  resetStoreForTests,
+  setClubs,
+  setSession,
+} from "../../storage/store.ts";
 
 const riverside: Club = {
   id: "c1",
@@ -313,5 +319,77 @@ describe("ClubEditScreen sessions link", () => {
     await userEvent.click(screen.getByRole("link", { name: "Sessions" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(location.current()).toBe("/clubs/c1/sessions");
+  });
+});
+
+function activeFor(clubId: string | null): Session {
+  return {
+    id: "live",
+    name: "Tuesday night",
+    clubId,
+    clubName: null,
+    pointSystem: 21,
+    plannedHours: 1,
+    startedAt: 1,
+    players: [],
+    courts: [],
+    matches: [],
+    queues: [],
+    streakResetAt: {},
+  };
+}
+
+describe("ClubEditScreen session link", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetStoreForTests();
+  });
+
+  it("reads 'New session' and opens New session for this Club", async () => {
+    setClubs([riverside]);
+    const location = renderAt("/clubs/c1");
+    const link = screen.getByRole("link", { name: "New session" });
+    expect(link).toHaveAccessibleDescription("Pick players and courts");
+    expect(link).toHaveAttribute("href", "/sessions/new?club=c1");
+    expect(screen.queryByRole("link", { name: "Open active session" })).not.toBeInTheDocument();
+    await userEvent.click(link);
+    expect(location.current()).toBe("/sessions/new?club=c1");
+  });
+
+  it("warns that New session replaces another Club's Active session", () => {
+    setClubs([riverside]);
+    setSession(activeFor("c2"));
+    renderAt("/clubs/c1");
+    expect(screen.getByRole("link", { name: "New session" })).toHaveAccessibleDescription(
+      "Replaces the current session",
+    );
+  });
+
+  it("reads 'Open active session' when this Club has the Active session", async () => {
+    setClubs([riverside]);
+    setSession(activeFor("c1"));
+    const location = renderAt("/clubs/c1");
+    expect(screen.queryByRole("link", { name: "New session" })).not.toBeInTheDocument();
+    const link = screen.getByRole("link", { name: "Open active session" });
+    expect(link).toHaveAccessibleDescription("Tuesday night");
+    expect(link).toHaveAttribute("href", "/sessions/live");
+    await userEvent.click(link);
+    expect(location.current()).toBe("/sessions/live");
+  });
+
+  it("is not shown on New club", () => {
+    renderAt("/clubs/new");
+    expect(screen.queryByRole("link", { name: "New session" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Open active session" })).not.toBeInTheDocument();
+  });
+
+  it("asks before discarding unsaved changes", async () => {
+    setClubs([riverside]);
+    const location = renderAt("/clubs/c1");
+    await userEvent.type(nameInputs()[0]!, "!");
+    await userEvent.click(screen.getByRole("link", { name: "New session" }));
+    await userEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+    expect(location.current()).toBe("/clubs/c1");
+    expect(nameInputs()[0]).toHaveValue("alice!");
   });
 });
