@@ -8,3 +8,6 @@ peerDependencyRules:
     - vite
   allowedVersions:
     vite: "*"
+allowBuilds:
+  "@firebase/util": false
+  protobufjs: false
