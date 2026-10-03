@@ -1,5 +1,7 @@
 import { useId, type CSSProperties, type ReactNode } from "react";
 import { Link } from "wouter";
+import { getBackend } from "../../backend/index.ts";
+import { Avatar } from "../../components/Avatar.tsx";
 import { BrandMark, Wordmark } from "../../components/BrandMark.tsx";
 import {
   ChevronRightIcon,
@@ -8,7 +10,7 @@ import {
   PlusIcon,
   UsersIcon,
 } from "../../components/icons.tsx";
-import { useClubs, useEndedSessions, useSession } from "../../storage/store.ts";
+import { useAccount, useClubs, useEndedSessions, useSession } from "../../storage/store.ts";
 import { countLabel } from "../session-summary/summaryFormat.ts";
 import { CourtLines } from "./CourtLines.tsx";
 
@@ -72,6 +74,8 @@ export function HomeScreen() {
 }
 
 function Hero() {
+  // No Backend means no Accounts: no avatar, and Home looks exactly as it did before them.
+  const hasBackend = getBackend() !== null;
   return (
     <header className="relative isolate flex flex-1 flex-col overflow-hidden bg-court text-line">
       {/* Hall-light glow + court lines bleeding off the edges. */}
@@ -86,7 +90,14 @@ function Hero() {
       <CourtLines className="absolute top-1/2 left-1/2 -z-10 w-[165%] max-w-none -translate-x-1/2 -translate-y-1/2 -rotate-[58deg] sm:w-[120%] sm:-rotate-[20deg] text-line/30" />
 
       <div className="px-safe pt-safe mx-auto flex w-full max-w-2xl flex-1 flex-col">
-        <div className="flex min-h-[17rem] flex-1 flex-col justify-end pt-10 pb-16">
+        {hasBackend ? (
+          <div className="flex justify-end pt-3">
+            <AccountLink />
+          </div>
+        ) : null}
+        <div
+          className={`flex min-h-[17rem] flex-1 flex-col justify-end pb-16 ${hasBackend ? "pt-0" : "pt-10"}`}
+        >
           <BrandMark
             className="animate-rise mb-4 size-18 drop-shadow-[0_6px_14px_rgb(0_0_0/0.18)] sm:mb-5 sm:size-24"
             style={{ animationDelay: "0ms" }}
@@ -106,6 +117,21 @@ function Hero() {
         </div>
       </div>
     </header>
+  );
+}
+
+/** Top-right avatar: the Account's initials (or a person icon), opening Account settings. */
+function AccountLink() {
+  const account = useAccount();
+  return (
+    <Link
+      href="/account"
+      aria-label={account ? `Account settings, ${account.name}` : "Account settings, no Account"}
+      className="animate-rise -mr-1 rounded-full p-1 transition-transform focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-volt active:scale-95"
+      style={{ animationDelay: "100ms" }}
+    >
+      <Avatar name={account?.name ?? null} />
+    </Link>
   );
 }
 

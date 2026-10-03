@@ -9,6 +9,8 @@ export interface ContractOptions {
   /** Account IDs somebody else already has. */
   takenAccountIds: string[];
   online: boolean;
+  /** The device's Account to start with, as if it had been created earlier. */
+  account: Account | null;
 }
 
 /**
@@ -17,7 +19,13 @@ export interface ContractOptions {
  */
 export function runBackendContract(name: string, create: (options: ContractOptions) => Backend) {
   const make = (overrides: Partial<ContractOptions> = {}) =>
-    create({ random: Math.random, takenAccountIds: [], online: true, ...overrides });
+    create({
+      random: Math.random,
+      takenAccountIds: [],
+      online: true,
+      account: null,
+      ...overrides,
+    });
 
   /** Random source that picks the given alphabet indexes in turn. */
   const pick = (...indexes: number[]) => {
@@ -128,6 +136,70 @@ export function runBackendContract(name: string, create: (options: ContractOptio
 
       expect((error as BackendError).code).toBe("account-exists");
       expect(await backend.getCurrentAccount()).toEqual(first);
+    });
+
+    describe("renaming the Account", () => {
+      const existing: Account = { accountId: `roy-${chars(2, 3, 4, 5)}`, name: "Roy" };
+
+      it("changes the name and keeps the Account ID", async () => {
+        const backend = make({ account: existing });
+
+        const renamed = await backend.renameAccount("  Roy   Smith ");
+
+        expect(renamed).toEqual({ accountId: existing.accountId, name: "Roy Smith" });
+        expect(await backend.getCurrentAccount()).toEqual(renamed);
+      });
+
+      it("keeps the Account ID of an Account created on this device", async () => {
+        const backend = make();
+        const created = await backend.createAccount("Ana");
+
+        await backend.renameAccount("Bea");
+
+        expect(await backend.getCurrentAccount()).toEqual({
+          accountId: created.accountId,
+          name: "Bea",
+        });
+      });
+
+      it("tells observers about the new name", async () => {
+        const backend = make({ account: existing });
+        const seen: (Account | null)[] = [];
+        const stop = backend.observeCurrentAccount((account) => seen.push(account));
+
+        await backend.renameAccount("Royston");
+        stop();
+
+        expect(seen).toEqual([existing, { ...existing, name: "Royston" }]);
+      });
+
+      it("needs a connection", async () => {
+        const backend = make({ account: existing, online: false });
+
+        const error = await rejection(backend.renameAccount("Royston"));
+
+        expect(error).toBeInstanceOf(BackendError);
+        expect((error as BackendError).code).toBe("offline");
+        expect(await backend.getCurrentAccount()).toEqual(existing);
+      });
+
+      it("rejects an empty name", async () => {
+        const backend = make({ account: existing });
+
+        const error = await rejection(backend.renameAccount("   "));
+
+        expect((error as BackendError).code).toBe("invalid-name");
+        expect(await backend.getCurrentAccount()).toEqual(existing);
+      });
+
+      it("needs an Account", async () => {
+        const backend = make();
+
+        const error = await rejection(backend.renameAccount("Roy"));
+
+        expect((error as BackendError).code).toBe("no-account");
+        expect(await backend.getCurrentAccount()).toBeNull();
+      });
     });
   });
 }

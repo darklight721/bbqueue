@@ -19,6 +19,7 @@ export const STORAGE_KEYS = {
   endedSessions: "bq:v1:ended-sessions",
   account: "bq:v1:account",
   welcomeDone: "bq:v1:welcome-done",
+  installHintDismissed: "bq:v1:install-hint-dismissed",
 } as const;
 
 /**

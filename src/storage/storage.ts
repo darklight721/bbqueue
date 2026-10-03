@@ -6,6 +6,7 @@ const SESSION_KEY = "bq:v1:session";
 const ENDED_SESSIONS_KEY = "bq:v1:ended-sessions";
 const ACCOUNT_KEY = "bq:v1:account";
 const WELCOME_DONE_KEY = "bq:v1:welcome-done";
+const INSTALL_HINT_DISMISSED_KEY = "bq:v1:install-hint-dismissed";
 /** Replaced by Ended sessions (ADR-0005); removed on load and never written again. */
 const LEGACY_SUMMARY_KEY = "bq:v1:summary";
 
@@ -18,6 +19,7 @@ export const STORAGE_KEYS = {
   endedSessions: ENDED_SESSIONS_KEY,
   account: ACCOUNT_KEY,
   welcomeDone: WELCOME_DONE_KEY,
+  installHintDismissed: INSTALL_HINT_DISMISSED_KEY,
 };
 
 type Guard<T> = (value: unknown) => value is T;
@@ -203,4 +205,13 @@ export function loadWelcomeDone(): boolean {
 
 export function saveWelcomeDone(): void {
   write(WELCOME_DONE_KEY, true);
+}
+
+/** Whether the "Add to Home Screen" hint on Account settings was dismissed on this device. */
+export function loadInstallHintDismissed(): boolean {
+  return read(INSTALL_HINT_DISMISSED_KEY, isTrue) === true;
+}
+
+export function saveInstallHintDismissed(): void {
+  write(INSTALL_HINT_DISMISSED_KEY, true);
 }

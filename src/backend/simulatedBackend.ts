@@ -39,6 +39,12 @@ export function createSimulatedBackend(
     for (const id of options.takenAccountIds) reserved.add(normalizeAccountId(id));
     state.saveReservedIds([...reserved]);
   }
+  if (options.account && !state.loadAccount()) {
+    const reserved = new Set(state.loadReservedIds());
+    reserved.add(normalizeAccountId(options.account.accountId));
+    state.saveReservedIds([...reserved]);
+    state.saveAccount(options.account);
+  }
 
   function emit() {
     const account = state.loadAccount();
@@ -80,6 +86,19 @@ export function createSimulatedBackend(
         return Promise.resolve(account);
       }
       return Promise.reject(new BackendError("id-unavailable"));
+    },
+
+    renameAccount(name) {
+      const trimmed = normalizeName(name);
+      if (trimmed === "") return Promise.reject(new BackendError("invalid-name"));
+      if (!online.get()) return Promise.reject(new BackendError("offline"));
+      const current = state.loadAccount();
+      if (!current) return Promise.reject(new BackendError("no-account"));
+
+      const account: Account = { ...current, name: trimmed };
+      state.saveAccount(account);
+      emit();
+      return Promise.resolve(account);
     },
   };
 }

@@ -7,12 +7,14 @@ import {
   loadAccount,
   loadClubs,
   loadEndedSessions,
+  loadInstallHintDismissed,
   loadSession,
   loadWelcomeDone,
   removeLegacySummary,
   saveAccount,
   saveClubs,
   saveEndedSession,
+  saveInstallHintDismissed,
   saveSession,
   saveWelcomeDone,
 } from "./storage.ts";
@@ -33,6 +35,7 @@ const sessionSlot = createSlot<Session | null>(null);
 const endedSessionsSlot = createSlot<EndedSession[]>([]);
 const accountSlot = createSlot<Account | null>(null);
 const welcomeDoneSlot = createSlot<boolean>(false);
+const installHintDismissedSlot = createSlot<boolean>(false);
 
 function get<T>(slot: Slot<T>, load: () => T): T {
   if (!slot.loaded) {
@@ -67,6 +70,7 @@ const subscribeSession = subscribeTo(sessionSlot);
 const subscribeEndedSessions = subscribeTo(endedSessionsSlot);
 const subscribeAccount = subscribeTo(accountSlot);
 const subscribeWelcomeDone = subscribeTo(welcomeDoneSlot);
+const subscribeInstallHintDismissed = subscribeTo(installHintDismissedSlot);
 
 // Other tabs: drop the cache for the affected key and notify subscribers.
 if (typeof window !== "undefined") {
@@ -78,6 +82,7 @@ if (typeof window !== "undefined") {
     if (all || event.key === STORAGE_KEYS.endedSessions) refresh(endedSessionsSlot);
     if (all || event.key === STORAGE_KEYS.account) refresh(accountSlot);
     if (all || event.key === STORAGE_KEYS.welcomeDone) refresh(welcomeDoneSlot);
+    if (all || event.key === STORAGE_KEYS.installHintDismissed) refresh(installHintDismissedSlot);
   });
 }
 
@@ -155,9 +160,29 @@ export function useWelcomeDone(): boolean {
   return useSyncExternalStore(subscribeWelcomeDone, getWelcomeDone);
 }
 
+/** Whether the "Add to Home Screen" hint was dismissed. Remembered on the device. */
+export function getInstallHintDismissed(): boolean {
+  return get(installHintDismissedSlot, loadInstallHintDismissed);
+}
+
+export function setInstallHintDismissed(): void {
+  set(installHintDismissedSlot, true, saveInstallHintDismissed);
+}
+
+export function useInstallHintDismissed(): boolean {
+  return useSyncExternalStore(subscribeInstallHintDismissed, getInstallHintDismissed);
+}
+
 /** Test helper: drop caches so the next read re-loads from localStorage. */
 export function resetStoreForTests(): void {
-  for (const slot of [clubsSlot, sessionSlot, endedSessionsSlot, accountSlot, welcomeDoneSlot]) {
+  for (const slot of [
+    clubsSlot,
+    sessionSlot,
+    endedSessionsSlot,
+    accountSlot,
+    welcomeDoneSlot,
+    installHintDismissedSlot,
+  ]) {
     slot.loaded = false;
   }
 }

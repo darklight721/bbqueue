@@ -11,16 +11,16 @@ Spec: `.scratch/accounts/spec.md` (stories 5, 8–11).
 
 **Blocked by:** 02 (Firebase setup + Welcome + create Account)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Domain function for initials (first letters of the first two words), unit-tested, including one-word and accented names
-- [ ] Avatar on Home, with initials or a default icon, that links to Account settings
-- [ ] Account settings: editing the name in place saves to the server and the device, and checks the name is valid (same rules as other name fields). The Account ID never changes.
-- [ ] Copy Account ID, with feedback that it was copied
-- [ ] "Add your name" when there's no Account creates one (needs a connection)
-- [ ] Asks the browser to keep the app's data after an Account is created
-- [ ] iOS Safari "Add to Home Screen" hint when the app isn't installed; it can be dismissed
-- [ ] Back from Account settings returns to Home
+- [x] Domain function for initials (first letters of the first two words), unit-tested, including one-word and accented names
+- [x] Avatar on Home, with initials or a default icon, that links to Account settings
+- [x] Account settings: editing the name in place saves to the server and the device, and checks the name is valid (same rules as other name fields). The Account ID never changes.
+- [x] Copy Account ID, with feedback that it was copied
+- [x] "Add your name" when there's no Account creates one (needs a connection)
+- [x] Asks the browser to keep the app's data after an Account is created
+- [x] iOS Safari "Add to Home Screen" hint when the app isn't installed; it can be dismissed
+- [x] Back from Account settings returns to Home
 
 ## E2E workflows
 

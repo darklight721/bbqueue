@@ -1,6 +1,6 @@
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { App } from "../../app/App.tsx";
 import { BackendError } from "../../backend/backend.ts";
 import { createInMemoryBackend } from "../../backend/inMemoryBackend.ts";
@@ -37,6 +37,24 @@ describe("Welcome screen", () => {
     expect(getAccount()?.accountId).toMatch(/^roy-/);
     expect(await backend.getCurrentAccount()).toEqual(getAccount());
     expect(getWelcomeDone()).toBe(true);
+  });
+
+  it("asks the browser to keep the app's data once the Account exists", async () => {
+    setBackendForTests(createInMemoryBackend());
+    const persist = vi.fn(() => Promise.resolve(true));
+    Object.defineProperty(navigator, "storage", { value: { persist }, configurable: true });
+    try {
+      const user = userEvent.setup();
+      render(<App />);
+      await user.type(screen.getByLabelText("Your name"), "Roy");
+      expect(persist).not.toHaveBeenCalled();
+      await user.click(screen.getByRole("button", { name: "Continue" }));
+
+      await screen.findByRole("heading", { level: 1, name: "BBQueue" });
+      expect(persist).toHaveBeenCalledOnce();
+    } finally {
+      Reflect.deleteProperty(navigator, "storage");
+    }
   });
 
   it("asks for a name before creating an Account", async () => {

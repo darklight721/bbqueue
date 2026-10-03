@@ -170,3 +170,40 @@ export function HistoryIcon(props: IconProps) {
     </Icon>
   );
 }
+
+/** Head and shoulders: a person (the avatar with no Account). */
+export function UserIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="8.5" r="3.75" />
+      <path d="M4.75 20c.9-3.9 3.75-6 7.25-6s6.35 2.1 7.25 6" />
+    </Icon>
+  );
+}
+
+export function PencilIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M15.5 4.5 19.5 8.5 8.5 19.5H4.5v-4z" />
+      <path d="m13 7 4 4" />
+    </Icon>
+  );
+}
+
+/** Two overlapping sheets: copy. */
+export function CopyIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="8.5" y="8.5" width="11.5" height="11.5" rx="2" />
+      <path d="M15.5 8.5V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7.5a2 2 0 0 0 2 2h2.5" />
+    </Icon>
+  );
+}
+
+export function CheckIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="m5 12.5 4.5 4.5L19 7.5" />
+    </Icon>
+  );
+}

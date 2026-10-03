@@ -1,6 +1,7 @@
 import { lazy, Suspense, useLayoutEffect, useRef } from "react";
 import { Redirect, Route, Switch, useLocation } from "wouter";
 import { getBackend } from "../backend/index.ts";
+import { AccountSettingsScreen } from "../features/account/AccountSettingsScreen.tsx";
 import { ClubEditScreen } from "../features/club-edit/ClubEditScreen.tsx";
 import { ClubsScreen } from "../features/clubs/ClubsScreen.tsx";
 import { HomeScreen } from "../features/home/HomeScreen.tsx";
@@ -58,9 +59,14 @@ export function App() {
 }
 
 function Routes() {
+  const backend = getBackend();
   return (
     <Switch>
       <Route path="/" component={HomeScreen} />
+      <Route path="/account">
+        {/* No Backend, no Accounts: nothing to show here. */}
+        {backend ? <AccountSettingsScreen backend={backend} /> : <Redirect to="/" replace />}
+      </Route>
       <Route path="/clubs" component={ClubsScreen} />
       <Route path="/clubs/new">
         <ClubEditScreen />

@@ -42,5 +42,6 @@ export function createLazyFirebaseBackend(config: FirebaseOptions): Backend {
     observeCurrentAccount: (listener) =>
       observeWhenLoaded((backend) => backend.observeCurrentAccount(listener)),
     createAccount: (name) => loaded.then((backend) => backend.createAccount(name)),
+    renameAccount: (name) => loaded.then((backend) => backend.renameAccount(name)),
   };
 }

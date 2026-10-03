@@ -11,6 +11,7 @@ import {
   persistentMultipleTabManager,
   runTransaction,
   serverTimestamp,
+  updateDoc,
   type DocumentSnapshot,
   type Firestore,
 } from "firebase/firestore";
@@ -105,6 +106,26 @@ export function createFirebaseBackend(
         throw toBackendError(error);
       }
       throw new BackendError("id-unavailable");
+    },
+
+    async renameAccount(name) {
+      const trimmed = normalizeName(name);
+      if (trimmed === "") throw new BackendError("invalid-name");
+      if (!browserOnline.get()) throw new BackendError("offline");
+
+      try {
+        await auth.authStateReady();
+        const user = auth.currentUser;
+        if (!user) throw new BackendError("no-account");
+        const ref = doc(db, "accounts", user.uid);
+        const current = accountFromSnapshot(await getDoc(ref));
+        if (!current) throw new BackendError("no-account");
+        // Only the name: the Account ID and its reservation never change.
+        await updateDoc(ref, { name: trimmed });
+        return { ...current, name: trimmed };
+      } catch (error) {
+        throw toBackendError(error);
+      }
     },
   };
 }
