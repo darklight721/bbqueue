@@ -100,13 +100,15 @@ export function AddPlayerForm({
         <SkillSelect className="w-[8.75rem] shrink-0" value={skill} onChange={setSkill} />
       </div>
 
-      {/* Row 2: Save to club (when there is a Club) on the left, Add always on the right. */}
-      {/* flex-wrap is only a fallback for wider-than-expected fonts: Add then drops below, still right. */}
+      {/* Row 2: Save to club (when there is a Club) on the left, Add fills the rest of the row */}
+      {/* (the whole row when there's no checkbox). Outlined, not solid, so it never competes */}
+      {/* with the screen's main action. flex-wrap is only a fallback for wider-than-expected */}
+      {/* fonts: if Add can't keep its 7rem basis it drops below and spans the full width. */}
       <div className="flex flex-wrap items-center gap-2">
         {showSaveToClub ? (
           <label
             htmlFor={saveId}
-            className="-ml-2 flex min-h-11 cursor-pointer items-center gap-2 rounded-field pr-1 pl-2 whitespace-nowrap"
+            className="-ml-2 flex min-h-11 shrink-0 cursor-pointer items-center gap-2 rounded-field pr-1 pl-2 whitespace-nowrap"
           >
             <input
               id={saveId}
@@ -120,7 +122,7 @@ export function AddPlayerForm({
         ) : null}
         <button
           type="button"
-          className="btn ml-auto min-w-28 shrink-0 btn-primary"
+          className="btn grow basis-28 border-base-300 bg-base-100 btn-outline"
           onClick={submit}
         >
           <PlusIcon className="hidden size-5 @min-[18rem]:block" />
