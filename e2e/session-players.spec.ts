@@ -260,6 +260,33 @@ test.describe("Add player", () => {
     expect(stored.players.find((p) => p.name === "kim")!.skill).toBe("advanced");
   });
 
+  test("Enter in the name field adds the player and leaves the field empty and focused; duplicates are rejected", async ({
+    page,
+  }) => {
+    await openSeeded(page);
+    const field = playersRegion(page).getByRole("textbox", { name: "Player name" });
+    await field.fill("Kim");
+    await field.press("Enter");
+    await expect(row(page, "Kim")).toBeVisible();
+    await expect(playersRegion(page).getByText("11 players", { exact: true })).toBeVisible();
+    await expect(field).toHaveValue("");
+    await expect(field).toBeFocused();
+
+    // The next player can be typed straight away.
+    await field.pressSequentially("Lou");
+    await field.press("Enter");
+    await expect(row(page, "Lou")).toBeVisible();
+    await expect(field).toBeFocused();
+
+    await field.fill("KIM");
+    await field.press("Enter");
+    await expect(playersRegion(page).getByText("Name already used")).toBeVisible();
+    await expect(field).toBeFocused();
+    const stored = await storedSession(page);
+    expect(stored.players.filter((p) => p.name.toLowerCase() === "kim")).toHaveLength(1);
+    expect(stored.players).toHaveLength(12);
+  });
+
   test("Save to club adds the player to the Club; unchecked does not", async ({ page }) => {
     const club = makeClub({ name: "Thursday Club", players: [] });
     await seedStorage(page, { clubs: [club] });

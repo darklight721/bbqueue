@@ -68,6 +68,53 @@ test.describe("New club", () => {
     ]);
   });
 
+  test("Enter in a player name adds the next player: empty, focused row; Enter on an empty name does nothing", async ({
+    page,
+  }) => {
+    await page.goto("/clubs/new");
+    await clubNameField(page).fill("Keyboard Club");
+    await page.getByRole("button", { name: "Add player" }).click();
+    await expect(playerNames(page).nth(0)).toBeFocused();
+
+    await playerNames(page).nth(0).fill("Ann");
+    await playerNames(page).nth(0).press("Enter");
+    await expect(playerNames(page)).toHaveCount(2);
+    await expect(playerNames(page).nth(1)).toBeFocused();
+    await expect(playerNames(page).nth(1)).toHaveValue("");
+
+    // An empty name doesn't add another row.
+    await playerNames(page).nth(1).press("Enter");
+    await expect(playerNames(page)).toHaveCount(2);
+
+    await playerNames(page).nth(1).pressSequentially("Bo");
+    await playerNames(page).nth(1).press("Enter");
+    await expect(playerNames(page)).toHaveCount(3);
+    await expect(playerNames(page).nth(2)).toBeFocused();
+    await expect(playerNames(page).nth(2)).toHaveValue("");
+
+    // Enter in a row that isn't the last one moves to the next row without adding.
+    await playerNames(page).nth(0).focus();
+    await playerNames(page).nth(0).press("Enter");
+    await expect(playerNames(page)).toHaveCount(3);
+    await expect(playerNames(page).nth(1)).toBeFocused();
+
+    // Enter in a name doesn't save the club.
+    await expect(page).toHaveURL(/\/clubs\/new$/);
+    expect(await readStored(page, "clubs")).toBeNull();
+  });
+
+  test("Enter in a player name of an existing club appends a row", async ({ page }) => {
+    const club = seedClub();
+    await seedStorage(page, { clubs: [club] });
+    await page.goto(`/clubs/${club.id}`);
+    await expect(playerNames(page)).toHaveCount(3);
+
+    await playerNames(page).nth(2).press("Enter");
+    await expect(playerNames(page)).toHaveCount(4);
+    await expect(playerNames(page).nth(3)).toBeFocused();
+    await expect(playerNames(page).nth(3)).toHaveValue("");
+  });
+
   test("a club with zero players can be saved", async ({ page }) => {
     await page.goto("/clubs");
     await page.getByRole("link", { name: "Add club" }).click();

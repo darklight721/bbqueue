@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import type { Club, EndedSession } from "../src/domain/types.ts";
 import {
+  makeClub,
   makeEndedSession,
   makeEndedSessionFromMatches,
   readStored,
@@ -62,6 +63,43 @@ test.describe("Totals", () => {
       await expect(stat(page, /^Duration$/)).toHaveText(expected);
     });
   }
+});
+
+test.describe("Club name", () => {
+  async function openWithClubs(page: Page, ended: EndedSession, clubs: Club[]) {
+    await seedStorage(page, { clubs, endedSessions: [ended] });
+    await page.goto(`/sessions/${ended.id}/summary`);
+    await expect(page.getByRole("heading", { level: 1, name: "Session summary" })).toBeVisible();
+  }
+
+  test("shows the Club name under the date line", async ({ page }) => {
+    const club = makeClub({ name: "Alpha Club" });
+    await openWithClubs(page, makeEndedSession({ clubId: club.id, clubName: club.name }), [club]);
+    await expect(page.getByText("Alpha Club", { exact: true })).toBeVisible();
+  });
+
+  test("a guests-only Session shows no Club line, even with a stale saved name", async ({
+    page,
+  }) => {
+    await openWithClubs(page, makeEndedSession({ clubId: null, clubName: "Stale Club" }), []);
+    await expect(page.getByText("Stale Club")).toHaveCount(0);
+  });
+
+  test("a renamed Club shows its current name", async ({ page }) => {
+    const club = makeClub({ name: "Fresh Name" });
+    await openWithClubs(page, makeEndedSession({ clubId: club.id, clubName: "Old Name" }), [club]);
+    await expect(page.getByText("Fresh Name", { exact: true })).toBeVisible();
+    await expect(page.getByText("Old Name")).toHaveCount(0);
+  });
+
+  test("a deleted Club shows the name saved with the session", async ({ page }) => {
+    await openWithClubs(
+      page,
+      makeEndedSession({ clubId: "deleted-club", clubName: "Saved Name" }),
+      [],
+    );
+    await expect(page.getByText("Saved Name", { exact: true })).toBeVisible();
+  });
 });
 
 test.describe("Top winners", () => {
@@ -253,6 +291,7 @@ test.describe("Full journey", () => {
     await expect(page).toHaveURL(/\/sessions\/(?!new$)[^/]+$/);
     await expect(page.getByRole("heading", { level: 1, name: "Journey night" })).toBeVisible();
     expect((await storedSession(page)).clubId).toBe(clubs![0]!.id);
+    await expect(page.getByRole("banner").getByText("Journey Club", { exact: true })).toBeVisible();
 
     // 3. Start both matches; end one with a score, the other without.
     const one = await lineupOf(court(page, 1));
@@ -287,6 +326,7 @@ test.describe("Full journey", () => {
     // 5. Summary.
     await expect(page.getByRole("heading", { level: 1, name: "Session summary" })).toBeVisible();
     await expect(page.getByText("Journey night", { exact: true })).toBeVisible();
+    await expect(page.getByText("Journey Club", { exact: true })).toBeVisible();
     await expect(stat(page, /^Matches$/)).toHaveText("2");
     await expect(stat(page, /^Players$/)).toHaveText("8");
     await expect(stat(page, /^Duration$/)).toHaveText(/^\d+(\.5)? h$/);

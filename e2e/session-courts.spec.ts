@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
-import { makeMidMatchSession, seedStorage } from "./fixtures.ts";
+import type { Club, Session } from "../src/domain/types.ts";
+import { makeClub, makeMidMatchSession, seedStorage } from "./fixtures.ts";
 import {
   court,
   idNames,
@@ -37,6 +38,41 @@ test.describe("Session shell", () => {
     await expect(page).toHaveURL(/\/sessions$/);
     await expect(page.getByRole("heading", { level: 1, name: "Past sessions" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Resume session" })).toHaveCount(0);
+  });
+});
+
+test.describe("Club name under the title", () => {
+  const open = async (page: Page, overrides: Partial<Session>, clubs: Club[]) => {
+    const session = makeMidMatchSession({ startedAt: Date.now() - 60_000, overrides });
+    await seedStorage(page, { clubs, session });
+    await page.goto(`/sessions/${session.id}`);
+    await expect(page.getByRole("heading", { level: 1, name: "Mid match" })).toBeVisible();
+  };
+
+  test("shows the Club name", async ({ page }) => {
+    const club = makeClub({ name: "Alpha Club" });
+    await open(page, { clubId: club.id, clubName: club.name }, [club]);
+    await expect(page.getByRole("banner").getByText("Alpha Club", { exact: true })).toBeVisible();
+  });
+
+  test("a guests-only Session shows no Club line, even with a stale saved name", async ({
+    page,
+  }) => {
+    await open(page, { clubId: null, clubName: "Stale Club" }, []);
+    await expect(page.getByText("Stale Club")).toHaveCount(0);
+    await expect(page.getByRole("banner").getByRole("paragraph")).toHaveCount(0);
+  });
+
+  test("a renamed Club shows its current name", async ({ page }) => {
+    const club = makeClub({ name: "Fresh Name" });
+    await open(page, { clubId: club.id, clubName: "Old Name" }, [club]);
+    await expect(page.getByRole("banner").getByText("Fresh Name", { exact: true })).toBeVisible();
+    await expect(page.getByText("Old Name")).toHaveCount(0);
+  });
+
+  test("a deleted Club shows the name saved at Start", async ({ page }) => {
+    await open(page, { clubId: "deleted-club", clubName: "Saved Name" }, []);
+    await expect(page.getByRole("banner").getByText("Saved Name", { exact: true })).toBeVisible();
   });
 });
 
@@ -213,6 +249,26 @@ test.describe("Ending and removing matches", () => {
       before.b,
     ]);
     expect(session.courts.find((c) => c.number === 1)!.activeMatchId).toBeNull();
+  });
+
+  test("opening the dialog doesn't focus a score field (no phone keyboard); the title is focused", async ({
+    page,
+  }) => {
+    const { before } = await startFirstMatch(page);
+    const dialog = await openScoreDialog(page, 1);
+    const fieldA = dialog.getByRole("textbox", { name: before.a.join(" & "), exact: true });
+    const fieldB = dialog.getByRole("textbox", { name: before.b.join(" & "), exact: true });
+
+    await expect(dialog.getByRole("heading", { name: "End match — Court 1" })).toBeFocused();
+    await expect(fieldA).not.toBeFocused();
+    await expect(fieldB).not.toBeFocused();
+    expect(await page.evaluate(() => document.activeElement instanceof HTMLInputElement)).toBe(
+      false,
+    );
+
+    // A field still takes focus when tapped.
+    await fieldA.click();
+    await expect(fieldA).toBeFocused();
   });
 
   test("an invalid score shows messages and keeps the dialog open", async ({ page }) => {
