@@ -4,7 +4,10 @@ import { ClubEditScreen } from "../features/club-edit/ClubEditScreen.tsx";
 import { ClubsScreen } from "../features/clubs/ClubsScreen.tsx";
 import { HomeScreen } from "../features/home/HomeScreen.tsx";
 import { NewSessionScreen } from "../features/new-session/NewSessionScreen.tsx";
-import { PastSessionsScreen } from "../features/past-sessions/PastSessionsScreen.tsx";
+import {
+  ClubSessionsScreen,
+  PastSessionsScreen,
+} from "../features/past-sessions/PastSessionsScreen.tsx";
 import { SessionRoute } from "../features/session/SessionRoute.tsx";
 import { SessionSummaryScreen } from "../features/session-summary/SessionSummaryScreen.tsx";
 
@@ -42,6 +45,9 @@ export function App() {
         <Route path="/clubs" component={ClubsScreen} />
         <Route path="/clubs/new">
           <ClubEditScreen />
+        </Route>
+        <Route path="/clubs/:clubId/sessions">
+          {(params) => <ClubSessionsScreen clubId={params.clubId} />}
         </Route>
         <Route path="/clubs/:clubId">{(params) => <ClubEditScreen clubId={params.clubId} />}</Route>
         <Route path="/sessions" component={PastSessionsScreen} />

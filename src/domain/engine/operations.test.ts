@@ -39,6 +39,7 @@ function input(count: number, courts = 1): CreateSessionInput {
   return {
     name: "Tuesday",
     clubId: "club-1",
+    clubName: "Riverside",
     pointSystem: 21,
     plannedHours: 2,
     courts,
@@ -68,7 +69,13 @@ describe("createSession", () => {
     });
     expect(s.courts.map((c) => c.number)).toEqual([1, 2]);
     expect(s.courts.every((c) => c.lineup !== null && c.activeMatchId === null)).toBe(true);
-    expect(s).toMatchObject({ name: "Tuesday", clubId: "club-1", pointSystem: 21, startedAt: T0 });
+    expect(s).toMatchObject({
+      name: "Tuesday",
+      clubId: "club-1",
+      clubName: "Riverside",
+      pointSystem: 21,
+      startedAt: T0,
+    });
     expect(violations(s)).toEqual([]);
   });
 
@@ -527,6 +534,7 @@ describe("endSession", () => {
       id: s.id,
       name: "Tuesday",
       clubId: s.clubId,
+      clubName: "Riverside",
       pointSystem: s.pointSystem,
       startedAt: T0,
       endedAt: T0 + 30 * MIN,
@@ -557,6 +565,7 @@ describe("endSession", () => {
     ]);
     expect(Object.keys(ended).sort()).toEqual([
       "clubId",
+      "clubName",
       "endedAt",
       "id",
       "matches",

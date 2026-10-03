@@ -10,6 +10,7 @@ function create(players: number, courts: number, seed: number) {
     {
       name: "S",
       clubId: null,
+      clubName: null,
       pointSystem: 21,
       plannedHours: 2,
       courts,

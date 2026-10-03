@@ -68,6 +68,7 @@ export function session(options: {
     id: "s",
     name: "Test",
     clubId: null,
+    clubName: null,
     pointSystem: options.pointSystem ?? 21,
     plannedHours: 2,
     startedAt: T0,

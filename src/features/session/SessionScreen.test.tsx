@@ -1,4 +1,4 @@
-import { act, render, screen, within } from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { Router } from "wouter";
@@ -6,7 +6,7 @@ import { memoryLocation } from "wouter/memory-location";
 import { App } from "../../app/App.tsx";
 import { createRng, createSession, startMatch } from "../../domain/engine/index.ts";
 import type { Session } from "../../domain/types.ts";
-import { getSession, resetStoreForTests, setSession } from "../../storage/store.ts";
+import { getSession, resetStoreForTests, setClubs, setSession } from "../../storage/store.ts";
 
 const T0 = Date.UTC(2026, 9, 1, 18, 0, 0);
 const NAMES = ["Ana", "Ben", "Cat", "Dan", "Eve", "Fay", "Gus", "Hal", "Ivy", "Jon", "Kim", "Lou"];
@@ -17,6 +17,7 @@ function makeSession(options: { players?: number; courts?: number } = {}): Sessi
     {
       name: "Thursday",
       clubId: null,
+      clubName: null,
       pointSystem: 21,
       plannedHours: 2,
       courts: options.courts ?? 2,
@@ -47,6 +48,8 @@ function renderAt(path = `/sessions/${getSession()?.id ?? "missing"}`) {
   return { current: () => location.history.at(-1) };
 }
 
+/** The top bar: the first header, which holds the title. */
+const topBar = () => within(screen.getByRole("heading", { level: 1 }).closest("header")!);
 const court = (n: number) => within(screen.getByRole("region", { name: `Court ${n}` }));
 const teamNamesIn = (n: number, team: "Team A" | "Team B") =>
   Array.from(
@@ -75,6 +78,25 @@ describe("SessionScreen", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Thursday" })).toBeInTheDocument();
     expect(screen.getByText("21 pts")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Back" })).toBeInTheDocument();
+  });
+
+  it("shows the Club name under the title: current name, saved name when deleted, none without", () => {
+    setClubs([{ id: "c1", name: "Riverside Renamed", players: [] }]);
+    setSession({ ...makeSession(), clubId: "c1", clubName: "Riverside" });
+    renderAt();
+    expect(topBar().getByRole("heading", { level: 1, name: "Thursday" })).toBeInTheDocument();
+    expect(topBar().getByText("Riverside Renamed")).toBeInTheDocument();
+    cleanup();
+
+    setClubs([]);
+    renderAt();
+    expect(topBar().getByText("Riverside")).toBeInTheDocument();
+    cleanup();
+
+    setSession({ ...makeSession(), clubId: null, clubName: null });
+    renderAt();
+    expect(topBar().queryByText(/riverside/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1 }).parentElement!.querySelector("p")).toBeNull();
   });
 
   it("shows Idle courts with disjoint Lineups as Team A vs Team B", () => {

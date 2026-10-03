@@ -1,7 +1,7 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { Redirect, useLocation } from "wouter";
+import { useEffect, useId, useMemo, useRef, useState, type MouseEvent } from "react";
+import { Link, Redirect, useLocation } from "wouter";
 import { ConfirmDialog } from "../../components/ConfirmDialog.tsx";
-import { PlusIcon } from "../../components/icons.tsx";
+import { ChevronRightIcon, HistoryIcon, PlusIcon } from "../../components/icons.tsx";
 import { blurOnEnter } from "../../components/keyboard.ts";
 import { NAME_ERROR_MESSAGE } from "../../components/nameErrors.ts";
 import { PlayerRowEditor } from "../../components/PlayerRowEditor.tsx";
@@ -9,7 +9,8 @@ import { Screen } from "../../components/Screen.tsx";
 import { newId } from "../../domain/ids.ts";
 import { DEFAULT_SKILL, type Club } from "../../domain/types.ts";
 import { hasClubErrors, validateClub } from "../../domain/validation.ts";
-import { getClubs, setClubs, useClubs } from "../../storage/store.ts";
+import { getClubs, setClubs, useClubs, useEndedSessions } from "../../storage/store.ts";
+import { countLabel } from "../session-summary/summaryFormat.ts";
 import { clubFromForm, formFromClub, formSignature, type ClubForm } from "./clubForm.ts";
 
 /** New club (no `clubId`) or Edit club. Unknown ids go back to the Clubs list. */
@@ -24,7 +25,9 @@ export function ClubEditScreen({ clubId }: { clubId?: string }) {
 function ClubEditor({ club }: { club: Club | null }) {
   const [, navigate] = useLocation();
   const clubs = useClubs();
+  const endedSessions = useEndedSessions();
   const isNew = club === null;
+  const sessionCount = club ? endedSessions.filter((ended) => ended.clubId === club.id).length : 0;
 
   const [initial] = useState(() => formFromClub(club));
   const [form, setForm] = useState<ClubForm>(initial);
@@ -203,6 +206,19 @@ function ClubEditor({ club }: { club: Club | null }) {
           ) : null}
         </div>
 
+        {club && sessionCount > 0 ? (
+          <ClubSessionsLink
+            href={`/clubs/${encodeURIComponent(club.id)}/sessions`}
+            count={sessionCount}
+            // Unsaved changes: confirm like Back before leaving.
+            onClick={async (event) => {
+              if (!dirty) return;
+              event.preventDefault();
+              if (await guardBack()) navigate(`/clubs/${encodeURIComponent(club.id)}/sessions`);
+            }}
+          />
+        ) : null}
+
         <section aria-labelledby={playersHeadingId} className="flex flex-col gap-3">
           <div className="flex items-baseline justify-between gap-3">
             <h2 id={playersHeadingId} className="font-display text-2xl uppercase">
@@ -268,5 +284,41 @@ function ClubEditor({ club }: { club: Club | null }) {
         onCancel={() => settleDiscard(false)}
       />
     </Screen>
+  );
+}
+
+/** Card link to this Club's Ended sessions. */
+function ClubSessionsLink({
+  href,
+  count,
+  onClick,
+}: {
+  href: string;
+  count: number;
+  onClick: (event: MouseEvent<HTMLAnchorElement>) => void;
+}) {
+  const labelId = useId();
+  const detailId = useId();
+  return (
+    <Link
+      href={href}
+      onClick={onClick}
+      aria-labelledby={labelId}
+      aria-describedby={detailId}
+      className="group flex min-h-20 items-center gap-4 rounded-box border-[1.5px] border-base-300 bg-base-100 p-4 pr-3 text-base-content shadow-sm transition-transform active:scale-[0.98]"
+    >
+      <span className="grid size-12 shrink-0 place-items-center rounded-full bg-base-200 text-primary">
+        <HistoryIcon className="size-6" />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span id={labelId} className="font-display text-2xl leading-tight font-bold uppercase">
+          Sessions
+        </span>
+        <span id={detailId} className="truncate text-sm text-base-content/65">
+          {countLabel(count, "past session", "past sessions")}
+        </span>
+      </span>
+      <ChevronRightIcon className="size-6 shrink-0 opacity-50 transition-transform group-hover:translate-x-0.5" />
+    </Link>
   );
 }

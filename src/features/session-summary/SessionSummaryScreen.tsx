@@ -4,23 +4,41 @@ import { BrandMark, Wordmark } from "../../components/BrandMark.tsx";
 import { ShareIcon, WarningIcon } from "../../components/icons.tsx";
 import type { SessionSummary } from "../../domain/types.ts";
 import { buildSummary } from "../../domain/engine/index.ts";
-import { useEndedSessions } from "../../storage/store.ts";
+import { displayClubName } from "../../domain/clubName.ts";
+import { useClubs, useEndedSessions } from "../../storage/store.ts";
+import { detailsPath, parseOrigin } from "../past-sessions/sessionOrigin.ts";
 import { CourtLines } from "../home/CourtLines.tsx";
 import { APP_URL_LABEL, summaryFileName, useShareSummary } from "./shareSummary.ts";
 import { rise, sessionWhen } from "./summaryFormat.ts";
-import { TopWinners, Totals } from "./SummaryParts.tsx";
+import { ClubLine, TopWinners, Totals } from "./SummaryParts.tsx";
 
 /** End-of-night screen for one Ended session: totals and the top winners. */
 export function SessionSummaryScreen({ sessionId }: { sessionId: string }) {
   const ended = useEndedSessions().find((candidate) => candidate.id === sessionId);
+  const clubs = useClubs();
   const summary = useMemo(() => (ended ? buildSummary(ended) : null), [ended]);
-  if (!summary) return <Redirect to="/sessions" replace />;
-  return <Summary sessionId={sessionId} summary={summary} />;
+  if (!ended || !summary) return <Redirect to="/sessions" replace />;
+  return (
+    <Summary
+      sessionId={sessionId}
+      summary={summary}
+      clubName={displayClubName(ended.clubId, ended.clubName, clubs)}
+    />
+  );
 }
 
-function Summary({ sessionId, summary }: { sessionId: string; summary: SessionSummary }) {
-  // Opened from the Ended session details page: go back there instead of Home.
-  const fromDetails = new URLSearchParams(useSearch()).get("from") === "details";
+function Summary({
+  sessionId,
+  summary,
+  clubName,
+}: {
+  sessionId: string;
+  summary: SessionSummary;
+  clubName: string | null;
+}) {
+  // Opened from the Ended session details page: go back there (to the same list) instead of Home.
+  const search = useSearch();
+  const fromDetails = new URLSearchParams(search).get("from") === "details";
   const captureRef = useRef<HTMLDivElement>(null);
   const { share, status } = useShareSummary(
     captureRef,
@@ -38,7 +56,7 @@ function Summary({ sessionId, summary }: { sessionId: string; summary: SessionSu
        * a solid, finished edge. The action buttons stay outside.
        */}
       <div ref={captureRef} data-summary-capture className="@container bg-base-100 pb-10">
-        <Hero summary={summary} />
+        <Hero summary={summary} clubName={clubName} />
 
         <main className="px-safe relative z-10 mx-auto -mt-12 flex w-full max-w-2xl flex-col gap-8">
           <Totals summary={summary} />
@@ -79,7 +97,7 @@ function Summary({ sessionId, summary }: { sessionId: string; summary: SessionSu
         </button>
 
         <Link
-          href={fromDetails ? `/sessions/${sessionId}` : "/"}
+          href={fromDetails ? detailsPath(sessionId, parseOrigin(search)) : "/"}
           className="btn btn-lg btn-outline animate-rise mt-3 w-full border-base-300 bg-base-100"
           style={rise(6.5)}
         >
@@ -90,7 +108,7 @@ function Summary({ sessionId, summary }: { sessionId: string; summary: SessionSu
   );
 }
 
-function Hero({ summary }: { summary: SessionSummary }) {
+function Hero({ summary, clubName }: { summary: SessionSummary; clubName: string | null }) {
   return (
     <header className="relative isolate overflow-hidden bg-court text-line">
       <div
@@ -132,6 +150,13 @@ function Hero({ summary }: { summary: SessionSummary }) {
           <p className="animate-rise mt-3 text-sm font-semibold text-line/80" style={rise(1)}>
             {sessionWhen(summary.startedAt, summary.endedAt)}
           </p>
+          {clubName ? (
+            <ClubLine
+              name={clubName}
+              className="animate-rise mt-3 text-[clamp(0.8125rem,3.6cqw,1rem)]"
+              style={rise(1.5)}
+            />
+          ) : null}
         </div>
       </div>
     </header>

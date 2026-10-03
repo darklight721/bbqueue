@@ -147,6 +147,7 @@ function simulate(seed: number): void {
     {
       name: `Run ${seed}`,
       clubId: null,
+      clubName: null,
       pointSystem: rng() < 0.5 ? 21 : 31,
       plannedHours: 2,
       courts: 1 + randomInt(rng, 6),
@@ -192,6 +193,7 @@ describe("rest rule over whole evenings", () => {
       {
         name: "Rest",
         clubId: null,
+        clubName: null,
         pointSystem: 21,
         plannedHours: 3,
         courts,

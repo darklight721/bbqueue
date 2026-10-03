@@ -13,32 +13,82 @@ const MEDAL: Record<number, { bg: string; ring: string }> = {
   3: { bg: "#d39a6a", ring: "#9c6436" },
 };
 
-/** Matches played, Players and Duration as big number tiles. */
+/**
+ * Matches, Players and Duration as three number tiles on one row at every width.
+ * The list is its own size container: numbers, labels and spacing scale with its width
+ * (so a 320px phone and the phone-width shared image both fit "12 h 45 min" on one line).
+ * Duration gets a wider column since it holds the longest value.
+ */
 export function Totals({ summary }: { summary: SessionSummary }) {
   const tiles = [
-    { label: "Matches played", value: String(summary.totalMatches) },
+    { label: "Matches", value: String(summary.totalMatches) },
     { label: "Players", value: String(summary.totalPlayers) },
     { label: "Duration", value: formatSessionDuration(summary.endedAt - summary.startedAt) },
   ];
   return (
-    <dl className="grid grid-cols-2 gap-3">
+    <dl className="@container grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.3fr)] gap-[clamp(0.5rem,2.5cqw,0.75rem)]">
       {tiles.map((tile, index) => (
         <div
           key={tile.label}
-          className={`animate-rise flex flex-col gap-1 rounded-box border-[1.5px] border-base-300 bg-base-100 px-4 py-4 shadow-md ${
-            index === 2 ? "col-span-2" : ""
-          }`}
+          className="animate-rise flex min-w-0 flex-col gap-1.5 rounded-box border-[1.5px] border-base-300 bg-base-100 px-[clamp(0.625rem,3.5cqw,1rem)] py-[clamp(0.75rem,4cqw,1rem)] shadow-md"
           style={rise(2 + index * 0.5)}
         >
-          <dt className="order-2 text-xs font-bold tracking-[0.14em] text-base-content/60 uppercase">
+          <dt className="order-2 truncate text-[clamp(0.5625rem,3.3cqw,0.75rem)] leading-none font-bold tracking-[0.08em] text-base-content/60 uppercase">
             {tile.label}
           </dt>
-          <dd className="order-1 font-display text-5xl leading-none font-bold tabular-nums">
-            {tile.value}
+          <dd className="order-1 font-display text-[clamp(1.5rem,9.25cqw,3rem)] leading-none font-bold tracking-tight whitespace-nowrap tabular-nums">
+            <TotalValue value={tile.value} />
           </dd>
         </div>
       ))}
     </dl>
+  );
+}
+
+/**
+ * Numbers at full size, words ("h", "min", "Under") smaller so a duration fits its tile.
+ * The text stays the same ("2 h 15 min"); only the look changes.
+ */
+function TotalValue({ value }: { value: string }) {
+  const parts = value.split(/(\d+)/).filter((part) => part !== "");
+  return parts.map((part, index) =>
+    /^\d+$/.test(part) ? (
+      <span key={index}>{part}</span>
+    ) : (
+      <span
+        key={index}
+        className="text-[0.46em] font-semibold tracking-normal whitespace-pre text-base-content/70"
+      >
+        {part}
+      </span>
+    ),
+  );
+}
+
+/**
+ * The Club's name on a court-green hero or banner: a short volt rule, then the name in small
+ * spaced capitals. Long names wrap instead of being cut (it is also part of the shared image).
+ */
+export function ClubLine({
+  name,
+  className = "",
+  style,
+}: {
+  name: string;
+  className?: string;
+  style?: CSSProperties;
+}) {
+  return (
+    <p
+      className={`flex items-start gap-2.5 leading-tight font-bold tracking-[0.12em] text-line uppercase ${className}`}
+      style={style}
+    >
+      <span
+        aria-hidden="true"
+        className="mt-[calc(0.5lh-1.5px)] h-[3px] w-[1.1em] shrink-0 rounded-full bg-volt"
+      />
+      <span className="min-w-0 break-words">{name}</span>
+    </p>
   );
 }
 

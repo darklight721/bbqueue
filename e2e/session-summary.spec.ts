@@ -42,7 +42,7 @@ test.describe("Totals", () => {
     // The name is upper-cased by CSS only; the text keeps its case.
     await expect(page.getByText("Friday smash", { exact: true })).toBeVisible();
     await expect(page.getByText(/ · .+–.+/)).toBeVisible(); // "Fri, 2 Oct · 18:00–20:15" (locale-dependent)
-    await expect(stat(page, /^Matches played$/)).toHaveText("7");
+    await expect(stat(page, /^Matches$/)).toHaveText("7");
     await expect(stat(page, /^Players$/)).toHaveText("10");
     await expect(page.getByRole("link", { name: "Home" })).toBeVisible();
   });
@@ -155,7 +155,7 @@ test.describe("Top winners", () => {
     );
     await expect(page.getByText("No scored matches")).toBeVisible();
     await expect(page.getByRole("list")).toHaveCount(0);
-    await expect(stat(page, /^Matches played$/)).toHaveText("2");
+    await expect(stat(page, /^Matches$/)).toHaveText("2");
     await expect(stat(page, /^Players$/)).toHaveText("8");
   });
 });
@@ -174,7 +174,7 @@ test.describe("Persistence and navigation", () => {
     await page.reload();
     await expect(page).toHaveURL(new RegExp(`/sessions/${ended.id}/summary$`));
     await expect(page.getByText("Reload night", { exact: true })).toBeVisible();
-    await expect(stat(page, /^Matches played$/)).toHaveText("3");
+    await expect(stat(page, /^Matches$/)).toHaveText("3");
     await expect(winnerRows(page)).toHaveCount(2);
   });
 
@@ -287,7 +287,7 @@ test.describe("Full journey", () => {
     // 5. Summary.
     await expect(page.getByRole("heading", { level: 1, name: "Session summary" })).toBeVisible();
     await expect(page.getByText("Journey night", { exact: true })).toBeVisible();
-    await expect(stat(page, /^Matches played$/)).toHaveText("2");
+    await expect(stat(page, /^Matches$/)).toHaveText("2");
     await expect(stat(page, /^Players$/)).toHaveText("8");
     await expect(stat(page, /^Duration$/)).toHaveText(/^(Under 1 min|\d+ min|\d+ h( \d+ min)?)$/);
 
@@ -331,7 +331,7 @@ test.describe("Full journey", () => {
     await expect(page.getByRole("heading", { level: 1, name: "Journey night" })).toBeVisible();
     await expect(page.getByText("Ended session", { exact: true })).toBeVisible();
     await expect(page.getByText(/^.+–.+$/).first()).toBeVisible(); // "18:00–20:15"
-    await expect(stat(page, /^Matches played$/)).toHaveText("2");
+    await expect(stat(page, /^Matches$/)).toHaveText("2");
     await expect(stat(page, /^Players$/)).toHaveText("8");
     // Everyone who played is in the Standings, not just the winners.
     const standings = page.getByRole("region", { name: "Standings" }).getByRole("listitem");

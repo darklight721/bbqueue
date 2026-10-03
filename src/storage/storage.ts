@@ -95,17 +95,33 @@ export function saveClubs(clubs: Club[]): void {
   write(CLUBS_KEY, clubs);
 }
 
-/** Older saves have Matches without a Target: they were played to the Session's Point system. */
+/**
+ * Older saves have Matches without a Target (they were played to the Session's Point system)
+ * and no saved Club name (null).
+ */
 export function normalizeSession(session: Session): Session {
-  if (session.matches.every((match) => match.target === 21 || match.target === 31)) return session;
+  const withName: Session =
+    typeof session.clubName === "string" || session.clubName === null
+      ? session
+      : { ...session, clubName: null };
+  if (withName.matches.every((match) => match.target === 21 || match.target === 31)) {
+    return withName;
+  }
   return {
-    ...session,
-    matches: session.matches.map((match) =>
+    ...withName,
+    matches: withName.matches.map((match) =>
       match.target === 21 || match.target === 31
         ? match
-        : { ...match, target: session.pointSystem },
+        : { ...match, target: withName.pointSystem },
     ),
   };
+}
+
+/** Older Ended sessions have no saved Club name (null). */
+export function normalizeEndedSession(ended: EndedSession): EndedSession {
+  return typeof ended.clubName === "string" || ended.clubName === null
+    ? ended
+    : { ...ended, clubName: null };
 }
 
 export function loadSession(): Session | null {
@@ -128,7 +144,7 @@ export function removeLegacySummary(): void {
 /** Newest first by `endedAt`. Also drops the old summary key. */
 export function loadEndedSessions(): EndedSession[] {
   removeLegacySummary();
-  const stored = read(ENDED_SESSIONS_KEY, isEndedSessions) ?? [];
+  const stored = (read(ENDED_SESSIONS_KEY, isEndedSessions) ?? []).map(normalizeEndedSession);
   return [...stored].sort((a, b) => b.endedAt - a.endedAt);
 }
 

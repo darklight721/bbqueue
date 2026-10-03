@@ -60,6 +60,7 @@ describe("rest with staggered match ends", () => {
       {
         name: "Stagger",
         clubId: null,
+        clubName: null,
         pointSystem: 21,
         plannedHours: 3,
         courts,
@@ -288,6 +289,7 @@ describe("rehash all keeps the strict selection", () => {
           {
             name: "S",
             clubId: null,
+            clubName: null,
             pointSystem: 21,
             plannedHours: 2,
             courts,
@@ -388,6 +390,7 @@ describe("re-adding a removed player", () => {
       {
         name: "S",
         clubId: null,
+        clubName: null,
         pointSystem: 21,
         plannedHours: 2,
         courts: 1,
@@ -448,6 +451,7 @@ describe("sitting out while on court", () => {
       {
         name: "S",
         clubId: null,
+        clubName: null,
         pointSystem: 21,
         plannedHours: 2,
         courts: 1,
@@ -517,6 +521,7 @@ describe("moveQueueToCourt when a Lineup has no replacement", () => {
       {
         name: "S",
         clubId: null,
+        clubName: null,
         pointSystem: 21,
         plannedHours: 2,
         courts: 3,
@@ -549,6 +554,7 @@ describe("moveQueueToCourt when a Lineup has no replacement", () => {
       {
         name: "S",
         clubId: null,
+        clubName: null,
         pointSystem: 21,
         plannedHours: 2,
         courts: 3,
@@ -604,6 +610,7 @@ describe("validateCreateSessionInput", () => {
   const valid = (): CreateSessionInput => ({
     name: "Tuesday",
     clubId: null,
+    clubName: null,
     pointSystem: 21,
     plannedHours: 1,
     courts: 2,

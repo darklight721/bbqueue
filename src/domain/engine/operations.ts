@@ -38,6 +38,8 @@ export interface NewPlayerInput {
 export interface CreateSessionInput {
   name: string;
   clubId: string | null;
+  /** The Club's name at Start; null when there is no Club. */
+  clubName: string | null;
   pointSystem: PointSystem;
   plannedHours: number;
   courts: number;
@@ -68,6 +70,7 @@ export function createSession(input: CreateSessionInput, ctx: EngineContext): Se
     id: makeId(ctx),
     name: input.name,
     clubId: input.clubId,
+    clubName: input.clubName,
     pointSystem: input.pointSystem,
     plannedHours: input.plannedHours,
     startedAt: ctx.now,

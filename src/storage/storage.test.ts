@@ -21,6 +21,7 @@ const session: Session = {
   id: "s1",
   name: "Tuesday",
   clubId: "c1",
+  clubName: null,
   pointSystem: 21,
   plannedHours: 2,
   startedAt: 1000,
@@ -36,6 +37,7 @@ function endedSession(id: string, endedAt: number): EndedSession {
     id,
     name: `Session ${id}`,
     clubId: null,
+    clubName: null,
     pointSystem: 21,
     startedAt: endedAt - 1000,
     endedAt,
@@ -127,6 +129,14 @@ describe("session", () => {
     expect(localStorage.getItem("bq:v1:session")).toBeNull();
   });
 
+  it("gives a Session saved without a Club name a null one, and keeps a saved one", () => {
+    const { clubName: _omitted, ...legacy } = session;
+    localStorage.setItem("bq:v1:session", JSON.stringify({ version: 1, data: legacy }));
+    expect(loadSession()).toEqual({ ...session, clubName: null });
+    saveSession({ ...session, clubName: "Riverside" });
+    expect(loadSession()?.clubName).toBe("Riverside");
+  });
+
   it("treats corrupt JSON, wrong version and bad shape as absent", () => {
     localStorage.setItem("bq:v1:session", "oops");
     expect(loadSession()).toBeNull();
@@ -152,6 +162,16 @@ describe("ended sessions", () => {
       version: 1,
       data: [recent, old],
     });
+  });
+
+  it("gives Ended sessions saved without a Club name a null one, and keeps a saved one", () => {
+    const { clubName: _omitted, ...legacy } = endedSession("old", 1000);
+    const named = { ...endedSession("named", 2000), clubId: "c1", clubName: "Riverside" };
+    localStorage.setItem(ENDED_KEY, JSON.stringify({ version: 1, data: [legacy, named] }));
+    expect(loadEndedSessions().map((e) => [e.id, e.clubName])).toEqual([
+      ["named", "Riverside"],
+      ["old", null],
+    ]);
   });
 
   it("replaces an Ended session with the same id", () => {

@@ -34,6 +34,7 @@ const oldSession: Session = {
   id: "old",
   name: "Last week",
   clubId: null,
+  clubName: null,
   pointSystem: 21,
   plannedHours: 1,
   startedAt: 1,

@@ -19,6 +19,7 @@ function ended(rows: Row[], playerCount = 8): EndedSession {
     id: "s",
     name: "Test",
     clubId: null,
+    clubName: null,
     pointSystem: 21,
     startedAt: T0,
     endedAt: T0 + 3 * 60 * MIN,

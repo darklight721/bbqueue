@@ -117,6 +117,7 @@ export function planStart(args: {
     input: {
       name: normalizeName(args.name),
       clubId: club?.id ?? null,
+      clubName: club?.name ?? null,
       pointSystem: args.pointSystem,
       plannedHours: args.hours,
       courts: args.courts,

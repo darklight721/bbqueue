@@ -71,6 +71,7 @@ describe("newSession helpers", () => {
     expect(plan.input).toEqual({
       name: "Thu night",
       clubId: "r",
+      clubName: "r",
       pointSystem: 31,
       plannedHours: 2,
       courts: 2,
@@ -102,6 +103,7 @@ describe("newSession helpers", () => {
       newId: () => "id",
     });
     expect(plan.clubs).toBeNull();
+    expect(plan.input.clubName).toBeNull();
     expect(plan.input.players).toEqual([{ name: "Eve", skill: "beginner", clubPlayerId: null }]);
   });
 });

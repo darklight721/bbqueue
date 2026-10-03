@@ -2,7 +2,8 @@ import { useCallback, useState } from "react";
 import { Redirect } from "wouter";
 import { ChevronDownIcon } from "../../components/icons.tsx";
 import { Screen } from "../../components/Screen.tsx";
-import { useSession } from "../../storage/store.ts";
+import { displayClubName } from "../../domain/clubName.ts";
+import { useClubs, useSession } from "../../storage/store.ts";
 import { CourtsSection } from "./courts/CourtsSection.tsx";
 import { EndSessionSection } from "./end/EndSessionSection.tsx";
 import { HistorySection } from "./history/HistorySection.tsx";
@@ -31,6 +32,7 @@ const JUMP_TARGETS: readonly JumpTarget[] = [
  */
 export function SessionScreen() {
   const session = useSession();
+  const clubs = useClubs();
   // Not saved: Players starts open and History closed on every visit.
   const [playersOpen, setPlayersOpen] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -42,10 +44,13 @@ export function SessionScreen() {
   // Safety net: the route only renders this for the Active session.
   if (!session) return <Redirect to="/" replace />;
 
+  const clubName = displayClubName(session.clubId, session.clubName, clubs);
+
   return (
     <SessionProvider session={session}>
       <Screen
         title={session.name}
+        subtitle={clubName}
         backTo="/"
         wide
         right={

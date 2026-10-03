@@ -17,7 +17,7 @@ A person taking part in a Session. A snapshot of a Club player taken when they j
 _Avoid_: Participant, attendee
 
 **Guest**:
-A Session player who was not on the Club roster when the Session started.
+A Session player who was not on the Session's Club roster when the Session started (every Session player, when the Session has no Club).
 _Avoid_: Extra player, additional player
 
 **Skill level**:
@@ -27,7 +27,7 @@ _Avoid_: Rank, grade, rating
 ## Sessions
 
 **Session**:
-One evening of play for one Club, from Start to End. Only one Session is Active at a time.
+One evening of play, for one Club or for no Club (guests only), from Start to End. Keeps the Club's name as it was at Start. Only one Session is Active at a time.
 _Avoid_: Event, game night
 
 **Ended session**:

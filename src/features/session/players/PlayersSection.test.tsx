@@ -33,6 +33,7 @@ function makeSession(options: { clubId?: string | null; players?: number } = {})
     {
       name: "Thursday",
       clubId: options.clubId ?? null,
+      clubName: null,
       pointSystem: 21,
       plannedHours: 2,
       courts: 2,

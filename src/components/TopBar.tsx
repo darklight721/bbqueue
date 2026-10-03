@@ -11,11 +11,13 @@ export interface TopBarProps {
    */
   onBack?: () => boolean | Promise<boolean>;
   title: ReactNode;
+  /** Optional small line under the title (e.g. the Club's name). */
+  subtitle?: ReactNode;
   /** Optional actions on the right-hand side. */
   right?: ReactNode;
 }
 
-export function TopBar({ backTo, onBack, title, right }: TopBarProps) {
+export function TopBar({ backTo, onBack, title, subtitle, right }: TopBarProps) {
   const [, navigate] = useLocation();
   const [busy, setBusy] = useState(false);
 
@@ -44,7 +46,16 @@ export function TopBar({ backTo, onBack, title, right }: TopBarProps) {
         >
           <ChevronLeftIcon className="size-7" />
         </button>
-        <h1 className="min-w-0 flex-1 truncate font-display text-2xl uppercase">{title}</h1>
+        <div className="flex min-w-0 flex-1 flex-col justify-center">
+          <h1 className={`truncate font-display text-2xl uppercase ${subtitle ? "leading-7" : ""}`}>
+            {title}
+          </h1>
+          {subtitle ? (
+            <p className="truncate text-[0.8125rem] leading-tight font-semibold text-base-content/60">
+              {subtitle}
+            </p>
+          ) : null}
+        </div>
         {right ? <div className="flex shrink-0 items-center gap-1">{right}</div> : null}
       </div>
     </header>

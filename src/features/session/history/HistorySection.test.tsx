@@ -35,6 +35,7 @@ function fresh(): Session {
     {
       name: "Thursday",
       clubId: null,
+      clubName: null,
       pointSystem: 21,
       plannedHours: 2,
       courts: 2,

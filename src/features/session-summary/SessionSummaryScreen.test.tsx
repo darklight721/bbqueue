@@ -44,6 +44,7 @@ function endedSession(
     id: "s1",
     name: "Thursday Smash",
     clubId: null,
+    clubName: null,
     pointSystem: 21,
     startedAt: START,
     endedAt: START + 135 * MIN,
@@ -146,7 +147,7 @@ describe("SessionSummaryScreen", () => {
         .getAllByRole("term")
         .map((term) => [term.textContent, term.nextElementSibling?.textContent]),
     );
-    expect(totals).toEqual({ "Matches played": "7", Players: "8", Duration: "2 h 15 min" });
+    expect(totals).toEqual({ Matches: "7", Players: "8", Duration: "2 h 15 min" });
   });
 
   it("lists top winners with shared places, showing everyone placed 3rd or better", () => {

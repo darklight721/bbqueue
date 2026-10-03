@@ -22,6 +22,7 @@ export function toEndedSession(session: Session, endedAt: number): EndedSession 
     id: session.id,
     name: session.name,
     clubId: session.clubId,
+    clubName: session.clubName,
     pointSystem: session.pointSystem,
     startedAt: session.startedAt,
     endedAt,

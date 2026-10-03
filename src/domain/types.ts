@@ -86,6 +86,8 @@ export interface Session {
   id: string;
   name: string;
   clubId: string | null;
+  /** The Club's name as it was at Start; null when the Session has no Club. */
+  clubName: string | null;
   pointSystem: PointSystem;
   plannedHours: number;
   startedAt: number;
@@ -134,6 +136,8 @@ export interface EndedSession {
   id: string;
   name: string;
   clubId: string | null;
+  /** The Club's name as it was at Start; null when the Session had no Club. */
+  clubName: string | null;
   /** Point system at the moment the Session ended. */
   pointSystem: PointSystem;
   startedAt: number;

@@ -1,11 +1,11 @@
-import { render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 import { Router } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
 import { App } from "../../app/App.tsx";
-import type { Club } from "../../domain/types.ts";
-import { getClubs, resetStoreForTests, setClubs } from "../../storage/store.ts";
+import type { Club, EndedSession } from "../../domain/types.ts";
+import { addEndedSession, getClubs, resetStoreForTests, setClubs } from "../../storage/store.ts";
 
 const riverside: Club = {
   id: "c1",
@@ -227,5 +227,91 @@ describe("ClubEditScreen", () => {
     await userEvent.clear(clubName);
     await userEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+});
+
+function endedFor(id: string, clubId: string | null): EndedSession {
+  return {
+    id,
+    name: id,
+    clubId,
+    clubName: null,
+    pointSystem: 21,
+    startedAt: 1_000,
+    endedAt: 2_000 + Number(id.length),
+    players: [],
+    matches: [],
+  };
+}
+
+describe("ClubEditScreen sessions link", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetStoreForTests();
+  });
+
+  it("is hidden without Ended sessions of this Club and on New club", () => {
+    setClubs([riverside]);
+    addEndedSession(endedFor("other", "c2"));
+    renderAt("/clubs/c1");
+    expect(screen.queryByRole("link", { name: "Sessions" })).not.toBeInTheDocument();
+    cleanup();
+
+    addEndedSession(endedFor("mine", "c1"));
+    renderAt("/clubs/new");
+    expect(screen.queryByRole("link", { name: "Sessions" })).not.toBeInTheDocument();
+  });
+
+  it("shows the count and opens the Club's sessions", async () => {
+    setClubs([riverside]);
+    addEndedSession(endedFor("a", "c1"));
+    addEndedSession(endedFor("bb", "c1"));
+    addEndedSession(endedFor("other", "c2"));
+    const location = renderAt("/clubs/c1");
+    const link = screen.getByRole("link", { name: "Sessions" });
+    expect(link).toHaveAccessibleDescription("2 past sessions");
+    expect(link).toHaveAttribute("href", "/clubs/c1/sessions");
+    await userEvent.click(link);
+    expect(location.current()).toBe("/clubs/c1/sessions");
+    expect(screen.getByRole("heading", { level: 1, name: "Riverside" })).toBeInTheDocument();
+  });
+
+  it("uses the singular for one session", () => {
+    setClubs([riverside]);
+    addEndedSession(endedFor("a", "c1"));
+    renderAt("/clubs/c1");
+    expect(screen.getByRole("link", { name: "Sessions" })).toHaveAccessibleDescription(
+      "1 past session",
+    );
+  });
+
+  it("asks before discarding unsaved changes", async () => {
+    setClubs([riverside]);
+    addEndedSession(endedFor("a", "c1"));
+    const location = renderAt("/clubs/c1");
+    await userEvent.type(nameInputs()[0]!, "!");
+
+    await userEvent.click(screen.getByRole("link", { name: "Sessions" }));
+    await userEvent.click(
+      within(screen.getByRole("dialog", { name: "Discard changes?" })).getByRole("button", {
+        name: "Keep editing",
+      }),
+    );
+    expect(location.current()).toBe("/clubs/c1");
+    expect(nameInputs()[0]).toHaveValue("alice!");
+
+    await userEvent.click(screen.getByRole("link", { name: "Sessions" }));
+    await userEvent.click(screen.getByRole("button", { name: "Discard" }));
+    expect(location.current()).toBe("/clubs/c1/sessions");
+    expect(getClubs()).toEqual([riverside]);
+  });
+
+  it("goes straight there when nothing changed", async () => {
+    setClubs([riverside]);
+    addEndedSession(endedFor("a", "c1"));
+    const location = renderAt("/clubs/c1");
+    await userEvent.click(screen.getByRole("link", { name: "Sessions" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(location.current()).toBe("/clubs/c1/sessions");
   });
 });
