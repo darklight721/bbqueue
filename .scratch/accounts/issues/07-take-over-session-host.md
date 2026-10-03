@@ -18,3 +18,7 @@ See ADR-0007 and `.scratch/accounts/spec.md` (stories 51–52).
 
 - Two Organizer contexts: A hosts → B takes over (confirm) → A turns read-only with an explanation → B starts a Match → A sees it live.
 - A goes offline, makes a change, B takes over, A reconnects → A's change is dropped and A is read-only.
+
+## Comments
+
+From the ticket 05 Security Rules review: an Organizer may change only the host fields, in a transaction. After a takeover, the old host's queued uploads are refused by the rules. Today a refused write is only logged, so this ticket must detect it and turn the old host read-only.

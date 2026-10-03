@@ -24,3 +24,10 @@ See ADR-0007 and `.scratch/accounts/spec.md` (stories 45–49, Implementation De
 - Player context: switch own Sitting out on → "Waiting for host" → applied → the host's Lineups no longer pick them → switch it off again.
 - Player leaves the Session → removed for the host → the Player sees they've left and has no rejoin control.
 - Host offline → the Player's request shows "Waiting for host" → the host reconnects → applied.
+
+## Comments
+
+From the ticket 05 Security Rules review:
+- Store requests at `…/requests/{id}`, with the requester's Account ID and `createdAt == request.time`.
+- Only Accounts on the Club's member list may create requests; only the Session host may update them.
+- Rules can't look inside the Session's player list, so the Session host must check that the requester owns that Session player, using the Account copied onto it at Start.

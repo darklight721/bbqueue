@@ -25,3 +25,10 @@ See ADR-0007 and `.scratch/accounts/spec.md` (stories 39–44, 50, Implementatio
 - Host (Organizer) starts a Session for a Shared club. In a second context, the Player sees it on Home, opens it, and sees a Match start live, without any controls that change the Session.
 - Host goes offline, starts and ends a Match, comes back online → the viewer catches up.
 - The device's own Session for a Local club and a Shared club's Active session are both listed on Home.
+
+## Comments
+
+From the ticket 05 Security Rules review:
+- Keep the Active session in one fixed record per Shared club (for example `clubs/{clubId}/activeSession/current`), so "at most one per Club" is built into the layout.
+- Store the Session host's auth uid on it and check `resource.data.hostUid == request.auth.uid` in the rules. It costs no extra reads, and host uploads are the most frequent write.
+- Decide whether a host who loses the Organizer Role mid-Session may keep uploading.

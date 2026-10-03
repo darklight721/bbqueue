@@ -7,7 +7,7 @@
 Confirming:
 - deletes those Shared clubs
 - unlinks this Account's rows elsewhere (the rows stay as plain Club players)
-- deletes the Account and its Account-ID record
+- deletes the Account record (its Account-ID reservation is kept forever, so the Account ID can never be reused)
 - deletes the anonymous Firebase user
 - clears Shared club data from the device
 
@@ -23,7 +23,7 @@ Spec: `.scratch/accounts/spec.md` (stories 12–16, Implementation Decisions: De
 - [ ] Blocked state lists the Clubs and explains how to fix it (promote someone first)
 - [ ] The confirm dialog lists what will be deleted; deletion needs a connection
 - [ ] Carries out the plan, then the device is signed out with Local data kept and the default avatar back
-- [ ] Security Rules allow an Account to delete itself, its Account-ID record, Shared clubs where it's the only Account, and its own links
+- [ ] Security Rules allow an Account to delete itself, Shared clubs where it's the only Account, and its own links. The Account-ID reservation is never deleted
 - [ ] Contract tests for the deletion steps
 
 ## E2E workflows
@@ -31,3 +31,7 @@ Spec: `.scratch/accounts/spec.md` (stories 12–16, Implementation Decisions: De
 - Account that's the only member of a Shared club, plus a Local club → Delete Account → the dialog lists the Shared club → confirm → default avatar, the Shared club is gone, the Local club remains.
 - Only Organizer of a Club with a Player → Delete Account is blocked and names the Club.
 - In a second context, a Player's linked row stays on the roster but is no longer linked after an Organizer's Account is deleted (with another Organizer remaining).
+
+## Comments
+
+From the ticket 05 Security Rules review: Account-ID reservations are permanent. If one could be deleted, anyone could reserve the same Account ID again and inherit every Club and Role still linked to it. Delete Account removes only the Account record and the anonymous auth user.
