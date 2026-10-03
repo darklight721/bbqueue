@@ -1,0 +1,31 @@
+# 02: Firebase setup + Welcome + create Account
+
+**What to build:** On first launch the person sees a Welcome screen. They can enter their name to create an Account, which gets a unique, readable, never-changing Account ID, or skip. Either choice is remembered, so the Welcome screen doesn't appear again. Offline, it explains that an Account needs a connection and lets them continue.
+
+This ticket also lays the groundwork every later ticket uses:
+- the Firebase project config
+- the `Backend` boundary, in a Firebase version and an in-memory version, with one contract test suite run against both
+- the Firebase emulator wired into Vitest (contract and Security Rules tests) and Playwright
+- the first Security Rules: an Account can only write itself, and Account-ID records can't be overwritten
+
+See ADR-0006 and `.scratch/accounts/spec.md` (stories 1–7, Implementation Decisions: Backend, Backend interface, Store, Account ID).
+
+**Blocked by:** None (can start immediately)
+
+**Status:** ready-for-agent
+
+- [ ] Firebase (Firestore + Anonymous Auth) set up for the static SPA, with the Firestore offline cache on. The existing signed-out experience is untouched.
+- [ ] A `Backend` boundary with Firebase and in-memory versions. UI code never imports Firebase directly.
+- [ ] Domain function: Account ID from a name, following the rules in the spec (slug, dash, 4 characters with no look-alikes), compared ignoring case. Unit-tested.
+- [ ] Creating an Account reserves the Account ID in a transaction, tries again if it's taken, and stores the name
+- [ ] Contract tests pass against both versions. Security Rules tests pass on the emulator.
+- [ ] Welcome screen: shown on first launch only, and remembers whether the person created an Account or skipped
+- [ ] Offline on the Welcome screen: a clear message, and continuing without an Account works
+- [ ] The e2e setup can start the emulator and clear it between tests. Fixtures can seed an Account.
+- [ ] The existing e2e suite still passes for signed-out use
+
+## E2E workflows
+
+- First launch → Welcome → enter a name → Home. After a reload, no Welcome screen, and the Account still exists.
+- First launch → Skip → Home. After a reload, no Welcome screen.
+- First launch while offline → message → continue → Home without an Account.

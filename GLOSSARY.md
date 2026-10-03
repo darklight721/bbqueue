@@ -9,8 +9,38 @@ A named group of people who regularly play together. Holds the roster of Club pl
 _Avoid_: Group, team, roster
 
 **Club player**:
-A person on a Club's roster, with a name and a Skill level.
+A person on a Club's roster, with a name and a Skill level. May be linked to an Account.
 _Avoid_: Member, user
+
+**Local club**:
+A Club that exists only on one device, created while no Account was signed in there. Only that device can see it. It stays a Local club after an Account is created, until it is turned into a Shared club.
+_Avoid_: Offline club, private club
+
+**Shared club**:
+A Club kept on the server and visible to every Account that has a Role in it. Every Club created while an Account is signed in, or that an Account is added to, is a Shared club.
+_Avoid_: Online club, synced club, public club
+
+## Accounts
+
+**Account**:
+A person's identity in the app, with a Name and an Account ID. Bound to the device it was created on. Using the app without an Account is allowed and keeps everything on the device.
+_Avoid_: User, profile, login
+
+**Account ID**:
+The short, readable, never-changing identifier given to an Account when it is created (derived from its Name). Shared with an Organizer so they can add the Account to a Club.
+_Avoid_: Username, handle, user id, invite code
+
+**Role**:
+What an Account may do in a Shared club: Organizer or Player.
+_Avoid_: Permission, access level
+
+**Organizer**:
+A Role that may change the Club, its roster and Roles, start Sessions, and run them. A Shared club always has at least one Organizer; there is no separate owner.
+_Avoid_: Owner, admin, manager
+
+**Player**:
+A Role that may view the Club, its Active session and its Ended sessions, and in an Active session may only make themselves Sitting out or leave. Not to be confused with Club player or Session player, which are about the roster and taking part, not about what an Account may do.
+_Avoid_: Member, viewer, guest
 
 **Session player**:
 A person taking part in a Session. A snapshot of a Club player taken when they join the Session, or a Guest.
@@ -27,8 +57,12 @@ _Avoid_: Rank, grade, rating
 ## Sessions
 
 **Session**:
-One evening of play, for one Club or for no Club (guests only), from Start to End. Keeps the Club's name as it was at Start. Only one Session is Active at a time.
+One evening of play, for one Club or for no Club (guests only), from Start to End. Keeps the Club's name as it was at Start. A Shared club has at most one Active session at a time; a device has at most one Active session that has no Club or is for a Local club.
 _Avoid_: Event, game night
+
+**Session host**:
+The one Organizer, on one device, who runs an Active session of a Shared club. Only the Session host changes the Session; everyone else sees it live and can only ask for changes. Can be taken over by another Organizer.
+_Avoid_: Runner, controller, master device
 
 **Ended session**:
 A Session that has been ended and kept, with its Session players and Ended matches, for looking back on. A Session ended without any Ended match is not kept. Only the 50 most recently ended are kept; older ones are dropped. The app labels the list of Ended sessions "Past sessions"; that is UI copy only, not a separate term.
