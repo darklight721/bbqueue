@@ -56,7 +56,8 @@ service cloud.firestore {
 
     match /clubs/{clubId} {
       // Only Accounts linked to the Club can read it.
-      allow read: if signedIn() && myAccountId() in resource.data.memberAccountIds;
+      allow get: if signedIn() && (resource == null || myAccountId() in resource.data.memberAccountIds);
+      allow list: if signedIn() && myAccountId() in resource.data.memberAccountIds;
 
       // Anyone signed in with an Account can create a Club, as its only member and Organizer.
       allow create: if signedIn()

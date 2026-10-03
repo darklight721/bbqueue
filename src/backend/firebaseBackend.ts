@@ -1,7 +1,10 @@
 import { initializeApp, type FirebaseOptions } from "firebase/app";
-import { getAuth, onAuthStateChanged, signInAnonymously } from "firebase/auth";
+import { connectAuthEmulator, getAuth, onAuthStateChanged, signInAnonymously } from "firebase/auth";
 import {
+  connectFirestoreEmulator,
+  disableNetwork,
   doc,
+  enableNetwork,
   getDoc,
   getDocFromCache,
   getFirestore,
@@ -18,7 +21,14 @@ import {
 import { generateAccountId, normalizeAccountId } from "../domain/accountId.ts";
 import { normalizeName } from "../domain/validation.ts";
 import type { Account } from "../domain/types.ts";
-import { BackendError, MAX_ACCOUNT_ID_ATTEMPTS, browserOnline, type Backend } from "./backend.ts";
+import {
+  BackendError,
+  MAX_ACCOUNT_ID_ATTEMPTS,
+  browserOnline,
+  type Backend,
+  type OnlineSource,
+} from "./backend.ts";
+import { FIREBASE_EMULATOR } from "./firebaseEmulator.ts";
 import { createFirebaseClubs } from "./firebaseClubs.ts";
 import type { SharedClubsApi } from "./simulatedClubs.ts";
 
@@ -31,14 +41,41 @@ import type { SharedClubsApi } from "./simulatedClubs.ts";
  *
  * This is the only module (with `firebaseBackendLazy.ts`) that imports Firebase.
  */
+export interface FirebaseBackendOptions {
+  random?: () => number;
+  /** Talk to the local Firebase emulators (Auth and Firestore) instead of the cloud. */
+  emulator?: boolean;
+  /** Name for the Firebase app; tests give each simulated device its own. */
+  appName?: string;
+  /**
+   * Where "online" comes from (the browser by default). When given, going offline also cuts
+   * Firestore's connection, so tests can see queued writes. Real apps leave it out: Firestore
+   * notices the network by itself.
+   */
+  online?: OnlineSource;
+  /** Keep Firestore's cache on disk (default). Node tests have no IndexedDB and turn it off. */
+  persistentCache?: boolean;
+}
+
 export function createFirebaseBackend(
   config: FirebaseOptions,
-  options: { random?: () => number } = {},
+  options: FirebaseBackendOptions = {},
 ): Backend {
   const random = options.random ?? Math.random;
-  const app = initializeApp(config);
+  const online = options.online ?? browserOnline;
+  const app = initializeApp(config, options.appName);
   const auth = getAuth(app);
-  const db = openFirestore(app);
+  const db = openFirestore(app, options.persistentCache ?? true);
+  if (options.emulator) {
+    connectAuthEmulator(auth, FIREBASE_EMULATOR.authUrl, { disableWarnings: true });
+    connectFirestoreEmulator(db, FIREBASE_EMULATOR.firestoreHost, FIREBASE_EMULATOR.firestorePort);
+  }
+  if (options.online) {
+    options.online.subscribe((isOnline) => {
+      void (isOnline ? enableNetwork(db) : disableNetwork(db));
+    });
+    if (!options.online.get()) void disableNetwork(db);
+  }
 
   function accountFromSnapshot(snapshot: DocumentSnapshot): Account | null {
     const data = snapshot.data();
@@ -46,9 +83,12 @@ export function createFirebaseBackend(
     return { accountId: data.accountId, name: data.name };
   }
 
+  /** The Account last seen on this device: the answer when the server and the cache can't be read. */
+  let lastKnown: Account | null = null;
+
   const backend: Omit<Backend, keyof SharedClubsApi> = {
-    isOnline: () => browserOnline.get(),
-    observeOnline: (listener) => browserOnline.subscribe(listener),
+    isOnline: () => online.get(),
+    observeOnline: (listener) => online.subscribe(listener),
 
     async getCurrentAccount() {
       await auth.authStateReady();
@@ -56,13 +96,13 @@ export function createFirebaseBackend(
       if (!user) return null;
       const ref = doc(db, "accounts", user.uid);
       try {
-        return accountFromSnapshot(await getDoc(ref));
+        return (lastKnown = accountFromSnapshot(await getDoc(ref)));
       } catch {
-        // Offline and not on the server yet: fall back to whatever the cache has.
+        // Offline: fall back to whatever the cache has, then to what this session last saw.
         try {
-          return accountFromSnapshot(await getDocFromCache(ref));
+          return (lastKnown = accountFromSnapshot(await getDocFromCache(ref)) ?? lastKnown);
         } catch {
-          return null;
+          return lastKnown;
         }
       }
     },
@@ -81,7 +121,8 @@ export function createFirebaseBackend(
           (snapshot) => {
             // Offline with nothing cached says "doesn't exist", which is not the same as deleted.
             if (!snapshot.exists() && snapshot.metadata.fromCache) return;
-            listener(accountFromSnapshot(snapshot));
+            lastKnown = accountFromSnapshot(snapshot);
+            listener(lastKnown);
           },
           (error) => console.error("Account listener failed", error),
         );
@@ -95,14 +136,14 @@ export function createFirebaseBackend(
     async createAccount(name) {
       const trimmed = normalizeName(name);
       if (trimmed === "") throw new BackendError("invalid-name");
-      if (!browserOnline.get()) throw new BackendError("offline");
+      if (!online.get()) throw new BackendError("offline");
 
       try {
         const user = auth.currentUser ?? (await signInAnonymously(auth)).user;
         for (let attempt = 0; attempt < MAX_ACCOUNT_ID_ATTEMPTS; attempt++) {
           const accountId = generateAccountId(trimmed, random);
           const taken = await reserve(db, user.uid, accountId, trimmed);
-          if (!taken) return { accountId, name: trimmed };
+          if (!taken) return (lastKnown = { accountId, name: trimmed });
         }
       } catch (error) {
         throw toBackendError(error);
@@ -113,7 +154,7 @@ export function createFirebaseBackend(
     async renameAccount(name) {
       const trimmed = normalizeName(name);
       if (trimmed === "") throw new BackendError("invalid-name");
-      if (!browserOnline.get()) throw new BackendError("offline");
+      if (!online.get()) throw new BackendError("offline");
 
       try {
         await auth.authStateReady();
@@ -124,7 +165,7 @@ export function createFirebaseBackend(
         if (!current) throw new BackendError("no-account");
         // Only the name: the Account ID and its reservation never change.
         await updateDoc(ref, { name: trimmed });
-        return { ...current, name: trimmed };
+        return (lastKnown = { ...current, name: trimmed });
       } catch (error) {
         throw toBackendError(error);
       }
@@ -134,6 +175,7 @@ export function createFirebaseBackend(
   return {
     ...backend,
     ...createFirebaseClubs(db, {
+      online,
       getAccount: () => backend.getCurrentAccount(),
       observeAccount: (listener) => backend.observeCurrentAccount(listener),
     }),
@@ -167,7 +209,8 @@ function toBackendError(error: unknown): BackendError {
   return new BackendError("failed", undefined, { cause: error });
 }
 
-function openFirestore(app: ReturnType<typeof initializeApp>): Firestore {
+function openFirestore(app: ReturnType<typeof initializeApp>, persistent: boolean): Firestore {
+  if (!persistent) return initializeFirestore(app, {});
   try {
     return initializeFirestore(app, {
       localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),

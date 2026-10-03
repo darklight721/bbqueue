@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { ACCOUNT_ID_ALPHABET, validateAccountId } from "../domain/accountId.ts";
 import type { Account } from "../domain/types.ts";
+import { eventually } from "../test/eventually.ts";
 import { BackendError, type Backend } from "./backend.ts";
 
 export interface ContractOptions {
@@ -14,8 +15,8 @@ export interface ContractOptions {
 }
 
 /**
- * The behaviour every Backend must have. Run against the in-memory and local fake versions; the
- * Firebase version joins once the emulator is wired in (pass a factory that points at it).
+ * The behaviour every Backend must have. Run against the in-memory and local fake versions and, on
+ * the emulator, the Firebase version (`pnpm test:firebase`).
  */
 export function runBackendContract(name: string, create: (options: ContractOptions) => Backend) {
   const make = (overrides: Partial<ContractOptions> = {}) =>
@@ -65,10 +66,10 @@ export function runBackendContract(name: string, create: (options: ContractOptio
       const stop = backend.observeCurrentAccount((account) => seen.push(account));
 
       const account = await backend.createAccount("Ana");
+      await eventually(() => expect(seen.at(-1)).toEqual(account));
       stop();
-      await backend.getCurrentAccount();
 
-      expect(seen).toEqual([null, account]);
+      expect(seen[0]).toBeNull();
     });
 
     it("stops telling an observer once it unsubscribes", async () => {
@@ -77,8 +78,9 @@ export function runBackendContract(name: string, create: (options: ContractOptio
       backend.observeCurrentAccount((account) => seen.push(account))();
 
       await backend.createAccount("Ana");
+      await backend.getCurrentAccount();
 
-      expect(seen).toEqual([null]);
+      expect(seen.filter((account) => account !== null)).toEqual([]);
     });
 
     it("tries again with new characters when the Account ID is taken", async () => {
@@ -168,9 +170,10 @@ export function runBackendContract(name: string, create: (options: ContractOptio
         const stop = backend.observeCurrentAccount((account) => seen.push(account));
 
         await backend.renameAccount("Royston");
+        await eventually(() => expect(seen.at(-1)).toEqual({ ...existing, name: "Royston" }));
         stop();
 
-        expect(seen).toEqual([existing, { ...existing, name: "Royston" }]);
+        expect(seen).toContainEqual(existing);
       });
 
       it("needs a connection", async () => {

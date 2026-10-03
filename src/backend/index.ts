@@ -1,5 +1,6 @@
 import { setAccount, setSharedClubs } from "../storage/store.ts";
 import type { Backend } from "./backend.ts";
+import { FIREBASE_EMULATOR_CONFIG } from "./firebaseEmulator.ts";
 import { createLazyFirebaseBackend, firebaseConfigFromEnv } from "./firebaseBackendLazy.ts";
 import { createLocalFakeBackend } from "./localFakeBackend.ts";
 
@@ -12,6 +13,7 @@ let selected: { backend: Backend | null } | null = null;
  * The Backend chosen at startup, or null when there is none (Account features are then
  * unavailable and the app behaves as it did before Accounts):
  * - `VITE_BACKEND=fake`: the local fake, persisted in localStorage (e2e, local dev)
+ * - `VITE_FIREBASE_EMULATOR=1`: Firebase on the local emulators, no config needed (e2e, local dev)
  * - else Firebase config present (`VITE_FIREBASE_*`): Firebase
  * - else: none
  */
@@ -23,6 +25,9 @@ export function getBackend(): Backend | null {
 function selectBackend(): Backend | null {
   // Read straight off `import.meta.env` so builds without these variables drop the Firebase branch.
   if (import.meta.env.VITE_BACKEND === "fake") return createLocalFakeBackend();
+  if (import.meta.env.VITE_FIREBASE_EMULATOR === "1") {
+    return createLazyFirebaseBackend(FIREBASE_EMULATOR_CONFIG, { emulator: true });
+  }
   if (import.meta.env.VITE_FIREBASE_PROJECT_ID) {
     const config = firebaseConfigFromEnv({
       VITE_FIREBASE_API_KEY: import.meta.env.VITE_FIREBASE_API_KEY,

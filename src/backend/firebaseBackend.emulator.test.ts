@@ -1,0 +1,137 @@
+// @vitest-environment node
+import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { eventually } from "../test/eventually.ts";
+import { ACCOUNT_ID_ALPHABET } from "../domain/accountId.ts";
+import { adminGetDoc, adminSetDoc, clearEmulator } from "../test/emulatorAdmin.ts";
+import { runSharedClubsContract } from "./backend.clubs.contract.ts";
+import { runBackendContract, type ContractOptions } from "./backend.contract.ts";
+import type { Backend, OnlineSource } from "./backend.ts";
+import { createFirebaseBackend } from "./firebaseBackend.ts";
+import { FIREBASE_EMULATOR_CONFIG } from "./firebaseEmulator.ts";
+
+/**
+ * The contract suites against the Firebase version, on the Auth and Firestore emulators.
+ * Run with `pnpm test:firebase` (needs Java on PATH).
+ */
+
+beforeEach(async () => {
+  await clearEmulator();
+});
+
+/** A connection the test switches on and off; the Firebase backend also cuts Firestore with it. */
+function controllableOnline(initial: boolean) {
+  let online = initial;
+  const listeners = new Set<(online: boolean) => void>();
+  const source: OnlineSource = {
+    get: () => online,
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => void listeners.delete(listener);
+    },
+  };
+  return {
+    source,
+    set: (next: boolean) => {
+      online = next;
+      for (const listener of [...listeners]) listener(next);
+    },
+  };
+}
+
+let devices = 0;
+
+/** Wraps `backend` so every call waits for `ready` first (the contract creates devices synchronously). */
+function afterReady(backend: Backend, ready: Promise<void>): Backend {
+  const delayed = {} as Record<string, unknown>;
+  for (const [key, value] of Object.entries(backend)) {
+    if (key === "isOnline" || key === "observeOnline") delayed[key] = value;
+    else if (key.startsWith("observe")) {
+      delayed[key] = (listener: unknown) => {
+        const stop = ready.then(() =>
+          (value as (listener: unknown) => () => void).call(backend, listener),
+        );
+        return () => void stop.then((unsubscribe) => unsubscribe());
+      };
+    } else {
+      delayed[key] = async (...args: unknown[]) => {
+        await ready;
+        return (value as (...args: unknown[]) => unknown).apply(backend, args);
+      };
+    }
+  }
+  return delayed as unknown as Backend;
+}
+
+/** One simulated device: its own Firebase app (and so its own anonymous user). */
+function createDevice(options: Partial<ContractOptions> = {}) {
+  const { random = Math.random, takenAccountIds = [], online = true, account = null } = options;
+  const connection = controllableOnline(true);
+
+  // Seeding an existing Account with a chosen Account ID: make the random source pick its suffix.
+  const seedSuffix = account ? account.accountId.slice(-4) : null;
+  let seedCalls = 0;
+  const seededRandom = () =>
+    seedSuffix && seedCalls < 4
+      ? (ACCOUNT_ID_ALPHABET.indexOf(seedSuffix[seedCalls++]!) + 0.5) / ACCOUNT_ID_ALPHABET.length
+      : random();
+
+  const backend = createFirebaseBackend(FIREBASE_EMULATOR_CONFIG, {
+    emulator: true,
+    appName: `device-${++devices}`,
+    online: connection.source,
+    persistentCache: false,
+    random: seededRandom,
+  });
+
+  const ready = (async () => {
+    for (const id of takenAccountIds) {
+      await adminSetDoc(`accountIds/${id.toLowerCase()}`, { uid: "somebody-else" });
+    }
+    if (account) await backend.createAccount(account.name);
+    if (!online) connection.set(false);
+  })();
+
+  return { backend: afterReady(backend, ready), setOnline: connection.set };
+}
+
+runBackendContract("Firebase emulator", (options) => createDevice(options).backend);
+runSharedClubsContract("Firebase emulator", () => createDevice());
+
+describe("Firebase emulator: what reaches the server", () => {
+  it("reserves the Account ID and writes the Account in one go", async () => {
+    const { backend } = createDevice();
+    const account = await backend.createAccount("Roy Smith");
+
+    const reservation = await adminGetDoc(`accountIds/${account.accountId.toLowerCase()}`);
+    const stored = await adminGetDoc(`accounts/${reservation!.uid as string}`);
+    expect(stored).toMatchObject({ accountId: account.accountId, name: "Roy Smith" });
+  });
+
+  it("sends changes made offline once the connection is back, the latest change to a row winning", async () => {
+    const { backend, setOnline } = createDevice();
+    await backend.createAccount("Roy");
+    let seen = 0;
+    const stop = backend.observeSharedClubs((clubs) => (seen = clubs.length));
+    await eventually(() => expect(seen).toBe(0));
+    await backend.createSharedClub({
+      id: "c1",
+      name: "Tuesday",
+      players: [{ id: "p1", name: "Ana", skill: "beginner" }],
+    });
+    await eventually(() => expect(seen).toBe(1));
+
+    setOnline(false);
+    await backend.updateClubPlayer("c1", "p1", { skill: "intermediate" });
+    await backend.updateClubPlayer("c1", "p1", { skill: "advanced" });
+    await backend.renameSharedClub("c1", "Friday");
+    expect((await adminGetDoc("clubs/c1/players/p1"))?.skill).toBe("beginner");
+    expect((await adminGetDoc("clubs/c1"))?.name).toBe("Tuesday");
+
+    setOnline(true);
+    await eventually(async () => {
+      expect((await adminGetDoc("clubs/c1/players/p1"))?.skill).toBe("advanced");
+      expect((await adminGetDoc("clubs/c1"))?.name).toBe("Friday");
+    });
+    stop();
+  });
+});

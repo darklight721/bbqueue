@@ -3,6 +3,9 @@ import react from "@vitejs/plugin-react";
 import { defineConfig, lazyPlugins } from "vite-plus";
 import { VitePWA } from "vite-plugin-pwa";
 
+// Set by `pnpm test:firebase`: run the emulator tests instead of the regular ones.
+const emulatorTests = process.env.FIREBASE_EMULATOR_TESTS === "1";
+
 const themeColor = "#0b6b45";
 const backgroundColor = "#f7f9f4";
 
@@ -13,6 +16,7 @@ export default defineConfig({
   fmt: {
     ignorePatterns: [
       "dist/**",
+      "dist-emulator/**",
       "dev-dist/**",
       "coverage/**",
       "playwright-report/**",
@@ -29,6 +33,7 @@ export default defineConfig({
   lint: {
     ignorePatterns: [
       "dist/**",
+      "dist-emulator/**",
       "dev-dist/**",
       "coverage/**",
       "playwright-report/**",
@@ -87,11 +92,28 @@ export default defineConfig({
       },
     }),
   ]),
-  test: {
-    environment: "jsdom",
-    globals: false,
-    setupFiles: ["src/test/setup.ts"],
-    include: ["src/**/*.test.{ts,tsx}"],
-    exclude: ["e2e/**", "node_modules/**", "dist/**"],
-  },
+  test: emulatorTests
+    ? {
+        // `pnpm test:firebase`: tests that talk to the Firebase emulators (they need Java).
+        // One file at a time, since they share the emulators' data.
+        environment: "node",
+        globals: false,
+        include: ["src/**/*.emulator.test.ts"],
+        fileParallelism: false,
+        testTimeout: 30_000,
+        hookTimeout: 30_000,
+      }
+    : {
+        environment: "jsdom",
+        globals: false,
+        setupFiles: ["src/test/setup.ts"],
+        include: ["src/**/*.test.{ts,tsx}"],
+        exclude: [
+          "e2e/**",
+          "node_modules/**",
+          "dist/**",
+          "dist-emulator/**",
+          "src/**/*.emulator.test.ts",
+        ],
+      },
 });

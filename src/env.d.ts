@@ -1,6 +1,8 @@
 interface ImportMetaEnv {
   /** `fake` selects the local fake Backend (e2e, local dev without Firebase). */
   readonly VITE_BACKEND?: string;
+  /** `1` runs the Firebase backend on the local emulators, with no Firebase project. */
+  readonly VITE_FIREBASE_EMULATOR?: string;
   readonly VITE_FIREBASE_API_KEY?: string;
   readonly VITE_FIREBASE_AUTH_DOMAIN?: string;
   readonly VITE_FIREBASE_PROJECT_ID?: string;

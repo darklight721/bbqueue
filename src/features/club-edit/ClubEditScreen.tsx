@@ -57,8 +57,8 @@ function ClubEditor({ club }: { club: Club | null }) {
     club?.kind !== "shared" ||
     (account !== null && roleInClub(club, account.accountId) === "organizer");
 
-  const [initialClub] = useState(club);
-  const [initial] = useState(() => formFromClub(club));
+  const [initialClub, setInitialClub] = useState(club);
+  const [initial, setInitial] = useState(() => formFromClub(club));
   const [form, setForm] = useState<ClubForm>(initial);
   const [attempted, setAttempted] = useState(false);
   const [focusRowId, setFocusRowId] = useState<string | null>(null);
@@ -86,6 +86,21 @@ function ClubEditor({ club }: { club: Club | null }) {
   const invalid = hasClubErrors(errors);
   const shown = attempted ? errors : null;
   const dirty = formSignature(form) !== formSignature(initial);
+
+  // A Shared club can change under us (another Organizer, or a sync). Follow it while there is
+  // nothing unsaved; with unsaved changes keep them, and Save sends only what this person changed.
+  const [seenClub, setSeenClub] = useState(club);
+  if (club !== seenClub) {
+    setSeenClub(club);
+    if (club && !dirty) {
+      const fresh = formFromClub(club);
+      if (formSignature(fresh) !== formSignature(initial)) {
+        setInitialClub(club);
+        setInitial(fresh);
+        setForm(fresh);
+      }
+    }
+  }
 
   // After a failed Save, bring the first problem into view.
   useEffect(() => {

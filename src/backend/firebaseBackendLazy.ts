@@ -1,5 +1,6 @@
 import type { FirebaseOptions } from "firebase/app";
 import { browserOnline, type Backend } from "./backend.ts";
+import type { FirebaseBackendOptions } from "./firebaseBackend.ts";
 
 /** Firebase config from the `VITE_FIREBASE_*` variables, or null when they aren't set. */
 export function firebaseConfigFromEnv(
@@ -23,9 +24,12 @@ export function firebaseConfigFromEnv(
  * The Firebase backend, loaded on first use so the SDK stays out of the main bundle (and out of
  * builds without a Firebase config altogether).
  */
-export function createLazyFirebaseBackend(config: FirebaseOptions): Backend {
+export function createLazyFirebaseBackend(
+  config: FirebaseOptions,
+  options: FirebaseBackendOptions = {},
+): Backend {
   const loaded = import("./firebaseBackend.ts").then((module) =>
-    module.createFirebaseBackend(config),
+    module.createFirebaseBackend(config, options),
   );
   loaded.catch((error: unknown) => console.error("Failed to load Firebase", error));
 

@@ -47,7 +47,21 @@ pnpm dev
 | `pnpm preview` | Serve the production build locally                              |
 | `pnpm test`    | Run unit and component tests (`src/**/*.test.{ts,tsx}`)         |
 | `pnpm check`   | Format, lint, and type-check                                    |
-| `pnpm e2e`     | Build, serve on port 4173, and run Playwright tests in `e2e/`   |
+| `pnpm test:firebase` | Contract and Security Rules tests on the Firebase emulators (needs Java) |
+| `pnpm emulators` | Start the Auth and Firestore emulators for local development (needs Java) |
+| `pnpm e2e`     | Build, serve, and run the Playwright tests in `e2e/` (needs Java, see below) |
+
+### Java and the Firebase emulators
+
+The Firebase emulators run on Java. `pnpm test:firebase`, `pnpm emulators` and `pnpm e2e` (whose `e2e/emulator/` specs run two browser contexts against the emulators) need `java` on your `PATH`; plain `pnpm test`, `pnpm check` and `pnpm dev` don't. With Homebrew's keg-only OpenJDK:
+
+```sh
+export PATH=/opt/homebrew/opt/openjdk@21/bin:$PATH
+```
+
+The emulators use fixed ports (Auth 9099, Firestore 8085) and the demo project `demo-bbqueue`, so no Firebase project is needed. Only one run at a time can use them. To try the app against them, run `pnpm emulators` and, in another terminal, `VITE_FIREBASE_EMULATOR=1 pnpm dev`.
+
+`pnpm e2e` serves two builds: the one on the local fake backend (port `E2E_PORT`, default 4173) for single-device specs, and one on the emulators (port `E2E_EMULATOR_PORT`, default `E2E_PORT` + 1) for the specs in `e2e/emulator/`.
 
 To regenerate the PWA icons from `public/favicon.svg`:
 

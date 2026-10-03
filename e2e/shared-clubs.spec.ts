@@ -85,8 +85,6 @@ test.describe("Shared clubs", () => {
   test("offline: Skill level edits save and sync later, and adding a player is turned off", async ({
     page,
     context,
-    browser,
-    baseURL,
   }) => {
     const club = makeClub({
       id: "shared-1",
@@ -131,15 +129,5 @@ test.describe("Shared clubs", () => {
     await expect.poll(() => readFakePendingClubOps(page)).toEqual([]);
     const synced = await readFakeClubs(page);
     expect(synced[0]?.players.find((p) => p.id === "p-ana")?.skill).toBe("advanced");
-
-    // A fresh context with the same "server" data sees the change.
-    const fresh = await browser.newContext({ baseURL });
-    const other = await fresh.newPage();
-    await seedStorage(other, { account: roy, sharedClubs: synced });
-    await other.goto("/clubs/shared-1");
-    await expect(other.getByRole("combobox", { name: "Skill level for Ana" })).toHaveValue(
-      "advanced",
-    );
-    await fresh.close();
   });
 });

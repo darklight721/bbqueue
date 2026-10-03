@@ -11,3 +11,4 @@ peerDependencyRules:
 allowBuilds:
   "@firebase/util": false
   protobufjs: false
+  re2: false
