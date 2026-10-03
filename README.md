@@ -79,7 +79,9 @@ src/
   features/     Screens: home, clubs, club-edit, new-session, session, session-summary, past-sessions
   storage/      localStorage persistence and the app store
   test/         Test setup
-e2e/            Playwright specs
+e2e/            Playwright specs (e2e/emulator/: two people on the Firebase emulators)
+scripts/        Helper scripts (emulators wrapper)
+firestore.rules Firestore Security Rules (tested with `pnpm test:firebase`)
 docs/adr/       Architecture decision records
 GLOSSARY.md     Domain terms used across the code and UI
 ```

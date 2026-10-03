@@ -1,13 +1,17 @@
 import { normalizeName } from "../../domain/validation.ts";
-import type { AccountLink, Club, ClubKind, SkillLevel } from "../../domain/types.ts";
+import type { AccountLink, Club, ClubKind, Role, SkillLevel } from "../../domain/types.ts";
 
 export interface PlayerRow {
   /** Club player id (kept for existing players, fresh for new rows). */
   id: string;
   name: string;
   skill: SkillLevel;
-  /** Kept as it is: the form never changes a Club player's link to an Account. */
+  /** The Club player's link to an Account, as it is now. */
   link?: AccountLink;
+  /** An Account ID typed for a row that has no link yet (what to link it to). */
+  idText?: string;
+  /** The Role to give that Account; Player when not chosen. */
+  draftRole?: Role;
 }
 
 export interface ClubForm {
@@ -36,7 +40,15 @@ export function formFromClub(club: Club | null): ClubForm {
 export function formSignature(form: ClubForm): string {
   return JSON.stringify([
     normalizeName(form.name),
-    form.rows.map((row) => [row.id, normalizeName(row.name), row.skill]),
+    form.rows.map((row) => [
+      row.id,
+      normalizeName(row.name),
+      row.skill,
+      row.link?.accountId.toLowerCase() ?? null,
+      row.link?.role ?? null,
+      row.idText?.trim().toLowerCase() ?? "",
+      row.draftRole ?? null,
+    ]),
   ]);
 }
 

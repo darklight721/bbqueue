@@ -12,6 +12,7 @@ import {
   createClub,
   createsSharedClubs,
   deleteClub as removeClub,
+  leaveClub,
   saveClub,
   useBackendOnline,
 } from "../../backend/clubs.ts";
@@ -22,21 +23,36 @@ import { blurOnEnter } from "../../components/keyboard.ts";
 import { NAME_ERROR_MESSAGE } from "../../components/nameErrors.ts";
 import { PlayerRowEditor } from "../../components/PlayerRowEditor.tsx";
 import { Screen } from "../../components/Screen.tsx";
-import { roleInClub } from "../../domain/clubChanges.ts";
+import { normalizeAccountId, validateAccountId } from "../../domain/accountId.ts";
+import { canChangeRoles, canDeleteClub, canEditClub } from "../../domain/permissions.ts";
 import { newId } from "../../domain/ids.ts";
-import { DEFAULT_SKILL, type Club } from "../../domain/types.ts";
+import { DEFAULT_SKILL, type Account, type Club, type Role } from "../../domain/types.ts";
 import { hasClubErrors, validateClub } from "../../domain/validation.ts";
 import { useAccount, useClubs, useEndedSessions, useSession } from "../../storage/store.ts";
 import { newSessionForClubPath } from "../new-session/newSession.ts";
 import { countLabel } from "../session-summary/summaryFormat.ts";
-import { clubFromForm, formFromClub, formSignature, type ClubForm } from "./clubForm.ts";
+import { AccountLinkSection } from "./AccountLinkSection.tsx";
+import { linkBlocksSave, type LinkState } from "./linkState.ts";
+import { clubErrorMessage } from "./clubErrors.ts";
+import { ClubReadOnly } from "./ClubReadOnly.tsx";
+import { LeaveClub } from "./LeaveClub.tsx";
+import {
+  clubFromForm,
+  formFromClub,
+  formSignature,
+  type ClubForm,
+  type PlayerRow,
+} from "./clubForm.ts";
 
 /** New club (no `clubId`) or Edit club. Unknown ids go back to the Clubs list. */
 export function ClubEditScreen({ clubId }: { clubId?: string }) {
   const clubs = useClubs();
+  const account = useAccount();
   if (clubId === undefined) return <ClubEditor key="new" club={null} />;
   const club = clubs.find((candidate) => candidate.id === clubId);
   if (!club) return <Redirect to="/clubs" replace />;
+  // Players of a Shared club only look: no editing, no Account IDs.
+  if (!canEditClub(club, account?.accountId)) return <ClubReadOnly key={club.id} club={club} />;
   return <ClubEditor key={club.id} club={club} />;
 }
 
@@ -53,9 +69,10 @@ function ClubEditor({ club }: { club: Club | null }) {
   const hasBackend = getBackend() !== null;
   // A Shared club's rows are separate records: adding one needs a connection.
   const addBlocked = club?.kind === "shared" && online === false;
-  const canDelete =
-    club?.kind !== "shared" ||
-    (account !== null && roleInClub(club, account.accountId) === "organizer");
+  const viewer = account?.accountId;
+  const canDelete = !club || canDeleteClub(club, viewer);
+  // Organizers of a Shared club link Accounts to rows and give them Roles.
+  const linking = !!club && canChangeRoles(club, viewer);
 
   const [initialClub, setInitialClub] = useState(club);
   const [initial, setInitial] = useState(() => formFromClub(club));
@@ -65,6 +82,12 @@ function ClubEditor({ club }: { club: Club | null }) {
   const [saveTick, setSaveTick] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [discardResolver, setDiscardResolver] = useState<((ok: boolean) => void) | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [roleMessage, setRoleMessage] = useState<{ rowId: string; text: string } | null>(null);
+  const [confirmLeave, setConfirmLeave] = useState(false);
+  /** Accounts found by Account ID (null: none has it), keyed by lowercase Account ID. */
+  const [lookups, setLookups] = useState<Record<string, Account | null>>({});
 
   const formRef = useRef<HTMLDivElement>(null);
   const nameId = useId();
@@ -102,6 +125,108 @@ function ClubEditor({ club }: { club: Club | null }) {
     }
   }
 
+  // --- Linking Accounts (Organizers of a Shared club) ---------------------------------------
+
+  /** Account IDs to look up: typed ones that look right, and the ones rows are linked to. */
+  const wantedLookups = useMemo(() => {
+    if (!linking) return [];
+    const wanted = new Set<string>();
+    for (const row of form.rows) {
+      if (row.link) wanted.add(normalizeAccountId(row.link.accountId));
+      else if (row.idText && validateAccountId(row.idText) === null) {
+        wanted.add(normalizeAccountId(row.idText));
+      }
+    }
+    return [...wanted];
+  }, [linking, form.rows]);
+
+  useEffect(() => {
+    const backend = getBackend();
+    if (!backend || online !== true) return;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    for (const key of wantedLookups) {
+      if (key in lookups) continue;
+      // Typing: wait for a pause. Rows that are linked already are looked up straight away.
+      const linkedAlready = form.rows.some(
+        (row) => row.link && normalizeAccountId(row.link.accountId) === key,
+      );
+      timers.push(
+        setTimeout(
+          () => {
+            backend.lookupAccount(key).then(
+              (found) => setLookups((current) => ({ ...current, [key]: found })),
+              () => undefined,
+            );
+          },
+          linkedAlready ? 0 : 300,
+        ),
+      );
+    }
+    return () => timers.forEach(clearTimeout);
+    // `lookups` is read to skip what is known; a new answer needs no new run.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, [wantedLookups, online]);
+
+  const effectiveRole = (row: PlayerRow): Role | null => {
+    if (row.link) return row.link.role;
+    return null;
+  };
+
+  /** Where each row's Account link stands. */
+  const linkStates = useMemo(() => {
+    const states = new Map<string, LinkState>();
+    const claimed = new Set<string>();
+    for (const row of form.rows) if (row.link) claimed.add(normalizeAccountId(row.link.accountId));
+    for (const row of form.rows) {
+      if (row.link) {
+        const key = normalizeAccountId(row.link.accountId);
+        states.set(row.id, {
+          kind: "linked",
+          accountId: row.link.accountId,
+          role: row.link.role,
+          isYou: !!viewer && key === normalizeAccountId(viewer),
+          exists: key in lookups ? lookups[key] !== null : null,
+        });
+        continue;
+      }
+      const text = row.idText ?? "";
+      const key = normalizeAccountId(text);
+      if (key === "") states.set(row.id, { kind: "empty" });
+      else if (validateAccountId(text) !== null) states.set(row.id, { kind: "invalid" });
+      else if (claimed.has(key)) states.set(row.id, { kind: "duplicate" });
+      else {
+        claimed.add(key);
+        if (online === false) states.set(row.id, { kind: "offline" });
+        else if (!(key in lookups)) states.set(row.id, { kind: "checking" });
+        else if (lookups[key] === null) states.set(row.id, { kind: "unknown" });
+        else {
+          states.set(row.id, {
+            kind: "found",
+            name: lookups[key]!.name,
+            role: row.draftRole ?? "player",
+          });
+        }
+      }
+    }
+    return states;
+  }, [form.rows, lookups, online, viewer]);
+
+  const linkProblem = linking && [...linkStates.values()].some(linkBlocksSave);
+
+  /** The rows as they are to be saved: typed Account IDs that were found become links. */
+  function rowsToSave(): PlayerRow[] {
+    return form.rows.map((row) => {
+      const state = linkStates.get(row.id);
+      if (state?.kind !== "found") return row;
+      const found = lookups[normalizeAccountId(row.idText ?? "")];
+      return found ? { ...row, link: { accountId: found.accountId, role: state.role } } : row;
+    });
+  }
+
+  function organizersAfter(rows: PlayerRow[]): number {
+    return rows.filter((row) => effectiveRole(row) === "organizer").length;
+  }
+
   // After a failed Save, bring the first problem into view.
   useEffect(() => {
     if (saveTick === 0) return;
@@ -136,6 +261,22 @@ function ClubEditor({ club }: { club: Club | null }) {
     setForm((current) => ({ ...current, rows: current.rows.filter((row) => row.id !== id) }));
   }
 
+  function changeRole(row: PlayerRow, role: Role) {
+    setRoleMessage(null);
+    if (!row.link) {
+      updateRow(row.id, { draftRole: role });
+      return;
+    }
+    const after = rowsToSave().map((other) =>
+      other.id === row.id && other.link ? { ...other, link: { ...other.link, role } } : other,
+    );
+    if (organizersAfter(after) === 0) {
+      setRoleMessage({ rowId: row.id, text: "A Club needs at least one Organizer." });
+      return;
+    }
+    updateRow(row.id, { link: { ...row.link, role } });
+  }
+
   function addRow() {
     if (addBlocked) return;
     const id = newId();
@@ -160,25 +301,53 @@ function ClubEditor({ club }: { club: Club | null }) {
     nextRow?.querySelector<HTMLInputElement>('input[type="text"]')?.focus();
   }
 
-  function save() {
-    if (invalid) {
+  async function save() {
+    if (saving) return;
+    if (invalid || linkProblem) {
       setAttempted(true);
       setSaveTick((tick) => tick + 1);
       return;
     }
-    if (initialClub) {
-      saveClub(initialClub, clubFromForm(initialClub.id, initialClub.kind, form));
-    } else {
-      createClub(clubFromForm(newId(), createsSharedClubs() ? "shared" : "local", form));
+    setSaving(true);
+    setProblem(null);
+    try {
+      const rows = rowsToSave();
+      const saved = clubFromForm(initialClub?.id ?? newId(), initialClub?.kind ?? "local", {
+        ...form,
+        rows,
+      });
+      if (initialClub) await saveClub(initialClub, saved);
+      else await createClub({ ...saved, kind: createsSharedClubs() ? "shared" : "local" });
+      navigate("/clubs", { replace: true });
+    } catch (error) {
+      console.error("Failed to save Club", error);
+      setProblem(clubErrorMessage(error));
+      setSaving(false);
     }
-    navigate("/clubs", { replace: true });
   }
 
-  function deleteClub() {
+  async function deleteClub() {
     if (!club) return;
     setConfirmDelete(false);
-    removeClub(club);
-    navigate("/clubs", { replace: true });
+    try {
+      await removeClub(club);
+      navigate("/clubs", { replace: true });
+    } catch (error) {
+      console.error("Failed to delete Club", error);
+      setProblem(clubErrorMessage(error));
+    }
+  }
+
+  async function leave() {
+    if (!club) return;
+    setConfirmLeave(false);
+    try {
+      await leaveClub(club);
+      navigate("/clubs", { replace: true });
+    } catch (error) {
+      console.error("Failed to leave Club", error);
+      setProblem(clubErrorMessage(error));
+    }
   }
 
   function guardBack(): boolean | Promise<boolean> {
@@ -210,9 +379,14 @@ function ClubEditor({ club }: { club: Club | null }) {
       onBack={guardBack}
       footer={
         <div className="flex flex-col gap-2">
-          {shown && invalid ? (
+          {attempted && (invalid || linkProblem) ? (
             <p role="alert" className="text-center text-sm font-semibold text-error">
               Fix the highlighted fields to save.
+            </p>
+          ) : null}
+          {problem ? (
+            <p role="alert" className="text-center text-sm font-semibold text-error">
+              {problem}
             </p>
           ) : null}
           {addBlocked ? (
@@ -230,7 +404,12 @@ function ClubEditor({ club }: { club: Club | null }) {
               <PlusIcon className="size-5" />
               Add player
             </button>
-            <button type="button" className="btn btn-lg btn-primary" onClick={save}>
+            <button
+              type="button"
+              className="btn btn-lg btn-primary"
+              disabled={saving}
+              onClick={() => void save()}
+            >
               Save
             </button>
           </div>
@@ -309,28 +488,66 @@ function ClubEditor({ club }: { club: Club | null }) {
             </span>
           </div>
 
+          {linking && online === false ? (
+            <p className="text-sm text-base-content/70">
+              You're offline. Linking Accounts and changing Roles need a connection.
+            </p>
+          ) : null}
+
           {playerCount === 0 ? (
             <p className="rounded-box border-[1.5px] border-dashed border-base-300 px-4 py-6 text-center text-base-content/70">
               No players yet. Tap <span className="font-semibold">Add player</span> below.
             </p>
           ) : (
             <ul className="flex flex-col gap-3">
-              {form.rows.map((row, index) => (
-                <li key={row.id} data-row-id={row.id} className="scroll-mb-32">
-                  <PlayerRowEditor
-                    value={{ name: row.name, skill: row.skill }}
-                    onChange={(value) => updateRow(row.id, value)}
-                    // The Organizer's own row stays: a Shared club always has an Organizer.
-                    onRemove={row.link ? undefined : () => removeRow(row.id)}
-                    error={shown?.players[index] ?? null}
-                    autoFocus={row.id === focusRowId}
-                    onEnter={() => enterFromRow(index)}
-                  />
-                </li>
-              ))}
+              {form.rows.map((row, index) => {
+                const state = linkStates.get(row.id);
+                const onlyOrganizer =
+                  row.link?.role === "organizer" && organizersAfter(form.rows) <= 1;
+                return (
+                  <li
+                    key={row.id}
+                    data-row-id={row.id}
+                    className="flex scroll-mb-32 flex-col gap-2"
+                  >
+                    <PlayerRowEditor
+                      value={{ name: row.name, skill: row.skill }}
+                      onChange={(value) => updateRow(row.id, value)}
+                      // The only Organizer stays: a Shared club always has one.
+                      onRemove={onlyOrganizer ? undefined : () => removeRow(row.id)}
+                      error={shown?.players[index] ?? null}
+                      autoFocus={row.id === focusRowId}
+                      onEnter={() => enterFromRow(index)}
+                    />
+                    {linking && state ? (
+                      <AccountLinkSection
+                        playerName={row.name}
+                        state={state}
+                        idText={row.idText ?? ""}
+                        online={online !== false}
+                        showProblem={attempted}
+                        roleMessage={roleMessage?.rowId === row.id ? roleMessage.text : null}
+                        onlyOrganizer={onlyOrganizer}
+                        onIdText={(text) => updateRow(row.id, { idText: text })}
+                        onRole={(role) => changeRole(row, role)}
+                        onUnlink={() => updateRow(row.id, { link: undefined })}
+                      />
+                    ) : null}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>
+
+        {club?.kind === "shared" ? (
+          <LeaveClub
+            club={club}
+            viewer={viewer}
+            online={online !== false}
+            onLeave={() => setConfirmLeave(true)}
+          />
+        ) : null}
 
         {!isNew && canDelete ? (
           <div className="border-t border-base-300 pt-6">
@@ -351,8 +568,17 @@ function ClubEditor({ club }: { club: Club | null }) {
         message="This can't be undone."
         confirmLabel="Delete"
         tone="danger"
-        onConfirm={deleteClub}
+        onConfirm={() => void deleteClub()}
         onCancel={() => setConfirmDelete(false)}
+      />
+      <ConfirmDialog
+        open={confirmLeave}
+        title={`Leave ${club?.name ?? "club"}?`}
+        message="Your row stays on the roster, but it's no longer linked to your Account, and the Club leaves your list."
+        confirmLabel="Leave club"
+        tone="danger"
+        onConfirm={() => void leave()}
+        onCancel={() => setConfirmLeave(false)}
       />
       <ConfirmDialog
         open={discardResolver !== null}

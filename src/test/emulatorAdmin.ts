@@ -14,18 +14,19 @@ const ADMIN = { Authorization: "Bearer owner", "Content-Type": "application/json
 
 /** Delete every Firestore document and every Auth user. */
 export async function clearEmulator(): Promise<void> {
-  await Promise.all([
-    fetch(`${FIRESTORE}/emulator/v1/projects/${projectId}/databases/(default)/documents`, {
-      method: "DELETE",
-    }),
-    fetch(`${FIREBASE_EMULATOR.authUrl}/emulator/v1/projects/${projectId}/accounts`, {
-      method: "DELETE",
-    }),
-  ]).then((responses) => {
-    for (const response of responses) {
-      if (!response.ok) throw new Error(`Clearing the emulator failed: ${response.status}`);
+  const requests = [
+    `${FIRESTORE}/emulator/v1/projects/${projectId}/databases/(default)/documents`,
+    `${FIREBASE_EMULATOR.authUrl}/emulator/v1/projects/${projectId}/accounts`,
+  ];
+  for (const url of requests) {
+    // The Firestore emulator now and then answers 409 while it settles a previous test's writes.
+    for (let attempt = 1; ; attempt++) {
+      const response = await fetch(url, { method: "DELETE" });
+      if (response.ok) break;
+      if (attempt >= 5) throw new Error(`Clearing the emulator failed: ${response.status}`);
+      await new Promise((resolve) => setTimeout(resolve, 100 * attempt));
     }
-  });
+  }
 }
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };

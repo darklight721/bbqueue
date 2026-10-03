@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
-import { applyClubChange, creatorPlayer, diffClub, roleInClub } from "./clubChanges.ts";
+import {
+  applyClubChange,
+  creatorPlayer,
+  diffClub,
+  inSafeOrder,
+  roleInClub,
+} from "./clubChanges.ts";
 import type { Club, ClubPlayer } from "./types.ts";
 
 const ana: ClubPlayer = { id: "p1", name: "Ana", skill: "beginner" };
@@ -101,6 +107,104 @@ describe("diffClub", () => {
     expect(result.players.map((p) => [p.id, p.name, p.skill])).toEqual([
       ["p1", "Anna", "beginner"],
       ["p3", "Cat", "beginner"],
+    ]);
+  });
+});
+
+describe("links and Roles", () => {
+  const linked: Club = {
+    ...club,
+    players: [{ ...ana, link: { accountId: "ana-2222", role: "player" } }, ben],
+  };
+
+  it("applies link, setRole and unlink to one row", () => {
+    const withBen = applyClubChange(linked, {
+      type: "link",
+      playerId: "p2",
+      link: { accountId: "ben-3333", role: "organizer" },
+    });
+    expect(withBen.players[1]?.link).toEqual({ accountId: "ben-3333", role: "organizer" });
+
+    const demoted = applyClubChange(withBen, { type: "setRole", playerId: "p2", role: "player" });
+    expect(demoted.players[1]?.link?.role).toBe("player");
+
+    const left = applyClubChange(demoted, { type: "unlink", playerId: "p1" });
+    expect(left.players[0]).toEqual(ana);
+    expect("link" in left.players[0]!).toBe(false);
+  });
+
+  it("ignores a Role change on an unlinked row", () => {
+    expect(
+      applyClubChange(linked, { type: "setRole", playerId: "p2", role: "organizer" }).players[1],
+    ).toEqual(ben);
+  });
+
+  it("finds links, Role changes and unlinks in a diff", () => {
+    const after: Club = {
+      ...linked,
+      players: [
+        { ...ana, link: { accountId: "ana-2222", role: "organizer" } },
+        { ...ben, link: { accountId: "ben-3333", role: "player" } },
+      ],
+    };
+    expect(diffClub(linked, after)).toEqual([
+      { type: "setRole", playerId: "p1", role: "organizer" },
+      { type: "link", playerId: "p2", link: { accountId: "ben-3333", role: "player" } },
+    ]);
+    expect(diffClub(after, linked)).toEqual([
+      { type: "setRole", playerId: "p1", role: "player" },
+      { type: "unlink", playerId: "p2" },
+    ]);
+  });
+
+  it("treats a different Account on the same row as a new link", () => {
+    const after: Club = {
+      ...linked,
+      players: [{ ...ana, link: { accountId: "zed-4444", role: "player" } }, ben],
+    };
+    expect(diffClub(linked, after)).toEqual([
+      { type: "link", playerId: "p1", link: { accountId: "zed-4444", role: "player" } },
+    ]);
+  });
+
+  it("compares Account IDs ignoring case", () => {
+    const after: Club = {
+      ...linked,
+      players: [{ ...ana, link: { accountId: "ANA-2222", role: "player" } }, ben],
+    };
+    expect(diffClub(linked, after)).toEqual([]);
+  });
+
+  it("an added row keeps its link", () => {
+    const cat: ClubPlayer = {
+      id: "p3",
+      name: "Cat",
+      skill: "beginner",
+      link: { accountId: "cat-9999", role: "player" },
+    };
+    expect(diffClub(linked, { ...linked, players: [...linked.players, cat] })).toEqual([
+      { type: "addPlayer", player: cat },
+    ]);
+  });
+});
+
+describe("inSafeOrder", () => {
+  it("makes Organizers before demoting, unlinking or removing, keeping the order otherwise", () => {
+    const changes = inSafeOrder([
+      { type: "setRole", playerId: "p1", role: "player" },
+      { type: "removePlayer", playerId: "p2" },
+      { type: "rename", name: "Friday" },
+      { type: "link", playerId: "p3", link: { accountId: "x-aaaa", role: "organizer" } },
+      { type: "updatePlayer", playerId: "p4", patch: { skill: "beginner" } },
+      { type: "unlink", playerId: "p5" },
+    ]);
+    expect(changes.map((c) => c.type)).toEqual([
+      "link",
+      "rename",
+      "updatePlayer",
+      "setRole",
+      "removePlayer",
+      "unlink",
     ]);
   });
 });

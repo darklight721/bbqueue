@@ -36,7 +36,7 @@ import { OfflineNotice } from "./OfflineNotice.tsx";
 import { useOnline } from "./useOnline.ts";
 
 /** What went wrong saving a new name, in words. `invalid-name` shows as the field's own error. */
-const RENAME_ERROR_MESSAGE: Record<Exclude<BackendErrorCode, "invalid-name">, string> = {
+const RENAME_ERROR_MESSAGE: Partial<Record<BackendErrorCode, string>> & { failed: string } = {
   offline: "You're offline. Connect and try again.",
   "no-account": "Couldn't find your Account. Try again later.",
   "not-found": "Couldn't find your Account. Try again later.",
@@ -223,7 +223,7 @@ function NameSection({
         setAttempted(true);
         inputRef.current?.focus();
       } else {
-        setFailure(RENAME_ERROR_MESSAGE[code]);
+        setFailure(RENAME_ERROR_MESSAGE[code] ?? RENAME_ERROR_MESSAGE.failed);
       }
     }
   }

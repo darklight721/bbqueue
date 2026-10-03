@@ -85,6 +85,11 @@ export function createFirebaseBackend(
 
   /** The Account last seen on this device: the answer when the server and the cache can't be read. */
   let lastKnown: Account | null = null;
+  /**
+   * Signing in comes before the Account is written, so the Account's own listener can hear "there
+   * is none" from the server just after it was created here. Don't take that for a deletion.
+   */
+  let justCreatedUntil = 0;
 
   const backend: Omit<Backend, keyof SharedClubsApi> = {
     isOnline: () => online.get(),
@@ -95,8 +100,11 @@ export function createFirebaseBackend(
       const user = auth.currentUser;
       if (!user) return null;
       const ref = doc(db, "accounts", user.uid);
+      if (!online.get() && lastKnown) return lastKnown;
       try {
-        return (lastKnown = accountFromSnapshot(await getDoc(ref)));
+        // Offline, getDoc would wait for a connection that isn't coming; the cache answers at once.
+        const snapshot = online.get() ? await getDoc(ref) : await getDocFromCache(ref);
+        return (lastKnown = accountFromSnapshot(snapshot) ?? (online.get() ? null : lastKnown));
       } catch {
         // Offline: fall back to whatever the cache has, then to what this session last saw.
         try {
@@ -121,6 +129,7 @@ export function createFirebaseBackend(
           (snapshot) => {
             // Offline with nothing cached says "doesn't exist", which is not the same as deleted.
             if (!snapshot.exists() && snapshot.metadata.fromCache) return;
+            if (!snapshot.exists() && Date.now() < justCreatedUntil) return;
             lastKnown = accountFromSnapshot(snapshot);
             listener(lastKnown);
           },
@@ -143,7 +152,10 @@ export function createFirebaseBackend(
         for (let attempt = 0; attempt < MAX_ACCOUNT_ID_ATTEMPTS; attempt++) {
           const accountId = generateAccountId(trimmed, random);
           const taken = await reserve(db, user.uid, accountId, trimmed);
-          if (!taken) return (lastKnown = { accountId, name: trimmed });
+          if (!taken) {
+            justCreatedUntil = Date.now() + 10_000;
+            return (lastKnown = { accountId, name: trimmed });
+          }
         }
       } catch (error) {
         throw toBackendError(error);

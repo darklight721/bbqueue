@@ -1,6 +1,6 @@
 import { type ReactNode, useId, useMemo, useState } from "react";
 import { useLocation, useSearch } from "wouter";
-import { saveClubs } from "../../backend/clubs.ts";
+import { saveClubs, useBackendOnline } from "../../backend/clubs.ts";
 import { AddPlayerForm, type NewPlayer } from "../../components/AddPlayerForm.tsx";
 import { ConfirmDialog } from "../../components/ConfirmDialog.tsx";
 import { CloseIcon, UsersIcon } from "../../components/icons.tsx";
@@ -13,7 +13,8 @@ import { createSession, MAX_COURTS, suggestPointSystem } from "../../domain/engi
 import { newId } from "../../domain/ids.ts";
 import type { Club, PointSystem } from "../../domain/types.ts";
 import { normalizeName } from "../../domain/validation.ts";
-import { getClubs, getSession, setSession, useClubs } from "../../storage/store.ts";
+import { canStartSession } from "../../domain/permissions.ts";
+import { getClubs, getSession, setSession, useAccount, useClubs } from "../../storage/store.ts";
 import {
   byName,
   clashingGuestIds,
@@ -39,7 +40,14 @@ import {
 export function NewSessionScreen() {
   const [, navigate] = useLocation();
   const search = useSearch();
-  const clubs = useClubs();
+  const account = useAccount();
+  const everyClub = useClubs();
+  // Only Organizers start Sessions of a Shared club.
+  const clubs = useMemo(
+    () => everyClub.filter((candidate) => canStartSession(candidate, account?.accountId)),
+    [everyClub, account],
+  );
+  const online = useBackendOnline();
   const sortedClubs = useMemo(() => byName(clubs), [clubs]);
   const lockedClubId = sessionClubParam(search, clubs);
 
@@ -130,7 +138,13 @@ export function NewSessionScreen() {
       pointSystem,
       newId,
     });
-    if (plan.clubs) saveClubs(allClubs, plan.clubs);
+    if (plan.clubs) {
+      // A Shared club's roster is changed through the server: if that fails (offline, or no
+      // longer an Organizer) the Session still starts, just without the saved guests.
+      saveClubs(allClubs, plan.clubs).catch((error: unknown) =>
+        console.error("Failed to save guests to the Club", error),
+      );
+    }
     const session = createSession(plan.input, { now: Date.now(), rng: Math.random });
     setSession(session);
     navigate(`/sessions/${session.id}`);
@@ -267,6 +281,12 @@ export function NewSessionScreen() {
               </li>
             ))}
           </ul>
+        ) : null}
+        {club?.kind === "shared" && online === false && guests.some((guest) => guest.saveToClub) ? (
+          <p role="status" className="text-sm font-semibold text-base-content/70">
+            You're offline, so guests marked "Save to club" won't be added to {club.name}. They
+            still join this session.
+          </p>
         ) : null}
         <div className="rounded-box bg-base-200 p-4">
           <AddPlayerForm

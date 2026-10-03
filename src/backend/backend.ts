@@ -1,4 +1,4 @@
-import type { Account, Club, ClubPlayer } from "../domain/types.ts";
+import type { Account, Club, ClubPlayer, Role } from "../domain/types.ts";
 import type { ClubPlayerPatch } from "../domain/clubChanges.ts";
 
 export type BackendErrorCode =
@@ -12,6 +12,14 @@ export type BackendErrorCode =
   | "no-account"
   /** The Club or Club player doesn't exist (any more). */
   | "not-found"
+  /** Only an Organizer may do this (or, for leaving, only the Account itself). */
+  | "forbidden"
+  /** It would leave the Club without an Organizer. */
+  | "last-organizer"
+  /** No Account has that Account ID. */
+  | "unknown-account"
+  /** The Account is already linked to another Club player in this Club. */
+  | "already-linked"
   /** Every Account ID that was tried was already taken. */
   | "id-unavailable"
   | "failed";
@@ -80,6 +88,26 @@ export interface Backend {
   addClubPlayer(clubId: string, player: ClubPlayer): Promise<void>;
   updateClubPlayer(clubId: string, playerId: string, patch: ClubPlayerPatch): Promise<void>;
   removeClubPlayer(clubId: string, playerId: string): Promise<void>;
+
+  // --- Linking Accounts and Roles (ticket 05) ----------------------------------------------
+  //
+  // A Club player row can be linked to an Account with a Role. Only an Organizer links, changes
+  // Roles or unlinks (and may remove or edit any row); a linked Account may unlink only itself
+  // (leave). A Club always keeps at least one Organizer. All of these need a connection and
+  // reject with a {@link BackendError} (`forbidden`, `last-organizer`, `already-linked`,
+  // `unknown-account`, `not-found`, `offline`). `addClubPlayer` also accepts a row with a link.
+
+  /**
+   * The Account with this Account ID (any capitalisation), or null when there is none. Needs a
+   * connection; rejects with `offline` otherwise.
+   */
+  lookupAccount(accountId: string): Promise<Account | null>;
+  linkClubPlayer(clubId: string, playerId: string, accountId: string, role: Role): Promise<void>;
+  setClubPlayerRole(clubId: string, playerId: string, role: Role): Promise<void>;
+  /** Unlink the row from its Account (for instance one that no longer exists). The row stays. */
+  unlinkClubPlayer(clubId: string, playerId: string): Promise<void>;
+  /** The current Account leaves the Club: its row stays on the roster, no longer linked. */
+  leaveClub(clubId: string): Promise<void>;
 }
 
 /** How many Account IDs to try before giving up. */

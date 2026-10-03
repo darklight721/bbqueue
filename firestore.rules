@@ -1,7 +1,7 @@
 rules_version = '2';
 
-// Security Rules for what exists so far (tickets 02 and 04). The rules tests run on the Firebase
-// emulator and are not written yet. See .scratch/accounts/issues/04-shared-clubs-creator.md.
+// Security Rules (tickets 02, 04 and 05). Tested on the Firebase emulator:
+// src/backend/firestore.rules.emulator.test.ts (`pnpm test:firebase`).
 //
 // Data (see src/backend/firebaseBackend.ts and firebaseClubs.ts):
 //   accounts/{uid}                    { accountId, name, createdAt }
@@ -9,8 +9,14 @@ rules_version = '2';
 //   clubs/{clubId}                    { name, memberAccountIds, organizerAccountIds, createdAt }
 //   clubs/{clubId}/players/{playerId} { name, skill, link?: { accountId, role } }
 //
-// `memberAccountIds` and `organizerAccountIds` are an index derived from the rows' links (lowercase
-// Account IDs): they let an Account list its Clubs and let these rules see who may read and write.
+// A Club player row is the truth about who is linked and with which Role. `memberAccountIds` and
+// `organizerAccountIds` (lowercase Account IDs) are an index derived from the rows' links: they let
+// an Account list its Clubs and let these rules see who may read and write without scanning rows.
+// Every write that links, unlinks or changes a Role must update the index in the same batch as the
+// row; the rules below check the index as it will be after the batch (`getAfter`).
+//
+// Roles: an Organizer may change the Club and its rows, link and unlink Accounts and change Roles.
+// A Player may only read, and unlink themselves (leave). A Club keeps at least one Organizer.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -25,10 +31,11 @@ service cloud.firestore {
 
     // --- Accounts -------------------------------------------------------------------------
 
-    // An Account can only be read and written by the device it belongs to. Its Account ID never
-    // changes, and it must have been reserved in the same write.
+    // Anyone signed in can look an Account up (to see its name when they have its Account ID), but
+    // only its owner can write it. Its Account ID never changes, and it must have been reserved
+    // in the same write.
     match /accounts/{uid} {
-      allow read: if signedIn() && request.auth.uid == uid;
+      allow get: if signedIn();
       allow create: if signedIn() && request.auth.uid == uid
         && request.resource.data.keys().hasOnly(['accountId', 'name', 'createdAt'])
         && request.resource.data.name is string
@@ -41,9 +48,10 @@ service cloud.firestore {
       allow delete: if signedIn() && request.auth.uid == uid;
     }
 
-    // Account-ID records can be created once (by their owner) and never overwritten.
+    // Account-ID records can be created once (by their owner) and never overwritten. They can be
+    // read one at a time, never listed.
     match /accountIds/{accountId} {
-      allow read: if signedIn();
+      allow get: if signedIn();
       allow create: if signedIn()
         && accountId == accountId.lower()
         && request.resource.data.keys().hasOnly(['uid'])
@@ -55,7 +63,19 @@ service cloud.firestore {
     // --- Shared clubs ---------------------------------------------------------------------
 
     match /clubs/{clubId} {
-      // Only Accounts linked to the Club can read it.
+      function clubPath() {
+        return /databases/$(database)/documents/clubs/$(clubId);
+      }
+
+      // The Club as it is now / as it will be once this write or batch is done.
+      function before() {
+        return get(clubPath()).data;
+      }
+      function after() {
+        return getAfter(clubPath()).data;
+      }
+
+      // Only Accounts linked to the Club can read it (a Club that isn't there reads as empty).
       allow get: if signedIn() && (resource == null || myAccountId() in resource.data.memberAccountIds);
       allow list: if signedIn() && myAccountId() in resource.data.memberAccountIds;
 
@@ -67,33 +87,110 @@ service cloud.firestore {
         && request.resource.data.memberAccountIds == [myAccountId()]
         && request.resource.data.organizerAccountIds == [myAccountId()];
 
-      // Only Organizers write it; for now only the name can change (Roles arrive with ticket 05).
+      // An Organizer may rename the Club and change who is a member or Organizer (the rows say
+      // who, see above), as long as an Organizer is left and Organizers are members.
       allow update: if signedIn()
-        && myAccountId() in resource.data.organizerAccountIds
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name'])
-        && request.resource.data.name is string
-        && request.resource.data.name.size() > 0;
+        && (
+          (
+            myAccountId() in resource.data.organizerAccountIds
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'memberAccountIds', 'organizerAccountIds'])
+            && request.resource.data.name is string
+            && request.resource.data.name.size() > 0
+            && request.resource.data.organizerAccountIds.size() > 0
+            && request.resource.data.memberAccountIds.toSet().hasAll(request.resource.data.organizerAccountIds)
+          )
+          // Anyone on the Club may take themselves off the lists (leave), and only themselves.
+          || (
+            myAccountId() in resource.data.memberAccountIds
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberAccountIds', 'organizerAccountIds'])
+            && request.resource.data.memberAccountIds.toSet() == resource.data.memberAccountIds.toSet().difference([myAccountId()].toSet())
+            && request.resource.data.organizerAccountIds.toSet() == resource.data.organizerAccountIds.toSet().difference([myAccountId()].toSet())
+            && request.resource.data.organizerAccountIds.size() > 0
+          )
+        );
       allow delete: if signedIn() && myAccountId() in resource.data.organizerAccountIds;
 
       // One record per Club player.
       match /players/{playerId} {
-        allow read: if signedIn()
-          && myAccountId() in get(/databases/$(database)/documents/clubs/$(clubId)).data.memberAccountIds;
+        function validRow(row) {
+          return row.keys().hasOnly(['name', 'skill', 'link'])
+            && row.name is string
+            && row.name.size() > 0
+            && row.skill in ['beginner', 'intermediate', 'advanced']
+            && (!('link' in row)
+              || (row.link.keys().hasOnly(['accountId', 'role'])
+                  && row.link.accountId is string
+                  && row.link.role in ['organizer', 'player']));
+        }
 
-        // Organizers write rows. For a new Club the Club is created in the same batch, so look at
-        // how it is after the write. Links to Accounts can't be set yet (ticket 05), except the
-        // creator's own Organizer row.
-        allow create, update: if signedIn()
-          && myAccountId() in getAfter(/databases/$(database)/documents/clubs/$(clubId)).data.organizerAccountIds
-          && request.resource.data.keys().hasOnly(['name', 'skill', 'link'])
-          && request.resource.data.name is string
-          && request.resource.data.name.size() > 0
-          && request.resource.data.skill in ['beginner', 'intermediate', 'advanced']
-          && (!('link' in request.resource.data)
-              || (request.resource.data.link.accountId.lower() == myAccountId()
-                  && request.resource.data.link.role == 'organizer'));
+        // A link is only valid when the Club's lists, after this batch, agree with it.
+        function linkAgreesWithClub(link) {
+          return link.accountId.lower() in after().memberAccountIds
+            && ((link.role == 'organizer') == (link.accountId.lower() in after().organizerAccountIds));
+        }
+
+        // The Account a row was linked to must be off the lists after the batch unless the row
+        // is still linked to it.
+        function oldLinkAgreesWithClub(oldRow, newRow) {
+          return !('link' in oldRow)
+            || ('link' in newRow && newRow.link.accountId.lower() == oldRow.link.accountId.lower())
+            || !(oldRow.link.accountId.lower() in after().memberAccountIds);
+        }
+
+        allow read: if signedIn() && myAccountId() in before().memberAccountIds;
+
+        // A new Club's first rows are written in the same batch as the Club, by its creator, who
+        // may only link themselves. Otherwise only an Organizer adds rows.
+        allow create: if signedIn()
+          && validRow(request.resource.data)
+          && (
+            (
+              !exists(clubPath())
+              && myAccountId() in after().organizerAccountIds
+              && (!('link' in request.resource.data) || request.resource.data.link.accountId.lower() == myAccountId())
+            )
+            || (
+              exists(clubPath())
+              && myAccountId() in before().organizerAccountIds
+              && after().organizerAccountIds.size() > 0
+              && (!('link' in request.resource.data) || linkAgreesWithClub(request.resource.data.link))
+            )
+          );
+
+        // An Organizer edits rows, links and unlinks Accounts and changes Roles. A linked Account
+        // may unlink only itself, leaving the rest of the row as it was. Either way an Organizer
+        // is left.
+        allow update: if signedIn()
+          && validRow(request.resource.data)
+          && after().organizerAccountIds.size() > 0
+          && (
+            (
+              myAccountId() in before().organizerAccountIds
+              && (!('link' in request.resource.data) || linkAgreesWithClub(request.resource.data.link))
+              && oldLinkAgreesWithClub(resource.data, request.resource.data)
+            )
+            || (
+              myAccountId() in before().memberAccountIds
+              && 'link' in resource.data
+              && resource.data.link.accountId.lower() == myAccountId()
+              && !('link' in request.resource.data)
+              && request.resource.data.name == resource.data.name
+              && request.resource.data.skill == resource.data.skill
+              && !(myAccountId() in after().memberAccountIds)
+            )
+          );
+
+        // Only an Organizer removes rows (a linked Account leaves by unlinking), keeping an
+        // Organizer and the lists in step. Deleting the whole Club clears its rows too.
         allow delete: if signedIn()
-          && myAccountId() in get(/databases/$(database)/documents/clubs/$(clubId)).data.organizerAccountIds;
+          && myAccountId() in before().organizerAccountIds
+          && (
+            !existsAfter(clubPath())
+            || (
+              after().organizerAccountIds.size() > 0
+              && (!('link' in resource.data) || !(resource.data.link.accountId.lower() in after().memberAccountIds))
+            )
+          );
       }
     }
   }

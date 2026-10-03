@@ -1,11 +1,6 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import type { Club } from "../../src/domain/types.ts";
 import { readServerClub, seedSharedClub, signUp, uniqueId } from "./emulator.ts";
-
-const playerNames = (page: Page) =>
-  page
-    .getByRole("textbox", { name: "Player name" })
-    .evaluateAll((inputs) => inputs.map((input) => (input as HTMLInputElement).value));
 
 test.describe("Shared clubs on the server", () => {
   test("a new Club reaches the server with the creator as Organizer, and is still there after a reload", async ({
@@ -75,10 +70,10 @@ test.describe("Shared clubs on the server", () => {
     await page.goto("/clubs");
     await expect(page.getByRole("link", { name: /Tuesday/ })).toBeVisible();
     await anaPage.goto(`/clubs/${clubId}`);
-    await expect.poll(() => playerNames(anaPage)).toEqual(["Ana Bell", "Cat", "Roy Smith"]);
-    await expect(anaPage.getByRole("combobox", { name: "Skill level for Cat" })).toHaveValue(
-      "beginner",
-    );
+    // Ana is a Player: a read-only roster.
+    const anaCat = anaPage.getByRole("listitem").filter({ hasText: "Cat" });
+    await expect(anaCat).toContainText("Beginner");
+    await expect(anaPage.getByRole("combobox")).toHaveCount(0);
 
     // Roy edits while offline.
     await page.goto(`/clubs/${clubId}`);
@@ -110,12 +105,7 @@ test.describe("Shared clubs on the server", () => {
         },
       )
       .toBe("advanced");
-    await expect(anaPage.getByRole("combobox", { name: "Skill level for Cat" })).toHaveValue(
-      "advanced",
-      {
-        timeout: 15_000,
-      },
-    );
+    await expect(anaCat).toContainText("Advanced", { timeout: 15_000 });
 
     await anaPage.context().close();
   });

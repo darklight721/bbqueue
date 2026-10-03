@@ -61,5 +61,13 @@ export function createLazyFirebaseBackend(
       loaded.then((backend) => backend.updateClubPlayer(clubId, playerId, patch)),
     removeClubPlayer: (clubId, playerId) =>
       loaded.then((backend) => backend.removeClubPlayer(clubId, playerId)),
+    lookupAccount: (accountId) => loaded.then((backend) => backend.lookupAccount(accountId)),
+    linkClubPlayer: (clubId, playerId, accountId, role) =>
+      loaded.then((backend) => backend.linkClubPlayer(clubId, playerId, accountId, role)),
+    setClubPlayerRole: (clubId, playerId, role) =>
+      loaded.then((backend) => backend.setClubPlayerRole(clubId, playerId, role)),
+    unlinkClubPlayer: (clubId, playerId) =>
+      loaded.then((backend) => backend.unlinkClubPlayer(clubId, playerId)),
+    leaveClub: (clubId) => loaded.then((backend) => backend.leaveClub(clubId)),
   };
 }

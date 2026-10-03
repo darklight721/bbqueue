@@ -1,11 +1,13 @@
+import { accountIdsEqual } from "../domain/accountId.ts";
 import {
   applyClubChange,
   creatorPlayer,
   roleInClub,
   type ClubChange,
 } from "../domain/clubChanges.ts";
+import { canDeleteClub, clubChangeProblem, ownRow } from "../domain/permissions.ts";
 import { newId } from "../domain/ids.ts";
-import type { Account, Club } from "../domain/types.ts";
+import type { Account, Club, ClubPlayer } from "../domain/types.ts";
 import { normalizeName } from "../domain/validation.ts";
 import { BackendError, type Backend, type OnlineSource } from "./backend.ts";
 
@@ -17,6 +19,9 @@ export type ClubOp =
 
 /** Where the simulated "server" keeps Shared clubs, and the changes still waiting to be sent. */
 export interface SimulatedClubsState {
+  /** Every Account on the "server", so an Account ID can be looked up. */
+  loadAccounts(): Account[];
+  /** The device's own Account (what `getAccount` returns) is always found too. */
   loadClubs(): Club[];
   saveClubs(clubs: Club[]): void;
   loadPendingOps(): ClubOp[];
@@ -34,7 +39,18 @@ export type SharedClubsApi = Pick<
   | "addClubPlayer"
   | "updateClubPlayer"
   | "removeClubPlayer"
+  | "lookupAccount"
+  | "linkClubPlayer"
+  | "setClubPlayerRole"
+  | "unlinkClubPlayer"
+  | "leaveClub"
 >;
+
+/**
+ * Backends that share one "server" (two simulated devices in a test) tell each other about
+ * changes through this, since they can't hear each other's `storage` events in one page.
+ */
+const serverListeners = new Set<() => void>();
 
 function applyOp(clubs: Club[], op: ClubOp): Club[] {
   switch (op.type) {
@@ -91,6 +107,17 @@ export function createSimulatedClubs(
       state.savePendingOps([...state.loadPendingOps(), op]);
     }
     emit();
+    for (const listener of [...serverListeners]) listener();
+  }
+
+  function findAccount(accountId: string): Account | null {
+    const own = getAccount();
+    if (own && accountIdsEqual(own.accountId, accountId)) return own;
+    return state.loadAccounts().find((a) => accountIdsEqual(a.accountId, accountId)) ?? null;
+  }
+
+  function requireOnline() {
+    if (!online.get()) throw new BackendError("offline");
   }
 
   function requireClub(clubId: string): Club {
@@ -99,9 +126,16 @@ export function createSimulatedClubs(
     return club;
   }
 
-  function change(clubId: string, clubChange: ClubChange): Promise<void> {
+  function change(
+    clubId: string,
+    clubChange: ClubChange,
+    options: { needsConnection?: boolean } = {},
+  ): Promise<void> {
     try {
-      requireClub(clubId);
+      if (options.needsConnection) requireOnline();
+      const club = requireClub(clubId);
+      const problem = clubChangeProblem(club, getAccount()?.accountId, clubChange);
+      if (problem) throw new BackendError(problem);
       send({ type: "change", clubId, change: clubChange });
       return Promise.resolve();
     } catch (error) {
@@ -120,9 +154,12 @@ export function createSimulatedClubs(
     observeSharedClubs(listener) {
       listeners.add(listener);
       listener(view());
-      const stopExternal = state.observeExternalChanges?.(() => listener(view()));
+      const report = () => listener(view());
+      serverListeners.add(report);
+      const stopExternal = state.observeExternalChanges?.(report);
       return () => {
         listeners.delete(listener);
+        serverListeners.delete(report);
         stopExternal?.();
       };
     },
@@ -150,7 +187,8 @@ export function createSimulatedClubs(
 
     deleteSharedClub(clubId) {
       try {
-        requireClub(clubId);
+        const club = requireClub(clubId);
+        if (!canDeleteClub(club, getAccount()?.accountId)) throw new BackendError("forbidden");
         send({ type: "delete", clubId });
         return Promise.resolve();
       } catch (error) {
@@ -159,8 +197,13 @@ export function createSimulatedClubs(
     },
 
     addClubPlayer(clubId, player) {
-      if (!online.get()) return Promise.reject(new BackendError("offline"));
-      return change(clubId, { type: "addPlayer", player });
+      try {
+        requireOnline();
+        const row = withKnownAccount(player);
+        return change(clubId, { type: "addPlayer", player: row }, { needsConnection: true });
+      } catch (error) {
+        return Promise.reject(error);
+      }
     },
 
     updateClubPlayer(clubId, playerId, patch) {
@@ -170,7 +213,58 @@ export function createSimulatedClubs(
     removeClubPlayer(clubId, playerId) {
       return change(clubId, { type: "removePlayer", playerId });
     },
+
+    lookupAccount(accountId) {
+      try {
+        requireOnline();
+        return Promise.resolve(findAccount(accountId));
+      } catch (error) {
+        return Promise.reject(error);
+      }
+    },
+
+    linkClubPlayer(clubId, playerId, accountId, role) {
+      try {
+        requireOnline();
+        const account = findAccount(accountId);
+        if (!account) throw new BackendError("unknown-account");
+        return change(
+          clubId,
+          { type: "link", playerId, link: { accountId: account.accountId, role } },
+          { needsConnection: true },
+        );
+      } catch (error) {
+        return Promise.reject(error);
+      }
+    },
+
+    setClubPlayerRole(clubId, playerId, role) {
+      return change(clubId, { type: "setRole", playerId, role }, { needsConnection: true });
+    },
+
+    unlinkClubPlayer(clubId, playerId) {
+      return change(clubId, { type: "unlink", playerId }, { needsConnection: true });
+    },
+
+    leaveClub(clubId) {
+      try {
+        requireOnline();
+        const row = ownRow(requireClub(clubId), getAccount()?.accountId);
+        if (!row) throw new BackendError("not-found");
+        return change(clubId, { type: "unlink", playerId: row.id }, { needsConnection: true });
+      } catch (error) {
+        return Promise.reject(error);
+      }
+    },
   };
+
+  /** A row with a link: the Account must exist, and the link uses its own spelling of the ID. */
+  function withKnownAccount(player: ClubPlayer): ClubPlayer {
+    if (!player.link) return player;
+    const account = findAccount(player.link.accountId);
+    if (!account) throw new BackendError("unknown-account");
+    return { ...player, link: { ...player.link, accountId: account.accountId } };
+  }
 
   return { clubs, refresh: emit };
 }

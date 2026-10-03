@@ -36,8 +36,11 @@ export async function signUp(page: Page, name: string): Promise<Account> {
   await page.getByLabel("Your name").fill(name);
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "BBQueue", exact: true })).toBeVisible();
-  await expect.poll(() => readStoredData<Account>(page, "account")).not.toBeNull();
-  return (await readStoredData<Account>(page, "account"))!;
+  let account: Account | null = null;
+  await expect
+    .poll(async () => (account = await readStoredData<Account>(page, "account")))
+    .not.toBeNull();
+  return account!;
 }
 
 /** What the server holds for an Account ID, or null. */

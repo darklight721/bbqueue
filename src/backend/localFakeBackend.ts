@@ -7,6 +7,8 @@ import { createSimulatedBackend } from "./simulatedBackend.ts";
 export const FAKE_BACKEND_KEYS = {
   account: "bq:fake:account",
   accountIds: "bq:fake:account-ids",
+  /** Every Account on the "server": an array of Accounts, so Account IDs can be looked up. */
+  accounts: "bq:fake:accounts",
   /** Shared clubs on the "server": an array of Clubs. */
   clubs: "bq:fake:clubs",
   /** Shared club changes made while offline that haven't reached the "server" yet. */
@@ -30,6 +32,9 @@ const isAccount = (value: unknown): value is Account =>
   typeof (value as Account).accountId === "string" &&
   typeof (value as Account).name === "string";
 
+const isAccountArray = (value: unknown): value is Account[] =>
+  Array.isArray(value) && value.every(isAccount);
+
 const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((item) => typeof item === "string");
 
@@ -51,23 +56,38 @@ function toSharedClub(raw: Record<string, unknown>): Club {
  * without a Firebase project (`VITE_BACKEND=fake`). "Needs a connection" follows
  * `navigator.onLine`, like the real thing.
  */
-export function createLocalFakeBackend(options: SimulatedBackendOptions = {}): Backend {
+export function createLocalFakeBackend(
+  options: SimulatedBackendOptions & {
+    /**
+     * Added to the keys holding this device's own data (its Account and waiting changes), so tests
+     * can simulate two devices sharing one "server" in one page.
+     */
+    deviceSuffix?: string;
+  } = {},
+): Backend {
+  const accountKey = FAKE_BACKEND_KEYS.account + (options.deviceSuffix ?? "");
+  const pendingKey = FAKE_BACKEND_KEYS.pendingClubOps + (options.deviceSuffix ?? "");
   return createSimulatedBackend(
     {
-      loadAccount: () => readJson(FAKE_BACKEND_KEYS.account, isAccount),
-      saveAccount: (account) =>
-        localStorage.setItem(FAKE_BACKEND_KEYS.account, JSON.stringify(account)),
+      loadAccount: () => readJson(accountKey, isAccount),
+      saveAccount: (account) => localStorage.setItem(accountKey, JSON.stringify(account)),
+      loadAccounts: () => readJson(FAKE_BACKEND_KEYS.accounts, isAccountArray) ?? [],
+      saveAccounts: (accounts) =>
+        localStorage.setItem(FAKE_BACKEND_KEYS.accounts, JSON.stringify(accounts)),
       loadReservedIds: () => readJson(FAKE_BACKEND_KEYS.accountIds, isStringArray) ?? [],
       saveReservedIds: (ids) =>
         localStorage.setItem(FAKE_BACKEND_KEYS.accountIds, JSON.stringify(ids)),
       loadClubs: () => (readJson(FAKE_BACKEND_KEYS.clubs, isRecordArray) ?? []).map(toSharedClub),
       saveClubs: (clubs) => localStorage.setItem(FAKE_BACKEND_KEYS.clubs, JSON.stringify(clubs)),
-      loadPendingOps: () =>
-        (readJson(FAKE_BACKEND_KEYS.pendingClubOps, isRecordArray) ?? []) as ClubOp[],
-      savePendingOps: (ops) =>
-        localStorage.setItem(FAKE_BACKEND_KEYS.pendingClubOps, JSON.stringify(ops)),
+      loadPendingOps: () => (readJson(pendingKey, isRecordArray) ?? []) as ClubOp[],
+      savePendingOps: (ops) => localStorage.setItem(pendingKey, JSON.stringify(ops)),
       observeExternalChanges(listener) {
-        const keys: (string | null)[] = [null, ...Object.values(FAKE_BACKEND_KEYS)];
+        const keys: (string | null)[] = [
+          null,
+          accountKey,
+          pendingKey,
+          ...Object.values(FAKE_BACKEND_KEYS),
+        ];
         const onStorage = (event: StorageEvent) => {
           if (keys.includes(event.key)) listener();
         };

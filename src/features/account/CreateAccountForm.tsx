@@ -6,7 +6,10 @@ import { requestPersistentStorage } from "../../storage/persistentStorage.ts";
 import { setAccount } from "../../storage/store.ts";
 
 /** What went wrong creating the Account, in words. `invalid-name` shows on the field instead. */
-const CREATE_ERROR_MESSAGE: Record<Exclude<BackendErrorCode, "invalid-name">, string> = {
+const CREATE_ERROR_MESSAGE: Partial<Record<BackendErrorCode, string>> & {
+  offline: string;
+  failed: string;
+} = {
   offline: "You're offline. Connect and try again.",
   "id-unavailable": "Couldn't find a free Account ID. Try again.",
   "account-exists": "This device already has an Account.",
@@ -75,7 +78,11 @@ export function CreateAccountForm({
         setAttempted(true);
         inputRef.current?.focus();
       } else {
-        setFailure(code === "offline" ? offlineMessage : CREATE_ERROR_MESSAGE[code]);
+        setFailure(
+          code === "offline"
+            ? offlineMessage
+            : (CREATE_ERROR_MESSAGE[code] ?? CREATE_ERROR_MESSAGE.failed),
+        );
       }
     }
   }

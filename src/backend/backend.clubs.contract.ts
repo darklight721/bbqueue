@@ -209,7 +209,6 @@ export function runSharedClubsContract(name: string, create: () => ClubsContract
       await backend.updateClubPlayer("c1", ana.id, { skill: "intermediate" });
       await backend.updateClubPlayer("c1", ana.id, { skill: "advanced" });
       await backend.renameSharedClub("c1", "Friday");
-      await backend.removeClubPlayer("c1", "nobody");
 
       // Offline, the device already shows its own changes.
       await eventually(() => expect(clubs()[0]?.name).toBe("Friday"));

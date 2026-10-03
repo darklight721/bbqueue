@@ -1,4 +1,4 @@
-import { generateAccountId, normalizeAccountId } from "../domain/accountId.ts";
+import { accountIdsEqual, generateAccountId, normalizeAccountId } from "../domain/accountId.ts";
 import { normalizeName } from "../domain/validation.ts";
 import type { Account } from "../domain/types.ts";
 import { createSimulatedClubs, type SimulatedClubsState } from "./simulatedClubs.ts";
@@ -18,6 +18,7 @@ export interface SimulatedState extends SimulatedClubsState {
   /** Normalised Account IDs that are reserved. */
   loadReservedIds(): string[];
   saveReservedIds(ids: string[]): void;
+  saveAccounts(accounts: Account[]): void;
   /** Calls `listener` when another tab changes the data. Returns a stop function. */
   observeExternalChanges?(listener: () => void): () => void;
 }
@@ -40,11 +41,20 @@ export function createSimulatedBackend(
     for (const id of options.takenAccountIds) reserved.add(normalizeAccountId(id));
     state.saveReservedIds([...reserved]);
   }
+  /** Record an Account on the "server", so others can look its Account ID up. */
+  function register(account: Account) {
+    const others = state
+      .loadAccounts()
+      .filter((a) => !accountIdsEqual(a.accountId, account.accountId));
+    state.saveAccounts([...others, account]);
+  }
+
   if (options.account && !state.loadAccount()) {
     const reserved = new Set(state.loadReservedIds());
     reserved.add(normalizeAccountId(options.account.accountId));
     state.saveReservedIds([...reserved]);
     state.saveAccount(options.account);
+    register(options.account);
   }
 
   function emit() {
@@ -90,6 +100,7 @@ export function createSimulatedBackend(
         state.saveReservedIds([...reserved]);
         const account: Account = { accountId, name: trimmed };
         state.saveAccount(account);
+        register(account);
         emit();
         refreshClubs();
         return Promise.resolve(account);
@@ -106,6 +117,7 @@ export function createSimulatedBackend(
 
       const account: Account = { ...current, name: trimmed };
       state.saveAccount(account);
+      register(account);
       emit();
       return Promise.resolve(account);
     },

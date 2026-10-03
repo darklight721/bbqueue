@@ -30,6 +30,7 @@ export const STORAGE_KEYS = {
 export const FAKE_BACKEND_KEYS = {
   account: "bq:fake:account",
   accountIds: "bq:fake:account-ids",
+  accounts: "bq:fake:accounts",
   clubs: "bq:fake:clubs",
   pendingClubOps: "bq:fake:pending-club-ops",
 } as const;
@@ -58,6 +59,8 @@ export const FIRST_LAUNCH_STORAGE_STATE = { cookies: [], origins: [] };
 export type StorageKey = keyof typeof STORAGE_KEYS;
 
 export interface SeedData {
+  /** Other people's Accounts on the fake "server", so their Account IDs can be looked up. */
+  otherAccounts?: Account[];
   /**
    * Shared clubs on the fake "server". They show up for the seeded Account when one of their Club
    * players is linked to it.
@@ -185,6 +188,7 @@ export function makeEndedSessionFromMatches(
  */
 export async function seedStorage(page: Page, seed: SeedData): Promise<void> {
   const entries = (Object.keys(seed) as (keyof SeedData)[])
+    .filter((name): name is Exclude<keyof SeedData, "otherAccounts"> => name !== "otherAccounts")
     .filter((name) => seed[name] !== undefined)
     .map((name): [string, string] => [
       STORAGE_KEYS[name],
@@ -193,10 +197,15 @@ export async function seedStorage(page: Page, seed: SeedData): Promise<void> {
   if (seed.sharedClubs) {
     entries.push([FAKE_BACKEND_KEYS.clubs, JSON.stringify(seed.sharedClubs)]);
   }
-  if (seed.account) {
+  const everyone = [...(seed.account ? [seed.account] : []), ...(seed.otherAccounts ?? [])];
+  if (seed.account) entries.push([FAKE_BACKEND_KEYS.account, JSON.stringify(seed.account)]);
+  if (everyone.length > 0) {
     entries.push(
-      [FAKE_BACKEND_KEYS.account, JSON.stringify(seed.account)],
-      [FAKE_BACKEND_KEYS.accountIds, JSON.stringify([seed.account.accountId.toLowerCase()])],
+      [FAKE_BACKEND_KEYS.accounts, JSON.stringify(everyone)],
+      [
+        FAKE_BACKEND_KEYS.accountIds,
+        JSON.stringify(everyone.map((a) => a.accountId.toLowerCase())),
+      ],
     );
   }
 

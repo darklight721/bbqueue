@@ -1,6 +1,9 @@
 import {
+  arrayRemove,
+  arrayUnion,
   collection,
   deleteDoc,
+  deleteField,
   doc,
   getDoc,
   getDocFromCache,
@@ -16,9 +19,10 @@ import {
   type DocumentSnapshot,
   type Firestore,
 } from "firebase/firestore";
-import { creatorPlayer } from "../domain/clubChanges.ts";
+import { creatorPlayer, type ClubChange } from "../domain/clubChanges.ts";
+import { clubChangeProblem, ownRow } from "../domain/permissions.ts";
 import { newId } from "../domain/ids.ts";
-import type { Account, Club, ClubPlayer, SkillLevel } from "../domain/types.ts";
+import type { Account, AccountLink, Club, ClubPlayer, Role, SkillLevel } from "../domain/types.ts";
 import { normalizeName } from "../domain/validation.ts";
 import { BackendError, type OnlineSource, type Unsubscribe } from "./backend.ts";
 import type { SharedClubsApi } from "./simulatedClubs.ts";
@@ -56,6 +60,9 @@ export function createFirebaseClubs(
 
   /** Fails with `not-found` when the Club is known not to exist. Unknown (offline, uncached) passes. */
   async function requireClub(clubId: string): Promise<void> {
+    // Offline there is nothing to check against: the write waits in the queue, and the
+    // server has the last word. (Reading the cache here can stall in some browsers.)
+    if (!deps.online.get()) return;
     let snapshot: DocumentSnapshot;
     try {
       snapshot = await getDoc(clubRef(clubId));
@@ -67,6 +74,120 @@ export function createFirebaseClubs(
       }
     }
     if (!snapshot.exists()) throw new BackendError("not-found");
+  }
+
+  /** The Club and its rows as the server has them (or the cache, offline). */
+  async function loadClub(clubId: string): Promise<Club> {
+    try {
+      const [club, rows] = await Promise.all([
+        getDoc(clubRef(clubId)),
+        getDocs(playersRef(clubId)),
+      ]);
+      if (!club.exists()) throw new BackendError("not-found");
+      return {
+        id: clubId,
+        name: String(club.data().name ?? ""),
+        kind: "shared",
+        players: rows.docs.map((row) => toClubPlayer(row.id, row.data())),
+      };
+    } catch (error) {
+      // A Club you can't read is, as far as you can tell, not there.
+      const mapped = toBackendError(error);
+      throw mapped.code === "forbidden"
+        ? new BackendError("not-found", undefined, { cause: error })
+        : mapped;
+    }
+  }
+
+  /**
+   * Make one change that touches who is linked to the Club: the row and the Club's member and
+   * Organizer lists go out in one batch, so they never disagree. Checks the rules of the domain
+   * first for a plain message; Security Rules check the same on the server.
+   */
+  async function changeLinks(clubId: string, change: ClubChange): Promise<void> {
+    if (!deps.online.get()) throw new BackendError("offline");
+    const viewer = await requireAccount();
+    const club = await loadClub(clubId);
+    const problem = clubChangeProblem(club, viewer.accountId, change);
+    if (problem) throw new BackendError(problem);
+
+    const batch = writeBatch(db);
+    const lists = (accountId: string, role: Role | null) => ({
+      memberAccountIds: role
+        ? arrayUnion(accountId.toLowerCase())
+        : arrayRemove(accountId.toLowerCase()),
+      organizerAccountIds:
+        role === "organizer"
+          ? arrayUnion(accountId.toLowerCase())
+          : arrayRemove(accountId.toLowerCase()),
+    });
+    const existing = (playerId: string) => club.players.find((player) => player.id === playerId);
+
+    switch (change.type) {
+      case "addPlayer":
+        batch.set(playerRef(clubId, change.player.id), toRecord(change.player));
+        if (change.player.link) {
+          batch.update(
+            clubRef(clubId),
+            lists(change.player.link.accountId, change.player.link.role),
+          );
+        }
+        break;
+      case "link": {
+        const old = existing(change.playerId)?.link;
+        if (old && old.accountId.toLowerCase() !== change.link.accountId.toLowerCase()) {
+          batch.update(clubRef(clubId), lists(old.accountId, null));
+        }
+        batch.update(playerRef(clubId, change.playerId), { link: toLink(change.link) });
+        batch.update(clubRef(clubId), lists(change.link.accountId, change.link.role));
+        break;
+      }
+      case "setRole": {
+        const link = existing(change.playerId)?.link;
+        if (!link) throw new BackendError("not-found");
+        batch.update(playerRef(clubId, change.playerId), { "link.role": change.role });
+        batch.update(clubRef(clubId), lists(link.accountId, change.role));
+        break;
+      }
+      case "unlink": {
+        const link = existing(change.playerId)?.link;
+        if (!link) return;
+        batch.update(playerRef(clubId, change.playerId), { link: deleteField() });
+        batch.update(clubRef(clubId), lists(link.accountId, null));
+        break;
+      }
+      case "removePlayer": {
+        const link = existing(change.playerId)?.link;
+        batch.delete(playerRef(clubId, change.playerId));
+        if (link) batch.update(clubRef(clubId), lists(link.accountId, null));
+        break;
+      }
+      default:
+        throw new Error(`Not a link change: ${change.type}`);
+    }
+    await settle(deps.online, batch.commit());
+  }
+
+  /** The Account's own spelling of its ID, or `unknown-account`. */
+  async function knownAccountId(accountId: string): Promise<string> {
+    const account = await lookup(accountId);
+    if (!account) throw new BackendError("unknown-account");
+    return account.accountId;
+  }
+
+  async function lookup(accountId: string): Promise<Account | null> {
+    if (!deps.online.get()) throw new BackendError("offline");
+    try {
+      const reservation = await getDoc(doc(db, "accountIds", accountId.trim().toLowerCase()));
+      if (!reservation.exists()) return null;
+      const account = (await getDoc(doc(db, "accounts", String(reservation.data().uid)))).data();
+      if (!account || typeof account.accountId !== "string" || typeof account.name !== "string") {
+        return null;
+      }
+      return { accountId: account.accountId, name: account.name };
+    } catch (error) {
+      throw toBackendError(error);
+    }
   }
 
   return {
@@ -224,6 +345,14 @@ export function createFirebaseClubs(
 
     async addClubPlayer(clubId, player) {
       if (!deps.online.get()) throw new BackendError("offline");
+      if (player.link) {
+        const accountId = await knownAccountId(player.link.accountId);
+        await changeLinks(clubId, {
+          type: "addPlayer",
+          player: { ...player, link: { ...player.link, accountId } },
+        });
+        return;
+      }
       await requireClub(clubId);
       await settle(deps.online, setDoc(playerRef(clubId, player.id), toRecord(player)));
     },
@@ -236,7 +365,37 @@ export function createFirebaseClubs(
 
     async removeClubPlayer(clubId, playerId) {
       await requireClub(clubId);
+      let linked = false;
+      try {
+        linked = !!toClubPlayer(playerId, (await getDoc(playerRef(clubId, playerId))).data() ?? {})
+          .link;
+      } catch {
+        // Offline with nothing cached: an unlinked row is the usual case.
+      }
+      // A linked row also changes who is on the Club, which needs the connection and a check.
+      if (linked) return changeLinks(clubId, { type: "removePlayer", playerId });
       await settle(deps.online, deleteDoc(playerRef(clubId, playerId)));
+    },
+
+    lookupAccount: lookup,
+
+    async linkClubPlayer(clubId, playerId, accountId, role) {
+      if (!deps.online.get()) throw new BackendError("offline");
+      const known = await knownAccountId(accountId);
+      await changeLinks(clubId, { type: "link", playerId, link: { accountId: known, role } });
+    },
+
+    setClubPlayerRole: (clubId, playerId, role) =>
+      changeLinks(clubId, { type: "setRole", playerId, role }),
+
+    unlinkClubPlayer: (clubId, playerId) => changeLinks(clubId, { type: "unlink", playerId }),
+
+    async leaveClub(clubId) {
+      if (!deps.online.get()) throw new BackendError("offline");
+      const viewer = await requireAccount();
+      const row = ownRow(await loadClub(clubId), viewer.accountId);
+      if (!row) throw new BackendError("not-found");
+      await changeLinks(clubId, { type: "unlink", playerId: row.id });
     },
   };
 }
@@ -250,19 +409,32 @@ async function settle(online: OnlineSource, write: Promise<unknown>): Promise<vo
     try {
       await write;
     } catch (error) {
-      throw new BackendError("failed", undefined, { cause: error });
+      throw toBackendError(error);
     }
     return;
   }
   write.catch((error: unknown) => console.error("Queued write failed", error));
 }
 
+const toLink = (link: AccountLink) => ({ accountId: link.accountId, role: link.role });
+
 function toRecord(player: ClubPlayer): DocumentData {
   return {
     name: player.name,
     skill: player.skill,
-    ...(player.link ? { link: { accountId: player.link.accountId, role: player.link.role } } : {}),
+    ...(player.link ? { link: toLink(player.link) } : {}),
   };
+}
+
+/** Firestore errors in the Backend's words. */
+function toBackendError(error: unknown): BackendError {
+  if (error instanceof BackendError) return error;
+  const code = (error as { code?: unknown } | null)?.code;
+  if (code === "permission-denied")
+    return new BackendError("forbidden", undefined, { cause: error });
+  if (code === "not-found") return new BackendError("not-found", undefined, { cause: error });
+  if (code === "unavailable") return new BackendError("offline", undefined, { cause: error });
+  return new BackendError("failed", undefined, { cause: error });
 }
 
 function toClubPlayer(id: string, data: DocumentData): ClubPlayer {

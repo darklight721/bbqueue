@@ -1,4 +1,5 @@
 import { useId, useMemo, useState } from "react";
+import { BackendError } from "../../../backend/backend.ts";
 import { saveClubs } from "../../../backend/clubs.ts";
 import { AddPlayerForm, type NewPlayer } from "../../../components/AddPlayerForm.tsx";
 import { ConfirmDialog } from "../../../components/ConfirmDialog.tsx";
@@ -260,7 +261,15 @@ function AddSessionPlayer() {
       saveClubs(
         clubs,
         clubs.map((c) => (c.id === club.id ? { ...c, players: [...c.players, newPlayer] } : c)),
-      );
+      ).catch((error: unknown) => {
+        // The player is in the Session; only the Club's roster missed out.
+        console.error("Failed to save the player to the Club", error);
+        const why =
+          error instanceof BackendError && error.code === "offline"
+            ? "that needs a connection"
+            : "it couldn't be saved";
+        actions.notify(`${normalizeName(name)} joined, but wasn't saved to ${club.name}: ${why}.`);
+      });
     }
     if (returning) actions.notify(`Welcome back, ${normalizeName(name)}`);
   }

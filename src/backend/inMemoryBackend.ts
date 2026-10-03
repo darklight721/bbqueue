@@ -3,6 +3,20 @@ import type { Backend, OnlineSource, SimulatedBackendOptions } from "./backend.t
 import type { ClubOp } from "./simulatedClubs.ts";
 import { createSimulatedBackend } from "./simulatedBackend.ts";
 
+/**
+ * What the "server" holds. Give the same one to several in-memory backends to simulate several
+ * devices (people) sharing a server.
+ */
+export interface InMemoryServer {
+  reserved: string[];
+  accounts: Account[];
+  clubs: Club[];
+}
+
+export function createInMemoryServer(): InMemoryServer {
+  return { reserved: [], accounts: [], clubs: [] };
+}
+
 export interface InMemoryBackend extends Backend {
   /** Test control: simulate losing or regaining the connection. */
   setOnline(online: boolean): void;
@@ -10,11 +24,13 @@ export interface InMemoryBackend extends Backend {
 
 /** Backend that keeps everything in variables. For component tests and as the agreed contract. */
 export function createInMemoryBackend(
-  options: Omit<SimulatedBackendOptions, "online"> & { online?: boolean } = {},
+  options: Omit<SimulatedBackendOptions, "online"> & {
+    online?: boolean;
+    server?: InMemoryServer;
+  } = {},
 ): InMemoryBackend {
+  const server = options.server ?? createInMemoryServer();
   let account: Account | null = null;
-  let reserved: string[] = [];
-  let clubs: Club[] = [];
   let pendingOps: ClubOp[] = [];
   let isOnline = options.online ?? true;
   const onlineListeners = new Set<(online: boolean) => void>();
@@ -35,13 +51,17 @@ export function createInMemoryBackend(
       saveAccount: (next) => {
         account = next;
       },
-      loadReservedIds: () => reserved,
+      loadReservedIds: () => server.reserved,
       saveReservedIds: (ids) => {
-        reserved = ids;
+        server.reserved = ids;
       },
-      loadClubs: () => clubs,
+      loadAccounts: () => server.accounts,
+      saveAccounts: (accounts) => {
+        server.accounts = accounts;
+      },
+      loadClubs: () => server.clubs,
       saveClubs: (next) => {
-        clubs = next;
+        server.clubs = next;
       },
       loadPendingOps: () => pendingOps,
       savePendingOps: (ops) => {
