@@ -2,6 +2,7 @@ import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { App } from "../../app/App.tsx";
+import { BackendError } from "../../backend/backend.ts";
 import { createInMemoryBackend } from "../../backend/inMemoryBackend.ts";
 import { setBackendForTests } from "../../backend/index.ts";
 import { getAccount, getWelcomeDone, resetStoreForTests } from "../../storage/store.ts";
@@ -46,7 +47,10 @@ describe("Welcome screen", () => {
     await user.click(screen.getByRole("button", { name: "Continue" }));
 
     expect(screen.getByText("Enter a name")).toBeInTheDocument();
-    expect(screen.getByLabelText("Your name")).toHaveAttribute("aria-invalid", "true");
+    const input = screen.getByLabelText("Your name");
+    expect(input).toHaveAttribute("aria-invalid", "true");
+    expect(input).toHaveAccessibleDescription(/^Enter a name Creates your Account/);
+    expect(input).toHaveFocus();
     expect(getWelcomeDone()).toBe(false);
   });
 
@@ -55,7 +59,7 @@ describe("Welcome screen", () => {
     const user = userEvent.setup();
     const { unmount } = render(<App />);
 
-    await user.click(screen.getByRole("button", { name: "Skip" }));
+    await user.click(screen.getByRole("button", { name: "Skip for now" }));
 
     expect(screen.getByRole("heading", { level: 1, name: "BBQueue" })).toBeInTheDocument();
     expect(getAccount()).toBeNull();
@@ -105,11 +109,73 @@ describe("Welcome screen", () => {
     await user.type(screen.getByLabelText("Your name"), "Roy");
     await user.click(screen.getByRole("button", { name: "Continue" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't create your Account");
+    expect(await screen.findByText("Couldn't create your Account. Try again.")).toHaveAttribute(
+      "role",
+      "alert",
+    );
+    expect(screen.getByRole("button", { name: "Continue" })).toBeEnabled();
     expect(getWelcomeDone()).toBe(false);
+
+    // Typing again clears the message.
+    await user.type(screen.getByLabelText("Your name"), "!");
+    expect(screen.getByRole("alert")).toBeEmptyDOMElement();
   });
 
-  it("Enter in the name field dismisses the keyboard without creating", async () => {
+  it("says so when the connection drops while creating", async () => {
+    setBackendForTests({
+      ...createInMemoryBackend(),
+      createAccount: () => Promise.reject(new BackendError("offline")),
+    });
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.type(screen.getByLabelText("Your name"), "Roy");
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+
+    expect(
+      await screen.findByText("You're offline. Connect and try again, or skip for now."),
+    ).toHaveAttribute("role", "alert");
+  });
+
+  it("shows a busy Continue while creating, and Skip can't be used meanwhile", async () => {
+    const backend = createInMemoryBackend();
+    let finish = () => {};
+    setBackendForTests({
+      ...backend,
+      createAccount: (name) =>
+        new Promise((resolve) => {
+          finish = () => void backend.createAccount(name).then(resolve);
+        }),
+    });
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.type(screen.getByLabelText("Your name"), "Roy");
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+
+    const busy = screen.getByRole("button", { name: "Creating your Account…" });
+    expect(busy).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("button", { name: "Skip for now" })).toBeDisabled();
+    expect(screen.getByLabelText("Your name")).toHaveAttribute("readonly");
+
+    await act(async () => finish());
+    expect(await screen.findByRole("heading", { level: 1, name: "BBQueue" })).toBeInTheDocument();
+    expect(getAccount()).toMatchObject({ name: "Roy" });
+  });
+
+  it("explains the name and the Skip", () => {
+    setBackendForTests(createInMemoryBackend());
+    render(<App />);
+    expect(screen.getByRole("heading", { level: 1, name: "Welcome to BBQueue" })).toBeVisible();
+    expect(screen.getByLabelText("Your name")).toHaveAccessibleDescription(
+      "Creates your Account, so your Club can add you by your Account ID and you'll see Sessions live.",
+    );
+    expect(screen.getByRole("button", { name: "Skip for now" })).toHaveAccessibleDescription(
+      "No Account needed. You can add your name later.",
+    );
+  });
+
+  it("Enter in the name field submits: dismisses the keyboard and creates the Account", async () => {
     setBackendForTests(createInMemoryBackend());
     const user = userEvent.setup();
     render(<App />);
@@ -118,6 +184,21 @@ describe("Welcome screen", () => {
     await user.type(input, "Roy{Enter}");
 
     expect(input).not.toHaveFocus();
+    expect(await screen.findByRole("heading", { level: 1, name: "BBQueue" })).toBeInTheDocument();
+    expect(getAccount()).toMatchObject({ name: "Roy" });
+    expect(getWelcomeDone()).toBe(true);
+  });
+
+  it("Enter with no name keeps the field focused and asks for one", async () => {
+    setBackendForTests(createInMemoryBackend());
+    const user = userEvent.setup();
+    render(<App />);
+    const input = screen.getByLabelText("Your name");
+
+    await user.type(input, "  {Enter}");
+
+    expect(input).toHaveFocus();
+    expect(screen.getByText("Enter a name")).toBeInTheDocument();
     expect(getWelcomeDone()).toBe(false);
   });
 });

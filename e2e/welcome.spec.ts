@@ -45,15 +45,24 @@ test.describe("Welcome", () => {
     expect(await readFakeAccount(page)).toBeNull();
   });
 
-  test("Enter in the name field dismisses the keyboard without creating the Account", async ({
-    page,
-  }) => {
+  test("Enter in the name field creates the Account and goes Home", async ({ page }) => {
     await page.goto("/");
     const name = page.getByLabel("Your name");
     await name.fill("Roy");
     await name.press("Enter");
 
-    await expect(name).not.toBeFocused();
+    await expect(home(page)).toBeVisible();
+    expect(await readFakeAccount(page)).toMatchObject({ name: "Roy" });
+  });
+
+  test("Enter with no name keeps the field focused and asks for one", async ({ page }) => {
+    await page.goto("/");
+    const name = page.getByLabel("Your name");
+    await name.press("Enter");
+
+    await expect(name).toBeFocused();
+    await expect(name).toHaveAttribute("aria-invalid", "true");
+    await expect(page.getByText("Enter a name")).toBeVisible();
     await expect(welcome(page)).toBeVisible();
     expect(await readFakeAccount(page)).toBeNull();
   });
@@ -64,7 +73,7 @@ test.describe("Welcome", () => {
     await page.goto("/");
     await expect(welcome(page)).toBeVisible();
 
-    await page.getByRole("button", { name: "Skip" }).click();
+    await page.getByRole("button", { name: "Skip for now" }).click();
 
     await expect(home(page)).toBeVisible();
     expect(await readFakeAccount(page)).toBeNull();
@@ -105,7 +114,7 @@ test.describe("Welcome", () => {
   }) => {
     await page.goto("/clubs");
     await expect(welcome(page)).toBeVisible();
-    await page.getByRole("button", { name: "Skip" }).click();
+    await page.getByRole("button", { name: "Skip for now" }).click();
 
     await expect(page).toHaveURL(/\/clubs$/);
     await expect(page.getByRole("heading", { level: 1, name: "Clubs" })).toBeVisible();

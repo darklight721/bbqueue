@@ -128,6 +128,19 @@ export function WarningIcon(props: IconProps) {
   );
 }
 
+/** Wi-Fi fan with a slash: no connection. */
+export function OfflineIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M2.5 8.75a14 14 0 0 1 4.6-2.95M10.9 5.05A14 14 0 0 1 21.5 8.75" />
+      <path d="M5.75 12.25a9 9 0 0 1 4-2.1M14.9 10.4a9 9 0 0 1 3.35 1.85" />
+      <path d="M9.1 15.6a4.5 4.5 0 0 1 5.8 0" />
+      <path d="M12 19.25v.01" />
+      <path d="m3.5 3.5 17 17" />
+    </Icon>
+  );
+}
+
 export function SearchIcon(props: IconProps) {
   return (
     <Icon {...props}>
