@@ -17,7 +17,7 @@ import {
   CopyIcon,
   OfflineIcon,
   PencilIcon,
-  ShareIcon,
+  PlusIcon,
   WarningIcon,
 } from "../../components/icons.tsx";
 import { NAME_ERROR_MESSAGE } from "../../components/nameErrors.ts";
@@ -419,15 +419,15 @@ function InstallHint() {
       style={delay(2)}
     >
       <span className="grid size-11 shrink-0 place-items-center rounded-full bg-volt text-[#14201a]">
-        <ShareIcon className="size-5" />
+        <PlusIcon className="size-5" />
       </span>
       <div className="flex min-w-0 flex-col gap-1">
         <h2 id={titleId} className="font-display text-xl leading-tight font-bold uppercase">
-          Add to Home Screen to keep your Account
+          Install the app
         </h2>
         <p className="leading-snug text-base-content/75">
-          Safari can clear websites you haven't opened for a while, and your Account with them. Tap{" "}
-          <ShareIcon className="inline size-[1.1em] -translate-y-px" /> Share, then{" "}
+          Get the most out of BBQueue: it opens full screen and keeps your Account safe. In your
+          browser's Share or ⋮ menu, choose{" "}
           <span className="font-semibold text-base-content">Add to Home Screen</span>.
         </p>
       </div>

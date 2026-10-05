@@ -132,20 +132,13 @@ test.describe("Account settings", () => {
     await expect(page.getByText("Changing your name needs a connection.")).toBeVisible();
   });
 
-  test("iOS Safari: the Add to Home Screen hint can be dismissed for good", async ({
-    page,
-    browserName,
-  }) => {
+  test("the Install the app hint can be dismissed for good", async ({ page }) => {
     await seedStorage(page, { account: ROY });
     await page.goto("/account");
     await expect(accountCard(page)).toBeVisible();
-    const hint = page.getByRole("region", { name: "Add to Home Screen to keep your Account" });
+    const hint = page.getByRole("region", { name: "Install the app" });
 
-    if (browserName !== "webkit") {
-      // Only iOS Safari clears an un-installed site's data; elsewhere there's nothing to say.
-      await expect(hint).toHaveCount(0);
-      return;
-    }
+    // Both projects emulate a phone in its browser (Android Chrome, iOS Safari), so it shows.
     await expect(hint).toBeVisible();
     await hint.getByRole("button", { name: "Dismiss tip" }).click();
     await expect(hint).toHaveCount(0);

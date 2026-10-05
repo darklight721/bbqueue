@@ -5,7 +5,7 @@
 - the Account ID, with a copy button
 - with no Account, "Add your name", which creates one
 
-After an Account is created, the app asks the browser to keep its data. In iOS Safari, when the app isn't installed, it shows a gentle "Add to Home Screen to keep your Account" hint. Delete Account comes later, in 11.
+After an Account is created, the app asks the browser to keep its data. In iOS Safari and Android browsers, when the app isn't installed, it shows a gentle "Install the app" hint (Add to Home Screen). Delete Account comes later, in 11.
 
 Spec: `.scratch/accounts/spec.md` (stories 5, 8–11).
 
@@ -19,7 +19,7 @@ Spec: `.scratch/accounts/spec.md` (stories 5, 8–11).
 - [x] Copy Account ID, with feedback that it was copied
 - [x] "Add your name" when there's no Account creates one (needs a connection)
 - [x] Asks the browser to keep the app's data after an Account is created
-- [x] iOS Safari "Add to Home Screen" hint when the app isn't installed; it can be dismissed
+- [x] iOS Safari and Android "Install the app" hint when the app isn't installed; it can be dismissed
 - [x] Back from Account settings returns to Home
 
 ## E2E workflows

@@ -32,7 +32,7 @@ Using the app without an Account still does everything it does today, all on the
 8. As anyone on Home, I want an avatar in the top-right corner showing my initials (or a default icon without an Account), so that I can reach my Account settings.
 9. As an Account holder, I want to see my name in Account settings and edit it in place, so that I can fix typos.
 10. As an Account holder, I want to see my Account ID with a copy button, so that I can send it to an Organizer.
-11. As an Account holder on iOS Safari, I want a gentle hint to Add to Home Screen, so that Safari doesn't wipe my Account.
+11. As an Account holder on iOS Safari or Android, I want a gentle hint to install the app (Add to Home Screen), so that I get the most out of it and the browser doesn't wipe my Account.
 12. As an Account holder, I want to delete my Account, so that my data leaves the server.
 13. As an Account holder deleting my Account, I want one confirm dialog listing exactly which Shared clubs and Ended sessions will be deleted, so that nothing surprises me.
 14. As the only Organizer of a Shared club that has other Accounts, I want deletion to be blocked with those Clubs named, so that I don't leave a Club with no Organizer.
@@ -142,7 +142,7 @@ Using the app without an Account still does everything it does today, all on the
 - **Make shared club:**
   - A pure domain function turns a Local club into a Shared club: pick an existing row or add "me", and link it as Organizer.
   - The app uploads the Club, its roster, its Ended sessions and its Active session (if any, with this device as host), keeping the Club's id, then marks it Shared on the device. It can't be undone.
-- **Losing an Account on iOS:** ask the browser to keep the app's data (`navigator.storage.persist()`). Show an "Add to Home Screen" hint in iOS Safari when the app isn't installed. Organizers can unlink a linked Account that no longer exists.
+- **Losing an Account on iOS:** ask the browser to keep the app's data (`navigator.storage.persist()`). Show an "Install the app" hint (Add to Home Screen) in iOS Safari and in Android browsers when the app isn't installed. Organizers can unlink a linked Account that no longer exists.
 - **Offline behaviour:** Firestore's offline cache and write queue are on. Adding Club player rows, linking Accounts, changing Roles, taking over, Make shared club, creating and deleting an Account all need a connection; their controls are turned off with a reason when offline.
 
 ## Testing Decisions
@@ -208,4 +208,4 @@ Using the app without an Account still does everything it does today, all on the
 
 - Firebase's free plan covers the expected usage (a few clubs, weekly nights) without being paused. Re-check limits on the official pricing page when setting up the project.
 - The Firebase web config is public by design: Security Rules are the real protection.
-- iOS keeps separate storage for the installed Home Screen app and for Safari, so an Account created in Safari doesn't appear in the installed app. The "Add to Home Screen" hint should be shown before people get attached to a Safari-only Account.
+- iOS keeps separate storage for the installed Home Screen app and for Safari, so an Account created in Safari doesn't appear in the installed app. The "Install the app" hint should be shown before people get attached to a Safari-only Account.

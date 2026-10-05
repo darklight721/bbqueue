@@ -9,6 +9,8 @@ const IPHONE_CHROME =
   "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/130.0.6723.90 Mobile/15E148 Safari/604.1";
 const ANDROID_CHROME =
   "Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36";
+const DESKTOP_CHROME =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
 
 describe("shouldOfferInstallHint", () => {
   it("is offered in iOS Safari when the app isn't installed", () => {
@@ -26,15 +28,23 @@ describe("shouldOfferInstallHint", () => {
     ).toBe(false);
   });
 
-  it("isn't offered once the app is installed", () => {
+  it("is offered on Android when the app isn't installed", () => {
     expect(
-      shouldOfferInstallHint({ userAgent: IPHONE_SAFARI, maxTouchPoints: 5, standalone: true }),
-    ).toBe(false);
+      shouldOfferInstallHint({ userAgent: ANDROID_CHROME, maxTouchPoints: 5, standalone: false }),
+    ).toBe(true);
+  });
+
+  it("isn't offered once the app is installed", () => {
+    for (const userAgent of [IPHONE_SAFARI, ANDROID_CHROME]) {
+      expect(shouldOfferInstallHint({ userAgent, maxTouchPoints: 5, standalone: true })).toBe(
+        false,
+      );
+    }
   });
 
   it("isn't offered in other browsers", () => {
-    for (const userAgent of [IPHONE_CHROME, ANDROID_CHROME]) {
-      expect(shouldOfferInstallHint({ userAgent, maxTouchPoints: 5, standalone: false })).toBe(
+    for (const userAgent of [IPHONE_CHROME, DESKTOP_CHROME]) {
+      expect(shouldOfferInstallHint({ userAgent, maxTouchPoints: 0, standalone: false })).toBe(
         false,
       );
     }

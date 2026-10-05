@@ -10,13 +10,15 @@ export interface BrowserInfo {
 const OTHER_IOS_BROWSERS = /CriOS|FxiOS|EdgiOS|OPiOS|GSA\/|YaBrowser|DuckDuckGo/;
 
 /**
- * Whether to suggest "Add to Home Screen": iOS Safari, not installed. Safari clears the data of
- * sites that haven't been used for a while (and the Account with it); installed web apps keep it.
- * iPads say they are a Mac, so a Mac with a touch screen counts as iOS.
+ * Whether to suggest installing the app (Add to Home Screen): iOS Safari or any Android browser,
+ * not installed. Browsers may clear the data of sites that haven't been used for a while (and the
+ * Account with it); installed web apps keep it. iPads say they are a Mac, so a Mac with a touch
+ * screen counts as iOS.
  */
 export function shouldOfferInstallHint(browser: BrowserInfo): boolean {
   const { userAgent, maxTouchPoints, standalone } = browser;
   if (standalone) return false;
+  if (/Android/.test(userAgent)) return true;
   const ios =
     /iPhone|iPad|iPod/.test(userAgent) || (/Macintosh/.test(userAgent) && maxTouchPoints > 1);
   const safari = /Safari\//.test(userAgent) && !OTHER_IOS_BROWSERS.test(userAgent);

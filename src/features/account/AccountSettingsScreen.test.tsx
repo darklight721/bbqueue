@@ -284,9 +284,8 @@ describe("Account settings", () => {
     });
   });
 
-  describe("Add to Home Screen hint", () => {
-    const hint = () =>
-      screen.queryByRole("region", { name: "Add to Home Screen to keep your Account" });
+  describe("Install the app hint", () => {
+    const hint = () => screen.queryByRole("region", { name: "Install the app" });
 
     it("shows in iOS Safari and can be dismissed for good", async () => {
       Object.defineProperty(navigator, "userAgent", { value: IPHONE_SAFARI, configurable: true });
