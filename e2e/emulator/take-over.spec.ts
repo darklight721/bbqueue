@@ -26,7 +26,7 @@ test.describe("Taking over as Session host", () => {
 
     await anaPage.getByRole("button", { name: "Take over" }).click();
     const dialog = anaPage.getByRole("dialog", { name: "Take over as host?" });
-    await expect(dialog).toContainText("Changes Roy Smith made but never uploaded will be lost");
+    await expect(dialog).toContainText("Changes Roy Smith hasn't uploaded are lost");
     await dialog.getByRole("button", { name: "Take over" }).click();
 
     // Ana runs it now.

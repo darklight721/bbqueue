@@ -71,8 +71,9 @@ test.describe("Deleting an Account, between two people", () => {
     await page.getByRole("button", { name: "Delete Account" }).click();
     const dialog = page.getByRole("dialog", { name: "Delete your Account?" });
     await expect(dialog).toContainText(solo.name);
-    await expect(dialog).toContainText("You'll be unlinked from these clubs:");
-    await expect(dialog).toContainText(duo.name);
+    await expect(
+      dialog.getByRole("region", { name: "Clubs you'll be unlinked from" }),
+    ).toContainText(duo.name);
     await dialog.getByRole("button", { name: "Delete Account" }).click();
 
     // Roy is signed out, with the default avatar, and the Shared clubs are gone from his device.
@@ -146,7 +147,9 @@ test.describe("Deleting an Account, between two people", () => {
 
     await page.goto("/account");
     await page.getByRole("button", { name: "Delete Account" }).click();
-    await expect(page.getByRole("dialog")).toContainText("You host the active session of");
+    await expect(
+      page.getByRole("dialog").getByRole("region", { name: "Sessions you host" }),
+    ).toContainText(duo.name);
     await page.getByRole("dialog").getByRole("button", { name: "Delete Account" }).click();
     await expect(page).toHaveURL(/\/$/, { timeout: 30_000 });
     // The Session stays on Roy's device, on its own.

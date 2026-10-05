@@ -138,7 +138,7 @@ describe("Make shared club", () => {
 
     const confirm = screen.getByRole("dialog", { name: "Make Garage a shared club?" });
     expect(confirm).toHaveTextContent(
-      "Anyone you add will be able to see this Club and its Sessions. This can't be undone.",
+      "Anyone you add can see this club and its sessions. This can't be undone.",
     );
     await userEvent.click(within(confirm).getByRole("button", { name: "Cancel" }));
 
@@ -216,9 +216,7 @@ describe("Make shared club", () => {
     await userEvent.click(makeButton());
 
     expect(screen.getByRole("radio", { name: /Add me/ })).toBeDisabled();
-    expect(
-      screen.getByText(/A player called Roy Smith is on the roster already/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Roy Smith is on the roster already/)).toBeInTheDocument();
   });
 
   it("brings the Club's Ended sessions and its running Session, making this Account the host", async () => {

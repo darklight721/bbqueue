@@ -1,6 +1,7 @@
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo, useState, type ReactNode } from "react";
 import { makeClubShared } from "../../backend/clubs.ts";
 import { ConfirmDialog } from "../../components/ConfirmDialog.tsx";
+import { UsersIcon } from "../../components/icons.tsx";
 import { Modal } from "../../components/Modal.tsx";
 import { OfflineNote } from "../../components/OfflineNote.tsx";
 import type { ShareChoice } from "../../domain/makeShared.ts";
@@ -10,7 +11,7 @@ import { clubErrorMessage } from "./clubErrors.ts";
 
 /** What the confirm dialog says: others will see the Club, and there is no way back. */
 export const MAKE_SHARED_MESSAGE =
-  "Anyone you add will be able to see this Club and its Sessions. This can't be undone.";
+  "Anyone you add can see this club and its sessions. This can't be undone.";
 
 const ADD_ME = "add-me";
 
@@ -51,11 +52,11 @@ export function MakeShared({
 
   if (!account) {
     return (
-      <section aria-label="Share this club" className="flex flex-col gap-1">
+      <ShareCard>
         <p className="text-sm text-base-content/70">
           Create an Account to share this club with other people.
         </p>
-      </section>
+      </ShareCard>
     );
   }
 
@@ -90,10 +91,13 @@ export function MakeShared({
   }
 
   return (
-    <section aria-label="Share this club" className="flex flex-col gap-2">
+    <ShareCard>
+      <p className="text-sm text-base-content/70">
+        Only this device has this club. Share it so other people can see it and its sessions.
+      </p>
       <button
         type="button"
-        className="btn btn-lg btn-outline border-base-300"
+        className="btn w-full border-base-300 bg-base-100 btn-outline sm:w-auto sm:self-start"
         disabled={blocked}
         aria-describedby={blocked || problem ? reasonId : undefined}
         onClick={() => {
@@ -101,7 +105,8 @@ export function MakeShared({
           setChoosing(true);
         }}
       >
-        {busy ? "Making shared…" : "Make shared club"}
+        <UsersIcon className="size-5" />
+        {busy ? "Sharing…" : "Make shared club"}
       </button>
       {!online ? (
         <OfflineNote id={reasonId}>You're offline. Sharing a club needs a connection.</OfflineNote>
@@ -113,11 +118,7 @@ export function MakeShared({
         <p id={reasonId} role="alert" className="text-sm font-semibold text-error">
           {problem}
         </p>
-      ) : (
-        <p className="text-sm text-base-content/70">
-          Let other people see this club and its sessions. Only this device has it today.
-        </p>
-      )}
+      ) : null}
 
       <Modal
         open={choosing}
@@ -164,8 +165,8 @@ export function MakeShared({
                   <span className="font-semibold">Add me</span>
                   <span className="text-sm text-base-content/70">
                     {addMeTaken
-                      ? `A player called ${account.name} is on the roster already. Pick that row.`
-                      : `${account.name}, Intermediate`}
+                      ? `${account.name} is on the roster already. Pick that row.`
+                      : `${account.name} · Intermediate`}
                   </span>
                 </span>
               </label>
@@ -202,6 +203,25 @@ export function MakeShared({
         onConfirm={() => void run()}
         onCancel={() => setConfirming(false)}
       />
+    </ShareCard>
+  );
+}
+
+/**
+ * Its own quiet card between the roster and the Danger zone: a one-way step, but not a
+ * destructive one, so it is neither red nor a big primary button.
+ */
+function ShareCard({ children }: { children: ReactNode }) {
+  const headingId = useId();
+  return (
+    <section
+      aria-labelledby={headingId}
+      className="flex flex-col gap-3 rounded-box border-[1.5px] border-base-300 bg-base-200/50 p-4"
+    >
+      <h2 id={headingId} className="font-display text-xl leading-none uppercase">
+        Share this club
+      </h2>
+      {children}
     </section>
   );
 }

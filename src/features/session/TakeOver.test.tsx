@@ -121,7 +121,7 @@ describe("Take over", () => {
     await userEvent.click(screen.getByRole("button", { name: "Take over" }));
     const dialog = screen.getByRole("dialog");
     expect(dialog).toHaveTextContent("Take over as host?");
-    expect(dialog).toHaveTextContent("Changes Ana made but never uploaded will be lost");
+    expect(dialog).toHaveTextContent("Changes Ana hasn't uploaded are lost");
     await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
 
     expect(screen.getByText("Watching. Ana runs this session.")).toBeInTheDocument();

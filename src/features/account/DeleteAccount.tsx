@@ -1,7 +1,8 @@
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
 import { deleteMyAccount, useBackendOnline } from "../../backend/clubs.ts";
 import { BackendError } from "../../backend/backend.ts";
+import { CheckIcon, LinkIcon, PlayIcon, TrashIcon } from "../../components/icons.tsx";
 import { Modal } from "../../components/Modal.tsx";
 import { OfflineNote } from "../../components/OfflineNote.tsx";
 import { planAccountDeletion } from "../../domain/accountDeletion.ts";
@@ -76,6 +77,7 @@ export function DeleteAccount({ account }: { account: Account }) {
     >
       <button
         type="button"
+        // Red only when it can be used, like Delete club; daisyUI's disabled grey shows otherwise.
         className={`btn w-full btn-ghost ${disabled ? "" : "text-error"}`}
         disabled={disabled}
         aria-describedby={disabled || problem ? noteId : undefined}
@@ -84,11 +86,19 @@ export function DeleteAccount({ account }: { account: Account }) {
         Delete Account
       </button>
       {blocked ? (
-        <div id={noteId} className="px-4 text-center text-sm text-base-content/75">
+        <div
+          id={noteId}
+          className="flex flex-col gap-2 rounded-box bg-base-200 px-4 py-3 text-sm text-base-content/75"
+        >
           <p>You're the only Organizer of:</p>
-          <ul className="my-1 font-semibold">
+          <ul className="flex flex-wrap gap-1.5">
             {plan.blocked.map((club) => (
-              <li key={club.id}>{club.name}</li>
+              <li
+                key={club.id}
+                className="rounded-full border-[1.5px] border-base-300 bg-base-100 px-2.5 py-0.5 font-semibold text-base-content"
+              >
+                {club.name}
+              </li>
             ))}
           </ul>
           <p>Make someone else an Organizer first.</p>
@@ -106,74 +116,135 @@ export function DeleteAccount({ account }: { account: Account }) {
       <Modal
         open={confirming}
         title="Delete your Account?"
-        description="This removes your Account from the server. It can't be undone, and your Account ID can't be used again."
+        description="This can't be undone, and your Account ID can't be used again."
         onClose={() => (busy ? undefined : setConfirming(false))}
       >
-        <div className="flex flex-col gap-4">
+        {/* Long lists scroll here, so Cancel and Delete always stay on screen. */}
+        <div className="-mx-6 flex max-h-[45dvh] flex-col gap-5 overflow-y-auto border-y border-base-300 px-6 py-4">
           {plan.deleteClubs.length > 0 ? (
-            <div>
-              <p className="font-semibold">These shared clubs will be deleted:</p>
-              <ul className="mt-1 list-disc pl-5">
+            <PlanSection
+              tone="danger"
+              icon={<TrashIcon className="size-4" />}
+              title="Shared clubs that will be deleted"
+            >
+              <PlanList>
                 {plan.deleteClubs.map(({ club, endedCount }) => (
-                  <li key={club.id}>
-                    {club.name}
-                    {endedCount > 0 ? (
-                      <span className="text-base-content/70">
-                        {" "}
-                        and its {countLabel(endedCount, "past session", "past sessions")}
-                      </span>
-                    ) : null}
+                  <li key={club.id} className="flex items-baseline gap-3 px-3 py-2">
+                    <span className="min-w-0 flex-1 truncate font-semibold">{club.name}</span>
+                    <span className="shrink-0 text-sm text-base-content/65">
+                      {endedCount > 0
+                        ? countLabel(endedCount, "past session", "past sessions")
+                        : "No past sessions"}
+                    </span>
                   </li>
                 ))}
-              </ul>
-            </div>
+              </PlanList>
+            </PlanSection>
           ) : null}
           {plan.unlinkClubs.length > 0 ? (
-            <div>
-              <p className="font-semibold">You'll be unlinked from these clubs:</p>
-              <ul className="mt-1 list-disc pl-5">
+            <PlanSection
+              icon={<LinkIcon className="size-4" />}
+              title="Clubs you'll be unlinked from"
+              note="Your row stays on their rosters as a plain player."
+            >
+              <PlanList>
                 {plan.unlinkClubs.map((club) => (
-                  <li key={club.id}>{club.name}</li>
+                  <li key={club.id} className="truncate px-3 py-2 font-semibold">
+                    {club.name}
+                  </li>
                 ))}
-              </ul>
-              <p className="mt-1 text-sm text-base-content/70">
-                Your row stays on their rosters as a plain player.
-              </p>
-            </div>
+              </PlanList>
+            </PlanSection>
           ) : null}
           {plan.hostedClubs.length > 0 ? (
-            <p className="text-sm text-base-content/70">
-              You host the active session of {plan.hostedClubs.map((club) => club.name).join(", ")}.
-              It stays for another Organizer to take over, and this device keeps a copy if it has no
-              session of its own.
-            </p>
+            <PlanSection
+              icon={<PlayIcon className="size-4" />}
+              title="Sessions you host"
+              note="They stay for another Organizer to take over. This device keeps a copy if it has no session of its own."
+            >
+              <PlanList>
+                {plan.hostedClubs.map((club) => (
+                  <li key={club.id} className="truncate px-3 py-2 font-semibold">
+                    {club.name}
+                  </li>
+                ))}
+              </PlanList>
+            </PlanSection>
           ) : null}
           {plan.deleteClubs.length === 0 && plan.unlinkClubs.length === 0 ? (
-            <p>No shared clubs are affected.</p>
+            <p className="text-base-content/80">No shared clubs are affected.</p>
           ) : null}
-          <p className="text-sm text-base-content/70">
+          <p className="flex items-center gap-2 text-sm text-base-content/80">
+            <span
+              aria-hidden="true"
+              className="grid size-6 shrink-0 place-items-center rounded-full bg-primary/12 text-primary"
+            >
+              <CheckIcon className="size-4" />
+            </span>
             Your local clubs and the sessions on this device stay.
           </p>
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              className="btn btn-lg btn-outline border-base-300"
-              disabled={busy}
-              onClick={() => setConfirming(false)}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="btn btn-lg btn-error"
-              disabled={busy}
-              onClick={() => void run()}
-            >
-              {busy ? "Deleting…" : "Delete Account"}
-            </button>
-          </div>
+        </div>
+        <div className="mt-5 grid grid-cols-2 gap-3 pb-2">
+          <button
+            type="button"
+            className="btn btn-lg btn-outline border-base-300"
+            disabled={busy}
+            onClick={() => setConfirming(false)}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn btn-lg btn-error"
+            disabled={busy}
+            onClick={() => void run()}
+          >
+            {busy ? "Deleting…" : "Delete Account"}
+          </button>
         </div>
       </Modal>
     </section>
+  );
+}
+
+/** One part of the plan: a small labelled heading, its list, and an optional line under it. */
+function PlanSection({
+  tone = "plain",
+  icon,
+  title,
+  note,
+  children,
+}: {
+  tone?: "danger" | "plain";
+  icon: ReactNode;
+  title: string;
+  note?: string;
+  children: ReactNode;
+}) {
+  const headingId = useId();
+  const iconTone =
+    tone === "danger" ? "bg-error/12 text-error" : "bg-base-200 text-base-content/70";
+  return (
+    <section aria-labelledby={headingId} className="flex flex-col gap-2">
+      <h3 id={headingId} className="flex items-center gap-2 text-sm font-bold">
+        <span
+          aria-hidden="true"
+          className={`grid size-6 shrink-0 place-items-center rounded-full ${iconTone}`}
+        >
+          {icon}
+        </span>
+        {title}
+      </h3>
+      {children}
+      {note ? <p className="text-sm text-base-content/65">{note}</p> : null}
+    </section>
+  );
+}
+
+function PlanList({ children }: { children: ReactNode }) {
+  return (
+    <ul className="divide-y divide-base-300 rounded-box border-[1.5px] border-base-300 bg-base-100">
+      {children}
+    </ul>
   );
 }

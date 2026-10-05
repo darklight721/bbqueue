@@ -44,8 +44,9 @@ test.describe("Delete Account", () => {
 
     await page.getByRole("button", { name: "Delete Account" }).click();
     const dialog = page.getByRole("dialog", { name: "Delete your Account?" });
-    await expect(dialog).toContainText("These shared clubs will be deleted:");
-    await expect(dialog).toContainText("Solo Club and its 1 past session");
+    const deleted = dialog.getByRole("region", { name: "Shared clubs that will be deleted" });
+    await expect(deleted).toContainText("Solo Club");
+    await expect(deleted).toContainText("1 past session");
     await expect(dialog).toContainText("Your local clubs and the sessions on this device stay.");
     await dialog.getByRole("button", { name: "Delete Account" }).click();
 

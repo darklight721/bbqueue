@@ -40,7 +40,9 @@ export function PlayersSection({
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 } = {}) {
-  const { session, stats, readOnly } = useSessionView();
+  const view = useSessionView();
+  const { session, stats, readOnly } = view;
+  const account = useAccount();
   const actions = useSessionActions();
   const [ownOpen, setOwnOpen] = useState(true);
   const open = openProp ?? ownOpen;
@@ -51,7 +53,12 @@ export function PlayersSection({
   const [sort, setSort] = useState<PlayerSort>(loadPlayerSort);
   const bodyId = useId();
   const active = useMemo(() => activePlayersByName(session.players), [session.players]);
-  const players = useMemo(() => sortPlayers(active, stats, sort), [active, stats, sort]);
+  const sorted = useMemo(() => sortPlayers(active, stats, sort), [active, stats, sort]);
+  // Watching: the Player's own row goes first, so "me" is the first thing they find.
+  const mineId = sorted.find((player) => isOwnWhileWatching(player, view, account))?.id ?? null;
+  const players = mineId
+    ? [...sorted.filter((player) => player.id === mineId), ...sorted.filter((p) => p.id !== mineId)]
+    : sorted;
   const [removing, setRemoving] = useState<SessionPlayer | null>(null);
 
   return (
@@ -135,7 +142,7 @@ function LeftNotice() {
   );
   if (mine.length === 0 || mine.some((player) => !player.removed)) return null;
   return (
-    <p className="rounded-box border-[1.5px] border-dashed border-base-300 px-4 py-3 text-sm font-semibold text-base-content/75">
+    <p className="rounded-box bg-base-200 px-4 py-3 text-sm font-semibold text-base-content/75">
       You left this session. An Organizer can add you back.
     </p>
   );
@@ -185,29 +192,49 @@ function SortControl({
   );
 }
 
-function PlayerRow({ player, onRemove }: { player: SessionPlayer; onRemove: () => void }) {
-  const { stats, readOnly, sharedClubId } = useSessionView();
-  const actions = useSessionActions();
-  const account = useAccount();
-  // Watching a Shared club's Session: the Player's own Session player gets requests, not actions.
-  const isMine =
+/** The Account's own Session player, while watching a Shared club's Session: it gets requests. */
+function isOwnWhileWatching(
+  player: SessionPlayer,
+  { readOnly, sharedClubId }: { readOnly: boolean; sharedClubId: string | null },
+  account: { accountId: string } | null,
+): boolean {
+  return (
     readOnly &&
     sharedClubId !== null &&
     !!player.accountId &&
     !!account &&
-    accountIdsEqual(player.accountId, account.accountId);
+    accountIdsEqual(player.accountId, account.accountId)
+  );
+}
+
+function PlayerRow({ player, onRemove }: { player: SessionPlayer; onRemove: () => void }) {
+  const view = useSessionView();
+  const { stats, readOnly } = view;
+  const actions = useSessionActions();
+  const account = useAccount();
+  // Watching a Shared club's Session: the Player's own Session player gets requests, not actions.
+  const isMine = isOwnWhileWatching(player, view, account);
   const status = playerStatus(player, stats.get(player.id));
   const onCourt = status.tone === "on-court";
 
   return (
     <li
-      className={`flex min-h-16 items-center gap-2 border-b border-base-300 py-2 pl-4 last:border-b-0 md:odd:border-r ${readOnly ? "pr-4" : "pr-2"}`}
+      className={`flex min-h-16 border-b border-base-300 py-2 pl-4 last:border-b-0 md:odd:border-r ${
+        isMine
+          ? "flex-col gap-2.5 bg-primary/6 py-3 shadow-[inset_4px_0_0_var(--color-primary)]"
+          : "items-center gap-2"
+      } ${readOnly ? "pr-4" : "pr-2"}`}
     >
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className={player.sittingOut && !onCourt ? "opacity-55" : ""}>
           <SessionPlayerChip playerId={player.id} layout="inline" />
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
+          {isMine ? (
+            <span className="rounded-full bg-primary px-2 py-px text-xs font-bold tracking-wider text-primary-content uppercase">
+              You
+            </span>
+          ) : null}
           <span
             className={`rounded-full border-[1.5px] px-2 py-px text-xs font-semibold whitespace-nowrap ${STATUS_TONE_CLASS[status.tone]}`}
           >
@@ -221,7 +248,7 @@ function PlayerRow({ player, onRemove }: { player: SessionPlayer; onRemove: () =
         </div>
       </div>
 
-      {isMine ? <OwnRequestControls player={player} /> : null}
+      {isMine ? <OwnRequestControls player={player} onCourt={onCourt} /> : null}
       {readOnly ? null : (
         <>
           <button

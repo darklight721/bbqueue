@@ -179,6 +179,18 @@ describe("A Player's requests while watching", () => {
     expect(screen.getByRole("button", { name: "Ask to sit out" })).toBeInTheDocument();
   });
 
+  it("puts the Player's own row first, marked You", async () => {
+    await setup();
+    renderSession();
+
+    const first = within(screen.getByRole("list", { name: "Session players" })).getAllByRole(
+      "listitem",
+    )[0]!;
+    expect(first).toHaveTextContent(/^Cat/);
+    expect(within(first).getByText("You")).toBeInTheDocument();
+    expect(within(rowOf("Roy")).queryByText("You")).not.toBeInTheDocument();
+  });
+
   it("asks before leaving, and Cancel sends nothing", async () => {
     await setup();
     renderSession();
@@ -202,6 +214,9 @@ describe("A Player's requests while watching", () => {
     expect(within(rowOf("Cat")).getByText("Waiting for host")).toBeInTheDocument();
     const [request] = await requestsOf();
     expect(request).toMatchObject({ kind: "leave" });
+    expect(
+      within(rowOf("Cat")).getByText(/You asked to leave\.|You'll leave when this match ends\./),
+    ).toBeInTheDocument();
 
     const host = getSharedSessions()[0]!;
     const { session: applied } = applyRequests(host.session, [request!], {

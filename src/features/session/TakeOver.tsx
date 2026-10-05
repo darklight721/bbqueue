@@ -21,12 +21,15 @@ function takeOverError(error: unknown): string {
 /**
  * "Take over" for an Organizer who isn't the Session host (ADR-0007): a confirm dialog warns that
  * the host's changes that were never uploaded are lost, then this Account becomes the host.
+ * Sits as a ruled-off footer of the watching strip: easy to find, small and outlined so it isn't
+ * tapped by accident, and the dialog asks first.
  */
 export function TakeOver({ clubId, hostName }: { clubId: string; hostName: string }) {
   const online = useBackendOnline();
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  const offline = online === false;
 
   async function confirm() {
     setConfirming(false);
@@ -43,16 +46,24 @@ export function TakeOver({ clubId, hostName }: { clubId: string; hostName: strin
   }
 
   return (
-    <div className="mt-1.5 flex flex-col items-start gap-1.5">
-      <button
-        type="button"
-        className="btn btn-sm border-base-300 bg-base-100 btn-outline"
-        disabled={online === false || busy}
-        onClick={() => setConfirming(true)}
-      >
-        Take over
-      </button>
-      {online === false ? <OfflineNote>Taking over needs a connection.</OfflineNote> : null}
+    <div className="flex flex-col gap-1.5 border-t border-base-content/10 pt-2.5">
+      <div className="flex items-center gap-3">
+        <div className="min-w-0 flex-1 text-sm">
+          {offline ? (
+            <OfflineNote>Taking over needs a connection.</OfflineNote>
+          ) : (
+            <p className="text-base-content/65">As an Organizer, you can run it instead.</p>
+          )}
+        </div>
+        <button
+          type="button"
+          className="btn btn-sm h-9 shrink-0 border-base-300 bg-base-100 btn-outline"
+          disabled={offline || busy}
+          onClick={() => setConfirming(true)}
+        >
+          {busy ? "Taking over…" : "Take over"}
+        </button>
+      </div>
       {problem ? (
         <p role="alert" className="text-sm font-semibold text-error">
           {problem}
@@ -61,7 +72,7 @@ export function TakeOver({ clubId, hostName }: { clubId: string; hostName: strin
       <ConfirmDialog
         open={confirming}
         title="Take over as host?"
-        message={`Changes ${hostName} made but never uploaded will be lost, and ${hostName}'s device turns read-only.`}
+        message={`You'll run this session from this device. Changes ${hostName} hasn't uploaded are lost, and ${hostName}'s device switches to watching.`}
         confirmLabel="Take over"
         onConfirm={() => void confirm()}
         onCancel={() => setConfirming(false)}

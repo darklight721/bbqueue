@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { BackendError } from "../../../backend/backend.ts";
 import { useBackendOnline } from "../../../backend/clubs.ts";
 import { requestSessionChange } from "../../../backend/sessions.ts";
 import { ConfirmDialog } from "../../../components/ConfirmDialog.tsx";
+import { OfflineNote } from "../../../components/OfflineNote.tsx";
 import type { SessionPlayer, SessionRequestKind } from "../../../domain/types.ts";
 import { useRequests } from "../../../storage/store.ts";
 import { useSessionActions, useSessionView } from "../context.ts";
@@ -18,12 +19,35 @@ function requestError(error: unknown): string {
   }
 }
 
+/** What the waiting line says the host was asked for. */
+function waitingDetail(kind: SessionRequestKind | null, onCourt: boolean): string | null {
+  switch (kind) {
+    case "sit-out":
+      return "You asked to sit out.";
+    case "back-in":
+      return "You asked to be back in.";
+    case "leave":
+      // The engine can't take a player out mid-match: the host applies it afterwards.
+      return onCourt ? "You'll leave when this match ends." : "You asked to leave.";
+    default:
+      return null;
+  }
+}
+
 /**
  * What a Player can do for their own Session player while watching (ADR-0007): ask the host to
  * switch their Sitting out, or to let them leave. A request waits ("Waiting for host") until the
- * host's device applies or skips it; only one waits at a time.
+ * host's device applies or skips it; only one waits at a time. Sits under the row's name and
+ * status, full width, so the labels can say what they do.
  */
-export function OwnRequestControls({ player }: { player: SessionPlayer }) {
+export function OwnRequestControls({
+  player,
+  onCourt,
+}: {
+  player: SessionPlayer;
+  /** In a Match right now: a leave waits until the Match ends. */
+  onCourt: boolean;
+}) {
   const { session, sharedClubId } = useSessionView();
   const actions = useSessionActions();
   const online = useBackendOnline();
@@ -31,16 +55,18 @@ export function OwnRequestControls({ player }: { player: SessionPlayer }) {
     (request) => request.sessionId === session.id && request.sessionPlayerId === player.id,
   );
   const [confirmLeave, setConfirmLeave] = useState(false);
-  const [sending, setSending] = useState(false);
+  const [sending, setSending] = useState<SessionRequestKind | null>(null);
+  const offlineId = useId();
   if (!sharedClubId) return null;
 
-  const waiting = sending || requests.some((request) => request.status === "pending");
+  const pending = requests.find((request) => request.status === "pending") ?? null;
+  const waiting = sending !== null || pending !== null;
   const last = requests.at(-1);
   const notApplied = !waiting && last?.status === "skipped";
   const offline = online === false;
 
   async function send(kind: SessionRequestKind) {
-    setSending(true);
+    setSending(kind);
     try {
       await requestSessionChange(sharedClubId!, {
         sessionId: session.id,
@@ -51,47 +77,63 @@ export function OwnRequestControls({ player }: { player: SessionPlayer }) {
       console.error("Failed to send the request", error);
       actions.notify(requestError(error));
     } finally {
-      setSending(false);
+      setSending(null);
     }
   }
 
-  return (
-    <div className="flex shrink-0 flex-col items-end gap-1.5">
-      {waiting ? (
-        <span className="rounded-full border-[1.5px] border-dashed border-base-content/35 px-2 py-px text-xs font-semibold whitespace-nowrap text-base-content/75">
-          Waiting for host
+  if (waiting) {
+    const detail = waitingDetail(pending?.kind ?? sending, onCourt);
+    return (
+      <div className="flex items-center gap-2.5 rounded-field border-[1.5px] border-base-300 bg-base-100 px-3 py-2">
+        <span aria-hidden="true" className="relative flex size-2.5 shrink-0">
+          <span className="absolute inline-flex size-full animate-ping rounded-full bg-warning opacity-70 motion-reduce:hidden" />
+          <span className="relative inline-flex size-2.5 rounded-full bg-warning" />
         </span>
-      ) : (
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            className={`btn px-2 ${player.sittingOut ? "btn-primary" : "btn-outline border-base-300"}`}
-            aria-label={player.sittingOut ? "Ask to be back in" : "Ask to sit out"}
-            disabled={offline}
-            title={offline ? "Needs a connection" : undefined}
-            onClick={() => void send(player.sittingOut ? "back-in" : "sit-out")}
-          >
-            {player.sittingOut ? "Back in" : "Sit out"}
-          </button>
-          <button
-            type="button"
-            className="btn px-2 btn-ghost text-base-content/70 hover:text-error"
-            aria-label="Leave this session"
-            disabled={offline}
-            title={offline ? "Needs a connection" : undefined}
-            onClick={() => setConfirmLeave(true)}
-          >
-            Leave
-          </button>
-        </div>
-      )}
-      {notApplied ? (
-        <span className="text-xs text-base-content/60">Your last request wasn't needed.</span>
+        <p className="flex min-w-0 flex-col text-sm leading-snug" role="status">
+          <span className="font-semibold">Waiting for host</span>
+          {detail ? <span className="text-base-content/65">{detail}</span> : null}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          className={`btn px-2 ${player.sittingOut ? "btn-primary" : "btn-outline border-base-300 bg-base-100"}`}
+          disabled={offline}
+          title={offline ? "Needs a connection" : undefined}
+          aria-describedby={offline ? offlineId : undefined}
+          onClick={() => void send(player.sittingOut ? "back-in" : "sit-out")}
+        >
+          {player.sittingOut ? "Ask to be back in" : "Ask to sit out"}
+        </button>
+        <button
+          type="button"
+          className="btn px-2 btn-ghost text-error"
+          disabled={offline}
+          title={offline ? "Needs a connection" : undefined}
+          aria-describedby={offline ? offlineId : undefined}
+          onClick={() => setConfirmLeave(true)}
+        >
+          Leave this session
+        </button>
+      </div>
+      {offline ? (
+        <OfflineNote id={offlineId}>Asking the host needs a connection.</OfflineNote>
+      ) : notApplied ? (
+        <p className="text-sm text-base-content/60">Your last request wasn't needed.</p>
       ) : null}
       <ConfirmDialog
         open={confirmLeave}
         title="Leave this session?"
-        message="You won't be picked for matches. Only an Organizer can add you back."
+        message={
+          onCourt
+            ? "You'll leave when this match ends and won't be picked again. Only an Organizer can add you back."
+            : "You won't be picked for matches. Only an Organizer can add you back."
+        }
         confirmLabel="Leave"
         tone="danger"
         onConfirm={() => {

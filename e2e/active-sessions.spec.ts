@@ -293,7 +293,7 @@ test.describe("Shared active session", () => {
 
     await page.getByRole("button", { name: "Take over" }).click();
     const dialog = page.getByRole("dialog", { name: "Take over as host?" });
-    await expect(dialog).toContainText("Changes Another Host made but never uploaded will be lost");
+    await expect(dialog).toContainText("Changes Another Host hasn't uploaded are lost");
     await dialog.getByRole("button", { name: "Cancel" }).click();
     await expect(page.getByText(/Watching\./)).toBeVisible();
 

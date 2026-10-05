@@ -29,36 +29,40 @@ export function WatchingNote({
   const offline = note?.offline === true;
   return (
     <div
-      className={`flex items-center gap-3 rounded-box border-[1.5px] px-3 py-2.5 ${
+      className={`flex flex-col gap-2.5 rounded-box border-[1.5px] px-3 py-2.5 ${
         offline ? "border-warning/70 bg-warning/12" : "border-base-300 bg-base-200/60"
-      }`}
+      } ${takenOverBy ? "animate-rise" : ""}`}
     >
-      <span
-        aria-hidden="true"
-        className={`grid size-10 shrink-0 place-items-center rounded-full ${
-          offline ? "bg-warning text-warning-content" : "bg-base-100 text-primary"
-        }`}
-      >
-        {offline ? <OfflineIcon className="size-5" /> : <EyeIcon className="size-5" />}
-      </span>
-      <div className="flex min-w-0 flex-1 flex-col">
-        <p className="text-sm font-semibold">Watching. {hostName} runs this session.</p>
-        {note ? (
-          <p
-            role={offline ? "status" : undefined}
-            className={`text-sm ${offline ? "font-semibold text-base-content/85" : "text-base-content/60"}`}
-          >
-            {note.text}
-          </p>
-        ) : takenOverBy ? (
-          <p className="text-sm text-base-content/60">
-            {takenOverBy} took over. Changes you hadn't uploaded were dropped.
-          </p>
-        ) : (
-          <p className="text-sm text-base-content/60">Only the host can change it.</p>
-        )}
-        {action}
+      <div className="flex items-center gap-3">
+        <span
+          aria-hidden="true"
+          className={`grid size-10 shrink-0 place-items-center rounded-full ${
+            offline ? "bg-warning text-warning-content" : "bg-base-100 text-primary"
+          }`}
+        >
+          {offline ? <OfflineIcon className="size-5" /> : <EyeIcon className="size-5" />}
+        </span>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <p className="text-sm font-semibold">Watching. {hostName} runs this session.</p>
+          {/* This device was the host until a moment ago: say so first, even offline. */}
+          {takenOverBy ? (
+            <p role="status" className="text-sm text-base-content/75">
+              {takenOverBy} took over. Changes you hadn't uploaded were dropped.
+            </p>
+          ) : null}
+          {note ? (
+            <p
+              role={offline ? "status" : undefined}
+              className={`text-sm ${offline ? "font-semibold text-base-content/85" : "text-base-content/60"}`}
+            >
+              {note.text}
+            </p>
+          ) : takenOverBy ? null : (
+            <p className="text-sm text-base-content/60">Only the host can change it.</p>
+          )}
+        </div>
       </div>
+      {action}
     </div>
   );
 }

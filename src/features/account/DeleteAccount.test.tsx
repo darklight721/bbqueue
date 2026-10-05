@@ -126,10 +126,14 @@ describe("Delete Account", () => {
     await userEvent.click(deleteButton());
 
     const dialog = screen.getByRole("dialog", { name: "Delete your Account?" });
-    expect(dialog).toHaveTextContent("These shared clubs will be deleted:");
-    expect(dialog).toHaveTextContent("Solo and its 1 past session");
-    expect(dialog).toHaveTextContent("You'll be unlinked from these clubs:");
-    expect(dialog).toHaveTextContent("Duo");
+    const deleted = within(dialog).getByRole("region", {
+      name: "Shared clubs that will be deleted",
+    });
+    expect(deleted).toHaveTextContent("Solo");
+    expect(deleted).toHaveTextContent("1 past session");
+    expect(
+      within(dialog).getByRole("region", { name: "Clubs you'll be unlinked from" }),
+    ).toHaveTextContent("Duo");
     expect(dialog).toHaveTextContent("Your local clubs and the sessions on this device stay.");
     // Cancel changes nothing.
     await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
@@ -289,7 +293,9 @@ describe("Delete Account", () => {
     await vi.waitFor(() => expect(getSharedSessions()).toHaveLength(1));
 
     await userEvent.click(deleteButton());
-    expect(screen.getByRole("dialog")).toHaveTextContent("You host the active session of Duo.");
+    expect(
+      within(screen.getByRole("dialog")).getByRole("region", { name: "Sessions you host" }),
+    ).toHaveTextContent("Duo");
     await userEvent.click(
       within(screen.getByRole("dialog")).getByRole("button", { name: "Delete Account" }),
     );
