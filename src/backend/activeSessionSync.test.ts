@@ -215,7 +215,7 @@ describe("Active session sync: the Session host's uploads", () => {
     const entry = getSharedSessions()[0]!;
     setHostedSession("c1", { ...entry.session, name: "Never uploaded" });
 
-    // The server now says Ana hosts it (taking over arrives with ticket 07).
+    // The server now says Ana hosts it (somebody took over).
     applyActiveSessionsReport({
       sessions: [{ ...entry, hostAccountId: "ana-2222", hostName: "Ana" }],
       unknown: [],

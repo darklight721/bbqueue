@@ -8,7 +8,7 @@ import { startSession, twoPeople } from "./sessions.ts";
 async function openAsViewer(anaPage: Page) {
   await anaPage.goto("/");
   const view = anaPage.getByRole("link", { name: "View session" });
-  await expect(view).toBeVisible({ timeout: 20_000 });
+  await expect(view).toBeVisible();
   await view.click();
   await expect(anaPage.getByText("Watching. Roy Smith runs this session.")).toBeVisible();
 }
@@ -34,9 +34,7 @@ test.describe("Taking over as Session host", () => {
     await expect(anaPage.getByText(/Watching\./)).toHaveCount(0);
 
     // Roy's device notices and turns read-only, saying why.
-    await expect(page.getByText("Watching. Ana Bell runs this session.")).toBeVisible({
-      timeout: 20_000,
-    });
+    await expect(page.getByText("Watching. Ana Bell runs this session.")).toBeVisible();
     await expect(
       page.getByText("Ana Bell took over. Changes you hadn't uploaded were dropped."),
     ).toBeVisible();
@@ -47,9 +45,7 @@ test.describe("Taking over as Session host", () => {
 
     // Ana starts a Match; Roy sees it live.
     await court(anaPage, 1).getByRole("button", { name: "Start match" }).click();
-    await expect(court(page, 1).getByText("Playing", { exact: true })).toBeVisible({
-      timeout: 20_000,
-    });
+    await expect(court(page, 1).getByText("Playing", { exact: true })).toBeVisible();
 
     await anaPage.context().close();
   });

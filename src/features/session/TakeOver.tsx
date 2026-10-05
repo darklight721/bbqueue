@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { BackendError } from "../../backend/backend.ts";
-import { useBackendOnline } from "../../backend/clubs.ts";
+
 import { takeOverSession } from "../../backend/sessions.ts";
+import { useOnline } from "../../backend/useOnline.ts";
 import { ConfirmDialog } from "../../components/ConfirmDialog.tsx";
 import { OfflineNote } from "../../components/OfflineNote.tsx";
 
@@ -25,7 +26,7 @@ function takeOverError(error: unknown): string {
  * tapped by accident, and the dialog asks first.
  */
 export function TakeOver({ clubId, hostName }: { clubId: string; hostName: string }) {
-  const online = useBackendOnline();
+  const online = useOnline();
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);

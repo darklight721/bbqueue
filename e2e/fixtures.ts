@@ -13,11 +13,16 @@ import type {
   SkillLevel,
 } from "../src/domain/types.ts";
 
-/** Mirrors `STORAGE_KEYS` in src/storage/storage.ts (kept literal so e2e never imports app runtime code). */
+/**
+ * Mirrors `STORAGE_KEYS` in src/storage/storage.ts (kept literal so e2e never imports app runtime
+ * code; `src/e2eKeys.test.ts` checks that the two agree).
+ */
 export const STORAGE_KEYS = {
   clubs: "bq:v1:clubs",
   sharedClubs: "bq:v1:shared-clubs",
   sharedSessions: "bq:v1:shared-sessions",
+  sharedEndedSessions: "bq:v1:shared-ended-sessions",
+  endedHere: "bq:v1:ended-here",
   session: "bq:v1:session",
   endedSessions: "bq:v1:ended-sessions",
   account: "bq:v1:account",
@@ -27,7 +32,8 @@ export const STORAGE_KEYS = {
 
 /**
  * Where the local fake Backend (`VITE_BACKEND=fake`, which e2e runs against) keeps its "server"
- * data. Mirrors `FAKE_BACKEND_KEYS` in src/backend/localFakeBackend.ts.
+ * data. Mirrors `FAKE_BACKEND_KEYS` in src/backend/localFakeBackend.ts (checked by
+ * `src/e2eKeys.test.ts`).
  */
 export const FAKE_BACKEND_KEYS = {
   account: "bq:fake:account",
@@ -36,6 +42,7 @@ export const FAKE_BACKEND_KEYS = {
   clubs: "bq:fake:clubs",
   pendingClubOps: "bq:fake:pending-club-ops",
   activeSessions: "bq:fake:active-sessions",
+  requests: "bq:fake:requests",
   endedSessions: "bq:fake:ended-sessions",
   pendingSessionEnds: "bq:fake:pending-session-ends",
 } as const;

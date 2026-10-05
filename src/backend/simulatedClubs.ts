@@ -8,15 +8,12 @@ import {
 import { canDeleteClub, clubChangeProblem, ownRow } from "../domain/permissions.ts";
 import { newId } from "../domain/ids.ts";
 import type { Account, Club, ClubPlayer } from "../domain/types.ts";
-import { MAX_NAME_LENGTH, normalizeName } from "../domain/validation.ts";
-import { BackendError, type Backend, type OnlineSource } from "./backend.ts";
-
-/** A Club player's name must be there and not longer than the Security Rules allow. */
-function requireRowName(name: string) {
-  if (name.trim() === "" || normalizeName(name).length > MAX_NAME_LENGTH) {
-    throw new BackendError("invalid-name");
-  }
-}
+import {
+  BackendError,
+  requireValidName,
+  type OnlineSource,
+  type SharedClubsApi,
+} from "./backend.ts";
 
 /** A Shared club change that is waiting for the connection. */
 export type ClubOp =
@@ -36,22 +33,6 @@ export interface SimulatedClubsState {
   /** Calls `listener` when another tab changes the data. Returns a stop function. */
   observeExternalChanges?(listener: () => void): () => void;
 }
-
-export type SharedClubsApi = Pick<
-  Backend,
-  | "observeSharedClubs"
-  | "createSharedClub"
-  | "renameSharedClub"
-  | "deleteSharedClub"
-  | "addClubPlayer"
-  | "updateClubPlayer"
-  | "removeClubPlayer"
-  | "lookupAccount"
-  | "linkClubPlayer"
-  | "setClubPlayerRole"
-  | "unlinkClubPlayer"
-  | "leaveClub"
->;
 
 /**
  * Backends that share one "server" (two simulated devices in a test) tell each other about
@@ -185,9 +166,11 @@ export function createSimulatedClubs(
     createSharedClub(input) {
       const account = getAccount();
       if (!account) return Promise.reject(new BackendError("no-account"));
-      const name = normalizeName(input.name);
-      if (name === "" || name.length > MAX_NAME_LENGTH) {
-        return Promise.reject(new BackendError("invalid-name"));
+      let name: string;
+      try {
+        name = requireValidName(input.name);
+      } catch (error) {
+        return Promise.reject(error);
       }
       const club: Club = {
         id: input.id,
@@ -200,9 +183,11 @@ export function createSimulatedClubs(
     },
 
     renameSharedClub(clubId, name) {
-      const trimmed = normalizeName(name);
-      if (trimmed === "" || trimmed.length > MAX_NAME_LENGTH) {
-        return Promise.reject(new BackendError("invalid-name"));
+      let trimmed: string;
+      try {
+        trimmed = requireValidName(name);
+      } catch (error) {
+        return Promise.reject(error);
       }
       return change(clubId, { type: "rename", name: trimmed });
     },
@@ -221,7 +206,7 @@ export function createSimulatedClubs(
     addClubPlayer(clubId, player) {
       try {
         requireOnline();
-        requireRowName(player.name);
+        requireValidName(player.name);
         const row = withKnownAccount(player);
         return change(clubId, { type: "addPlayer", player: row }, { needsConnection: true });
       } catch (error) {
@@ -231,7 +216,7 @@ export function createSimulatedClubs(
 
     updateClubPlayer(clubId, playerId, patch) {
       try {
-        if (patch.name !== undefined) requireRowName(patch.name);
+        if (patch.name !== undefined) requireValidName(patch.name);
       } catch (error) {
         return Promise.reject(error);
       }

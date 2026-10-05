@@ -93,6 +93,27 @@ describe("Home: Active sessions", () => {
     expect(view).toHaveTextContent("Friday · Beacon · Host: Ana");
   });
 
+  it("encodes a Session id that isn't plain text in its link, as other screens do", () => {
+    const odd = { ...makeSession("Odd", null, null), id: "a/b c?d" };
+    setSession(odd);
+    const theirs = { ...makeSession("Friday", "c2", "Beacon"), id: "x y/z" };
+    applyActiveSessionsReport({
+      sessions: [shared(theirs, "c2", "ana-2222", "Ana")],
+      unknown: [],
+    });
+
+    renderHome();
+
+    expect(screen.getByRole("link", { name: "Resume session" })).toHaveAttribute(
+      "href",
+      "/sessions/a%2Fb%20c%3Fd",
+    );
+    expect(screen.getByRole("link", { name: "View session" })).toHaveAttribute(
+      "href",
+      "/sessions/x%20y%2Fz",
+    );
+  });
+
   it("puts the sessions I run first, then the ones I watch, then New session", () => {
     const theirs = makeSession("Friday", "c2", "Beacon");
     const mine = makeSession("Thursday", "c1", "Riverside");

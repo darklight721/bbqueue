@@ -16,8 +16,7 @@ export async function startSharedSession(clubId: string, session: Session): Prom
 }
 
 /**
- * An Organizer takes over as the Session host of a Shared club's Active session (ADR-0007, ticket
- * 07): the server's copy of the Session becomes theirs to run, and the old host's device turns
+ * An Organizer takes over as the Session host of a Shared club's Active session (ADR-0007): the server's copy of the Session becomes theirs to run, and the old host's device turns
  * read-only when it hears. Needs a connection. Rejects with a {@link BackendError} (`offline`,
  * `forbidden`, `not-found`, ...); then nothing changed.
  */
@@ -31,7 +30,7 @@ export async function takeOverSession(clubId: string): Promise<void> {
  * The Session host ends a Shared club's Active session: it leaves the device's store at once, and
  * the record is deleted on the server (waiting for the connection when offline). `ended` (the
  * slimmed Ended session, when the Session had at least one Ended match) is published to the Club
- * in the same step (ticket 09), so it can't be lost with the Active session; it also stays on the
+ * in the same step, so it can't be lost with the Active session; it also stays on the
  * device, as today. Failures are logged, never thrown: ending the night is not held up by the
  * server.
  */
@@ -43,8 +42,7 @@ export function endSharedSession(clubId: string, ended: EndedSession | null = nu
 }
 
 /**
- * A Player asks the Session host to switch their own Sitting out or to let them leave (ticket
- * 08). The request waits for the host's device; the store shows it as pending until then. Needs a
+ * A Player asks the Session host to switch their own Sitting out or to let them leave. The request waits for the host's device; the store shows it as pending until then. Needs a
  * connection. Rejects with a {@link BackendError} (`offline`, `not-found`, `forbidden`, ...).
  */
 export async function requestSessionChange(

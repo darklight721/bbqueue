@@ -6,7 +6,7 @@ import type { RolesContractWorld } from "./backend.roles.contract.ts";
 import { makeClubEnded, makeClubSession } from "./backend.sessions.contract.ts";
 
 /**
- * Deleting an Account (ticket 11) on a Backend, between Roy (who deletes his Account) and Ana: the
+ * Deleting an Account on a Backend, between Roy (who deletes his Account) and Ana: the
  * Shared clubs he is the only Account of go, he is unlinked from the others (his row stays), the
  * Account goes, and a Session he hosts is left for somebody else to take over.
  */

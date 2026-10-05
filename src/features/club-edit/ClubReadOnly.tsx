@@ -1,6 +1,7 @@
 import { useId, useMemo, useState } from "react";
 import { useLocation } from "wouter";
-import { leaveClub, useBackendOnline } from "../../backend/clubs.ts";
+import { leaveClub } from "../../backend/clubs.ts";
+import { useOnline } from "../../backend/useOnline.ts";
 import { ConfirmDialog } from "../../components/ConfirmDialog.tsx";
 import { HistoryIcon, WarningIcon } from "../../components/icons.tsx";
 import { Screen } from "../../components/Screen.tsx";
@@ -21,7 +22,7 @@ import { DangerZone, LEAVE_MESSAGE, LeaveClub } from "./LeaveClub.tsx";
 export function ClubReadOnly({ club }: { club: Club }) {
   const [, navigate] = useLocation();
   const account = useAccount();
-  const online = useBackendOnline();
+  const online = useOnline();
   const sessionCount = useEndedSessions().filter((ended) => ended.clubId === club.id).length;
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);

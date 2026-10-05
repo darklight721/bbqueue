@@ -107,18 +107,6 @@ export function RefreshIcon(props: IconProps) {
   );
 }
 
-/** Stylised shuttlecock: cork + feather skirt. */
-export function ShuttleIcon(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <path d="M9.2 14.8 4 4.5l10.3 5.2" />
-      <path d="M4 4.5 12 12M6.6 3.4 13 11M3.4 6.6 11 13" />
-      <circle cx="16.8" cy="16.8" r="3.6" fill="currentColor" stroke="none" />
-      <path d="M9.2 14.8l5 -5" />
-    </Icon>
-  );
-}
-
 export function WarningIcon(props: IconProps) {
   return (
     <Icon {...props}>

@@ -48,7 +48,8 @@ vi.mock("firebase/firestore", async (importOriginal) => ({
   },
 }));
 
-const { createFirebaseClubs, settle, SETTLE_TIMEOUT_MS } = await import("./firebaseClubs.ts");
+const { createFirebaseClubs } = await import("./firebaseClubs.ts");
+const { settle, SETTLE_TIMEOUT_MS } = await import("./firebaseShared.ts");
 
 const MEMBERS = "clubs?members";
 const ROWS = "clubs/c1/players";

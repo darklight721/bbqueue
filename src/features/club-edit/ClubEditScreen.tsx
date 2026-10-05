@@ -6,9 +6,9 @@ import {
   deleteClub as removeClub,
   leaveClub,
   saveClub,
-  useBackendOnline,
 } from "../../backend/clubs.ts";
 import { getBackend } from "../../backend/index.ts";
+import { useOnline } from "../../backend/useOnline.ts";
 import { ConfirmDialog } from "../../components/ConfirmDialog.tsx";
 import { HistoryIcon, PlayIcon, PlusIcon, WarningIcon } from "../../components/icons.tsx";
 import { blurOnEnter } from "../../components/keyboard.ts";
@@ -22,6 +22,7 @@ import {
   canDeleteClub,
   canEditClub,
   isSessionHost,
+  organizerCount,
   ownRow,
 } from "../../domain/permissions.ts";
 import { newId } from "../../domain/ids.ts";
@@ -78,7 +79,7 @@ function ClubEditor({ club }: { club: Club | null }) {
     club?.kind === "local" && activeEntries.some((entry) => !entry.shared);
 
   const account = useAccount();
-  const online = useBackendOnline();
+  const online = useOnline();
   const hasBackend = getBackend() !== null;
   // A Shared club's rows are separate records: adding one needs a connection.
   const addBlocked = club?.kind === "shared" && online === false;
@@ -181,11 +182,6 @@ function ClubEditor({ club }: { club: Club | null }) {
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [wantedLookups, online]);
 
-  const effectiveRole = (row: PlayerRow): Role | null => {
-    if (row.link) return row.link.role;
-    return null;
-  };
-
   /** Where each row's Account link stands. */
   const linkStates = useMemo(() => {
     const states = new Map<string, LinkState>();
@@ -238,10 +234,6 @@ function ClubEditor({ club }: { club: Club | null }) {
     });
   }
 
-  function organizersAfter(rows: PlayerRow[]): number {
-    return rows.filter((row) => effectiveRole(row) === "organizer").length;
-  }
-
   // After a failed Save, bring the first problem into view.
   useEffect(() => {
     if (saveTick === 0) return;
@@ -285,7 +277,7 @@ function ClubEditor({ club }: { club: Club | null }) {
     const after = rowsToSave().map((other) =>
       other.id === row.id && other.link ? { ...other, link: { ...other.link, role } } : other,
     );
-    if (organizersAfter(after) === 0) {
+    if (organizerCount({ players: after }) === 0) {
       setRoleMessage({ rowId: row.id, text: "A Club needs at least one Organizer." });
       return;
     }
@@ -534,7 +526,7 @@ function ClubEditor({ club }: { club: Club | null }) {
               {form.rows.map((row, index) => {
                 const state = linkStates.get(row.id);
                 const onlyOrganizer =
-                  row.link?.role === "organizer" && organizersAfter(form.rows) <= 1;
+                  row.link?.role === "organizer" && organizerCount({ players: form.rows }) <= 1;
                 return (
                   <li
                     key={row.id}

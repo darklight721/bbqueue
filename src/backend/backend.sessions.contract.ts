@@ -60,7 +60,7 @@ export function makeClubEnded(session: Session, endedAt: number): EndedSession {
 }
 
 /**
- * The Shared Active session (ticket 06, ADR-0007) between three people: Roy (Organizer and Session
+ * The Shared Active session (ADR-0007) between three people: Roy (Organizer and Session
  * host), Ana (a Player on the Club) and Ben (not on the Club). Run against the in-memory and local
  * fake versions and, on the emulator, Firebase.
  */

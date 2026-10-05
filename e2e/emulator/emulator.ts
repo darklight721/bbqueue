@@ -1,4 +1,4 @@
-import { expect, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import {
   adminGetDoc,
   adminListDocs,
@@ -22,12 +22,6 @@ let counter = 0;
 /** An id no other test uses. */
 export function uniqueId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${process.pid}-${++counter}`;
-}
-
-/** A new person on a new device: its own browser context, so its own anonymous sign-in. */
-export async function newPerson(browser: Browser, baseURL: string | undefined): Promise<Page> {
-  const context: BrowserContext = await browser.newContext({ baseURL });
-  return context.newPage();
 }
 
 /** First launch → Welcome → name → Home. Returns the Account that was created on the server. */

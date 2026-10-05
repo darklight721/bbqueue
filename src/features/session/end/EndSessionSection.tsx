@@ -26,7 +26,7 @@ export function EndSessionSection() {
     const ended = endSession(entry.session, { now: Date.now(), rng: Math.random });
     // Everything lands in one render, so the new route wins over SessionScreen's
     // "no Session" redirect. A Session without Ended matches is not kept. The Ended session stays
-    // on this device, and goes to the Club's Ended sessions when it is a Shared club's (ticket 09).
+    // on this device, and goes to the Club's Ended sessions when it is a Shared club's.
     if (ended) addEndedSession(ended);
     if (entry.shared) endSharedSession(entry.shared.clubId, ended);
     else setSession(null);

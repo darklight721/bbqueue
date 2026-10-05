@@ -207,7 +207,7 @@ function ResumeLink({
   const detailId = useId();
   return (
     <Link
-      href={`/sessions/${sessionId}`}
+      href={`/sessions/${encodeURIComponent(sessionId)}`}
       aria-labelledby={labelId}
       aria-describedby={detailId}
       className="animate-rise group flex min-h-24 items-center gap-4 rounded-box bg-neutral p-4 pr-3 text-neutral-content shadow-lg ring-1 ring-black/5 transition-transform active:scale-[0.98]"
@@ -252,7 +252,7 @@ function WatchLink({
   const detailId = useId();
   return (
     <Link
-      href={`/sessions/${sessionId}`}
+      href={`/sessions/${encodeURIComponent(sessionId)}`}
       aria-labelledby={labelId}
       aria-describedby={detailId}
       className="animate-rise group flex min-h-20 items-center gap-4 rounded-box border-[1.5px] border-primary/30 bg-base-100 p-4 pr-3 text-base-content shadow-sm transition-transform active:scale-[0.98]"

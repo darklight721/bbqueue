@@ -1,10 +1,10 @@
 import { useId, type CSSProperties } from "react";
 import type { Backend } from "../../backend/backend.ts";
+import { useOnline } from "../../backend/useOnline.ts";
 import { BrandMark, Wordmark } from "../../components/BrandMark.tsx";
 import { setWelcomeDone } from "../../storage/store.ts";
 import { CreateAccountForm } from "../account/CreateAccountForm.tsx";
 import { OfflineNotice } from "../account/OfflineNotice.tsx";
-import { useOnline } from "../account/useOnline.ts";
 import { CourtLines } from "../home/CourtLines.tsx";
 
 /**

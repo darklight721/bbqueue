@@ -50,15 +50,22 @@ export async function startSession(page: Page, club: Club) {
   await page.getByRole("textbox", { name: "Session name" }).fill("Thursday night");
   await page.getByRole("button", { name: "Select all" }).click();
   await page.getByRole("button", { name: "Start session" }).click();
+  // Starting a shared Session needs the server: either the Session opens, or an alert says why not.
+  const heading = page.getByRole("heading", { level: 1, name: "Thursday night" });
+  const alert = page.getByRole("alert");
+  await expect(heading.or(alert).first()).toBeVisible();
+  if ((await alert.count()) > 0) {
+    throw new Error(`Starting the session failed: ${await alert.first().innerText()}`);
+  }
   await expect(page).toHaveURL(/\/sessions\/(?!new)[^/]+$/);
-  await expect(page.getByRole("heading", { level: 1, name: "Thursday night" })).toBeVisible();
+  await expect(heading).toBeVisible();
 }
 
 /** Ana opens the Session from Home. */
 export async function watchFromHome(anaPage: Page) {
   await anaPage.goto("/");
   const view = anaPage.getByRole("link", { name: "View session" });
-  await expect(view).toBeVisible({ timeout: 20_000 });
+  await expect(view).toBeVisible();
   await expect(view).toContainText("Host: Roy Smith");
   await view.click();
   await expect(anaPage.getByText("Watching. Roy Smith runs this session.")).toBeVisible();

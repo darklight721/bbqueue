@@ -4,9 +4,13 @@
  */
 export const MAX_NAME_LENGTH = 40;
 
-/** Trim and collapse inner whitespace. */
+/**
+ * Trim, collapse inner whitespace and drop what can't be seen or shouldn't be in a name: control,
+ * bidi and zero-width characters (Unicode category C). `firestore.rules` refuses a name that
+ * contains any (see `validName`).
+ */
 export function normalizeName(name: string): string {
-  return name.trim().replace(/\s+/g, " ");
+  return name.replace(/\s+/g, " ").replace(/\p{C}/gu, "").replace(/ {2,}/g, " ").trim();
 }
 
 /** Normalized, case-insensitive name comparison. */

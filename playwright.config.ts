@@ -8,6 +8,8 @@ const baseURL = `http://localhost:${port}`;
 const emulatorPort = Number(process.env.E2E_EMULATOR_PORT ?? port + 1);
 const emulatorBaseURL = `http://localhost:${emulatorPort}`;
 const AUTH_EMULATOR_URL = "http://127.0.0.1:9099";
+/** How long an assertion waits in the emulator specs (two people, a real server). */
+const EMULATOR_EXPECT_TIMEOUT_MS = 15_000;
 
 export default defineConfig({
   testDir: "e2e",
@@ -31,6 +33,8 @@ export default defineConfig({
     {
       name: "chromium-mobile-emulator",
       testMatch: /emulator\/.*\.spec\.ts/,
+      // A second person's change, Firestore and a busy machine: give assertions longer than the 5 s default.
+      expect: { timeout: EMULATOR_EXPECT_TIMEOUT_MS },
       use: {
         ...devices["Pixel 7"],
         baseURL: emulatorBaseURL,
@@ -40,6 +44,7 @@ export default defineConfig({
     {
       name: "webkit-mobile-emulator",
       testMatch: /emulator\/.*\.spec\.ts/,
+      expect: { timeout: EMULATOR_EXPECT_TIMEOUT_MS },
       use: {
         ...devices["iPhone 14"],
         baseURL: emulatorBaseURL,

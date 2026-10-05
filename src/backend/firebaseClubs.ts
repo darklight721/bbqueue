@@ -29,46 +29,45 @@ import { newId } from "../domain/ids.ts";
 import {
   SKILL_LEVELS,
   type Account,
-  type AccountLink,
   type Club,
   type ClubPlayer,
   type Role,
   type SkillLevel,
 } from "../domain/types.ts";
-import { MAX_NAME_LENGTH, normalizeName } from "../domain/validation.ts";
-import { BackendError, type OnlineSource, type Unsubscribe } from "./backend.ts";
-import type { SharedClubsApi } from "./simulatedClubs.ts";
-
-/** Listeners that fail are tried again after 250 ms, doubling each time up to this. */
-const MAX_RETRY_DELAY_MS = 30_000;
-export const retryDelay = (attempt: number) => Math.min(250 * 2 ** attempt, MAX_RETRY_DELAY_MS);
-
-/** How long to wait for the server before treating a write as queued (see {@link settle}). */
-export const SETTLE_TIMEOUT_MS = 8_000;
-/** How long to wait for the cache before giving up on it. */
-export const CACHE_TIMEOUT_MS = 2_000;
+import {
+  BackendError,
+  requireValidName,
+  type SharedClubsApi,
+  type Unsubscribe,
+} from "./backend.ts";
+import {
+  CACHE_TIMEOUT_MS,
+  requireViewer as requireViewerOf,
+  retryDelay,
+  settle,
+  stringList,
+  toBackendError,
+  toLink,
+  toRecord,
+  withTimeout,
+  type FirebaseDeps,
+} from "./firebaseShared.ts";
 
 /**
  * Shared clubs on Firestore:
  * - `clubs/{clubId}`: `{ name, memberUids, organizerUids, createdAt }`. The two arrays hold the
- *   Firebase uids of the linked Accounts and are an index derived from the rows' links, so an
- *   Account can list its Clubs (array-contains) and Security Rules can tell who may read and
- *   write. They are kept in step with the rows.
+ * Firebase uids of the linked Accounts and are an index derived from the rows' links, so an
+ * Account can list its Clubs (array-contains) and Security Rules can tell who may read and
+ * write. They are kept in step with the rows.
  * - `clubs/{clubId}/players/{clubPlayerId}`: `{ name, skill, link?: { accountId, uid, role } }`.
- *   One record per Club player, so the most recent change to a row wins. The Account ID is for
- *   display and lookup; the uid is the identity, and the rules check that it owns that Account ID.
+ * One record per Club player, so the most recent change to a row wins. The Account ID is for
+ * display and lookup; the uid is the identity, and the rules check that it owns that Account ID.
  *
  * Writes go through Firestore's offline queue: they show up in listeners at once and sync later.
  */
 export function createFirebaseClubs(
   db: Firestore,
-  deps: {
-    online: OnlineSource;
-    getAccount(): Promise<Account | null>;
-    /** The signed-in Firebase user's uid (known once `getAccount` has answered), or null. */
-    currentUid(): string | null;
-    observeAccount(listener: (account: Account | null) => void): Unsubscribe;
-  },
+  deps: FirebaseDeps,
 ): SharedClubsApi & {
   /** The Club steps of deleting an Account; see `Backend.deleteAccount`. */
   deleteAccountClubs(input: { deleteClubIds: string[]; unlinkClubIds: string[] }): Promise<void>;
@@ -78,13 +77,7 @@ export function createFirebaseClubs(
   const playerRef = (clubId: string, playerId: string) =>
     doc(db, "clubs", clubId, "players", playerId);
 
-  /** The signed-in Account and its uid, or `no-account`. */
-  async function requireViewer(): Promise<{ account: Account; uid: string }> {
-    const account = await deps.getAccount();
-    const uid = deps.currentUid();
-    if (!account || !uid) throw new BackendError("no-account");
-    return { account, uid };
-  }
+  const requireViewer = () => requireViewerOf(deps);
 
   /** A record from the server, or from the cache when it can't be reached; null when neither answers. */
   async function readDoc(ref: DocumentReference): Promise<DocumentSnapshot | null> {
@@ -425,8 +418,7 @@ export function createFirebaseClubs(
 
     async createSharedClub(input) {
       const { account, uid } = await requireViewer();
-      const name = normalizeName(input.name);
-      if (name === "" || name.length > MAX_NAME_LENGTH) throw new BackendError("invalid-name");
+      const name = requireValidName(input.name);
       const creator = creatorPlayer(account, newId());
       const players = [creator, ...input.players];
 
@@ -445,10 +437,7 @@ export function createFirebaseClubs(
     },
 
     async renameSharedClub(clubId, name) {
-      const trimmed = normalizeName(name);
-      if (trimmed === "" || trimmed.length > MAX_NAME_LENGTH) {
-        throw new BackendError("invalid-name");
-      }
+      const trimmed = requireValidName(name);
       await requireClub(clubId);
       await settle(deps.online, updateDoc(clubRef(clubId), { name: trimmed }));
     },
@@ -461,7 +450,7 @@ export function createFirebaseClubs(
 
     async addClubPlayer(clubId, player) {
       if (!deps.online.get()) throw new BackendError("offline");
-      requireRowName(player.name);
+      requireValidName(player.name);
       if (player.link) {
         const { account, uid } = await knownAccount(player.link.accountId);
         await changeLinks(
@@ -480,7 +469,7 @@ export function createFirebaseClubs(
 
     async updateClubPlayer(clubId, playerId, patch) {
       if (Object.keys(patch).length === 0) return;
-      if (patch.name !== undefined) requireRowName(patch.name);
+      if (patch.name !== undefined) requireValidName(patch.name);
       await requireClub(clubId);
       await settle(deps.online, updateDoc(playerRef(clubId, playerId), { ...patch }));
     },
@@ -630,92 +619,6 @@ interface LoadedClub {
   linkUids: Map<string, string>;
   memberUids: string[];
   organizerUids: string[];
-}
-
-export const stringList = (value: unknown): string[] =>
-  Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
-
-/** A Club player's name must be there and not longer than the rules allow. */
-function requireRowName(name: string) {
-  if (name.trim() === "" || normalizeName(name).length > MAX_NAME_LENGTH) {
-    throw new BackendError("invalid-name");
-  }
-}
-
-export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("timeout")), ms);
-    promise.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      (error: unknown) => {
-        clearTimeout(timer);
-        reject(error instanceof Error ? error : new Error(String(error)));
-      },
-    );
-  });
-}
-
-/**
- * Online, wait for the server so failures (e.g. Security Rules) reach the caller. Offline the
- * write waits in Firestore's queue and never settles until the connection is back, so don't wait.
- * Online but with a network that is really down (`navigator.onLine` can say true), the write
- * would hang too: after `timeoutMs` it counts as queued and Save carries on.
- */
-export async function settle(
-  online: OnlineSource,
-  write: Promise<unknown>,
-  timeoutMs = SETTLE_TIMEOUT_MS,
-): Promise<void> {
-  if (online.get()) {
-    const queued = Symbol("queued");
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      const result = await Promise.race([
-        write,
-        new Promise<typeof queued>((resolve) => {
-          timer = setTimeout(() => resolve(queued), timeoutMs);
-        }),
-      ]);
-      if (result === queued) {
-        write.catch((error: unknown) => console.error("Queued write failed", error));
-      }
-    } catch (error) {
-      throw toBackendError(error);
-    } finally {
-      clearTimeout(timer);
-    }
-    return;
-  }
-  write.catch((error: unknown) => console.error("Queued write failed", error));
-}
-
-const toLink = (link: AccountLink, uid: string) => ({
-  accountId: link.accountId,
-  uid,
-  role: link.role,
-});
-
-/** The record for a row. A link is only written with the uid of the Account it points at. */
-export function toRecord(player: ClubPlayer, linkUid?: string): DocumentData {
-  return {
-    name: player.name,
-    skill: player.skill,
-    ...(player.link && linkUid ? { link: toLink(player.link, linkUid) } : {}),
-  };
-}
-
-/** Firestore errors in the Backend's words. */
-export function toBackendError(error: unknown): BackendError {
-  if (error instanceof BackendError) return error;
-  const code = (error as { code?: unknown } | null)?.code;
-  if (code === "permission-denied")
-    return new BackendError("forbidden", undefined, { cause: error });
-  if (code === "not-found") return new BackendError("not-found", undefined, { cause: error });
-  if (code === "unavailable") return new BackendError("offline", undefined, { cause: error });
-  return new BackendError("failed", undefined, { cause: error });
 }
 
 function toClubPlayer(id: string, data: DocumentData): ClubPlayer {

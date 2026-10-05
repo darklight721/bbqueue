@@ -1,8 +1,10 @@
 import { accountIdsEqual } from "../domain/accountId.ts";
 import { roleInClub } from "../domain/clubChanges.ts";
+import { newestPerClub } from "../domain/endedSessions.ts";
 import { newId } from "../domain/ids.ts";
+import { shareInputProblem } from "../domain/makeShared.ts";
 import type { Account, ActiveSession, EndedSession, SessionRequest } from "../domain/types.ts";
-import { BackendError, type Backend, type OnlineSource } from "./backend.ts";
+import { BackendError, type ActiveSessionsApi, type OnlineSource } from "./backend.ts";
 import { listenToServer, serverChanged, type SimulatedClubsState } from "./simulatedClubs.ts";
 
 /** Where the simulated "server" keeps Active sessions, and the ends still waiting for the connection. */
@@ -29,24 +31,6 @@ export interface SimulatedPendingEnd {
   clubId: string;
   ended: EndedSession | null;
 }
-
-/** How many Ended sessions of a Club the "server" lists (the 50 most recent, as Firestore does). */
-const LISTED_ENDED = 50;
-
-export type ActiveSessionsApi = Pick<
-  Backend,
-  | "observeActiveSessions"
-  | "startSharedSession"
-  | "publishActiveSession"
-  | "endSharedSession"
-  | "takeOverSession"
-  | "getActiveSession"
-  | "requestSessionChange"
-  | "observeSessionRequests"
-  | "resolveSessionRequests"
-  | "observeEndedSessions"
-  | "makeSharedClub"
->;
 
 /**
  * Active sessions without a server, following the same rules as `firestore.rules`: an Organizer
@@ -282,19 +266,10 @@ export function createSimulatedSessions(
         if (!online.get()) throw new BackendError("offline");
         const account = getAccount();
         if (!account) throw new BackendError("no-account");
-        const linked = club.players.filter((row) => row.link);
-        const meRow = linked[0];
-        if (
-          club.kind !== "shared" ||
-          linked.length !== 1 ||
-          !meRow?.link ||
-          meRow.link.role !== "organizer" ||
-          !accountIdsEqual(meRow.link.accountId, account.accountId) ||
-          endedSessions.some((ended) => ended.clubId !== club.id) ||
-          (activeSession && activeSession.clubId !== club.id)
-        ) {
+        if (shareInputProblem({ club, endedSessions, activeSession }, account)) {
           throw new BackendError("failed");
         }
+        const meRow = club.players.find((row) => row.link)!;
         const clubs = state.loadClubs();
         const there = clubs.find((candidate) => candidate.id === club.id);
         // A Club somebody else has taken the id of; or a part of this one from an earlier try.
@@ -378,16 +353,11 @@ export function createSimulatedSessions(
           .loadClubs()
           .filter((club) => roleInClub(club, account.accountId) !== null)
           .map((club) => club.id);
-        const perClub = new Map<string, number>();
-        const sessions = state
-          .loadEndedSessions()
-          .filter((ended) => ended.clubId !== null && clubIds.includes(ended.clubId))
-          .sort((a, b) => b.endedAt - a.endedAt)
-          .filter((ended) => {
-            const count = (perClub.get(ended.clubId!) ?? 0) + 1;
-            perClub.set(ended.clubId!, count);
-            return count <= LISTED_ENDED;
-          });
+        const sessions = newestPerClub(
+          state
+            .loadEndedSessions()
+            .filter((ended) => ended.clubId !== null && clubIds.includes(ended.clubId)),
+        );
         listener({ sessions, clubIds });
       };
       report();

@@ -53,9 +53,7 @@ test.describe("Making a Local club shared, between two people", () => {
     await expect(page.getByText("This device only")).toHaveCount(0, { timeout: 30_000 });
     await expect(page.getByRole("button", { name: "Make shared club" })).toHaveCount(0);
     const clubId = page.url().split("/").at(-1)!;
-    await expect
-      .poll(async () => (await readServerClub(clubId))?.players.length, { timeout: 15_000 })
-      .toBe(5);
+    await expect.poll(async () => (await readServerClub(clubId))?.players.length).toBe(5);
     expect(
       (await readServerClub(clubId))!.players
         .map((p) => [p.name, p.link?.role ?? null])

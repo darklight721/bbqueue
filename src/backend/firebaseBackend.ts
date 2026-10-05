@@ -27,20 +27,21 @@ import {
   type Firestore,
 } from "firebase/firestore";
 import { generateAccountId, normalizeAccountId } from "../domain/accountId.ts";
-import { MAX_NAME_LENGTH, normalizeName } from "../domain/validation.ts";
 import type { Account } from "../domain/types.ts";
 import {
   BackendError,
   MAX_ACCOUNT_ID_ATTEMPTS,
   browserOnline,
+  requireValidName,
+  type ActiveSessionsApi,
   type Backend,
   type OnlineSource,
+  type SharedClubsApi,
 } from "./backend.ts";
 import { FIREBASE_EMULATOR } from "./firebaseEmulator.ts";
 import { createFirebaseClubs } from "./firebaseClubs.ts";
+import { toBackendError } from "./firebaseShared.ts";
 import { createFirebaseActiveSessions } from "./firebaseSessions.ts";
-import type { SharedClubsApi } from "./simulatedClubs.ts";
-import type { ActiveSessionsApi } from "./simulatedSessions.ts";
 
 /**
  * Firebase version of {@link Backend}: Anonymous Auth + Firestore with the offline cache on.
@@ -48,7 +49,7 @@ import type { ActiveSessionsApi } from "./simulatedSessions.ts";
  * Records:
  * - `accounts/{uid}`: `{ accountId, name, createdAt }`
  * - `accountIds/{normalised Account ID}`: `{ uid }`, the reservation that keeps IDs unique. It is
- *   never deleted, so an Account ID is never given out twice.
+ * never deleted, so an Account ID is never given out twice.
  *
  * This is the only module (with `firebaseBackendLazy.ts`) that imports Firebase.
  */
@@ -154,9 +155,7 @@ export function createFirebaseBackend(
     },
 
     async createAccount(name) {
-      const trimmed = normalizeName(name);
-      if (trimmed === "" || trimmed.length > MAX_NAME_LENGTH)
-        throw new BackendError("invalid-name");
+      const trimmed = requireValidName(name);
       if (!online.get()) throw new BackendError("offline");
 
       try {
@@ -176,9 +175,7 @@ export function createFirebaseBackend(
     },
 
     async renameAccount(name) {
-      const trimmed = normalizeName(name);
-      if (trimmed === "" || trimmed.length > MAX_NAME_LENGTH)
-        throw new BackendError("invalid-name");
+      const trimmed = requireValidName(name);
       if (!online.get()) throw new BackendError("offline");
 
       try {
@@ -252,15 +249,6 @@ async function reserve(
     transaction.set(account, { accountId, name, createdAt: serverTimestamp() });
     return false;
   });
-}
-
-function toBackendError(error: unknown): BackendError {
-  if (error instanceof BackendError) return error;
-  const code = (error as { code?: unknown } | null)?.code;
-  if (code === "unavailable" || code === "auth/network-request-failed") {
-    return new BackendError("offline", undefined, { cause: error });
-  }
-  return new BackendError("failed", undefined, { cause: error });
 }
 
 function openFirestore(app: ReturnType<typeof initializeApp>, persistent: boolean): Firestore {

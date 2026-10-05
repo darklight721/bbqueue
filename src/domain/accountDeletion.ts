@@ -1,7 +1,7 @@
 import { accountIdsEqual } from "./accountId.ts";
 import type { Club, EndedSession } from "./types.ts";
 
-/** What deleting an Account does to the Shared clubs it is on (ticket 11). */
+/** What deleting an Account does to the Shared clubs it is on. */
 export interface DeletionPlan {
   /**
    * Shared clubs where this Account is the only Organizer and other Accounts are linked: deleting

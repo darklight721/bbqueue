@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
-import { useBackendOnline } from "../../backend/clubs.ts";
+
 import { EyeIcon, OfflineIcon } from "../../components/icons.tsx";
 import { useNow } from "./clock.ts";
 import { copyNote } from "./copyAge.ts";
+import { useOnline } from "../../backend/useOnline.ts";
 
 /**
  * Shown at the top of the Session screen to everyone who isn't the Session host (ADR-0007):
@@ -23,7 +24,7 @@ export function WatchingNote({
   /** Something the person can do from here, such as Take over. */
   action?: ReactNode;
 }) {
-  const online = useBackendOnline();
+  const online = useOnline();
   const now = useNow();
   const note = copyNote({ updatedAt, now, online });
   const offline = note?.offline === true;
@@ -72,7 +73,7 @@ export function WatchingNote({
  * (the Session updates by itself), "Offline" when this device has no connection.
  */
 export function LivePill() {
-  const online = useBackendOnline();
+  const online = useOnline();
   if (online === false) {
     return (
       <span className="inline-flex h-8 items-center gap-1.5 rounded-full bg-warning/20 px-2.5 text-xs font-bold tracking-wider whitespace-nowrap text-base-content uppercase ring-1 ring-warning/60">

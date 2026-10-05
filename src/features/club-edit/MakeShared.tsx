@@ -16,7 +16,7 @@ export const MAKE_SHARED_MESSAGE =
 const ADD_ME = "add-me";
 
 /**
- * "Make shared club" on a Local club (ticket 10): pick which player you are (an existing row, or
+ * "Make shared club" on a Local club: pick which player you are (an existing row, or
  * "Add me"), confirm, and the Club, its roster, Ended sessions and running Session move to the
  * server. Signed out there is nothing to share with, so it says what's needed instead; offline it
  * is turned off with the reason.

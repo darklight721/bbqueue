@@ -105,7 +105,7 @@ test.describe("Shared clubs on the server", () => {
         },
       )
       .toBe("advanced");
-    await expect(anaCat).toContainText("Advanced", { timeout: 15_000 });
+    await expect(anaCat).toContainText("Advanced");
 
     await anaPage.context().close();
   });

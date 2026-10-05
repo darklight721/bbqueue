@@ -1,4 +1,3 @@
-import { useSyncExternalStore } from "react";
 import { diffClub, inSafeOrder } from "../domain/clubChanges.ts";
 import type { DeletionPlan } from "../domain/accountDeletion.ts";
 import { makeSharedClub, sessionForSharing, type ShareChoice } from "../domain/makeShared.ts";
@@ -107,17 +106,8 @@ export async function leaveClub(club: Club): Promise<void> {
   await getBackend()?.leaveClub(club.id);
 }
 
-/** Whether the device can reach the server; null when there is no Backend. */
-export function useBackendOnline(): boolean | null {
-  const backend = getBackend();
-  return useSyncExternalStore(
-    (listener) => (backend ? backend.observeOnline(listener) : () => {}),
-    () => (backend ? backend.isOnline() : null),
-  );
-}
-
 /**
- * Make a Local club a Shared club (ticket 10): the Club, its rows, its Ended sessions and the
+ * Make a Local club a Shared club: the Club, its rows, its Ended sessions and the
  * device's Active session when that is this Club's (this Account becomes its Session host) go to
  * the server. Only once the server has confirmed does the device switch over: the Local club goes,
  * the Shared one takes its place, and the device's own Session slot is emptied. Whatever fails
@@ -182,7 +172,7 @@ export async function makeClubShared(club: Club, choice: ShareChoice): Promise<v
 }
 
 /**
- * Delete this device's Account (ticket 11), carrying out `plan` (see `planAccountDeletion`): the
+ * Delete this device's Account, carrying out `plan` (see `planAccountDeletion`): the
  * Shared clubs it is the only Account of are deleted, its rows elsewhere are unlinked, the Account
  * and its sign-in go (its Account ID stays reserved). Then the device is signed out: Shared club
  * data is cleared, and Local clubs and the device's own Sessions stay. Needs a connection.

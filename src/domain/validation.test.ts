@@ -14,6 +14,21 @@ describe("normalizeName / namesEqual", () => {
     expect(normalizeName("  Ann   Lee \t")).toBe("Ann Lee");
   });
 
+  it("drops control, bidi and zero-width characters, and the spaces they leave behind", () => {
+    expect(normalizeName("Ann\u200BLee")).toBe("AnnLee");
+    expect(normalizeName("Ann \u200B Lee")).toBe("Ann Lee");
+    expect(normalizeName("\u202EAnn\u202C")).toBe("Ann");
+    expect(normalizeName("A\u0007n\u0000n")).toBe("Ann");
+    expect(normalizeName("\uFEFFAnn")).toBe("Ann");
+    // Whitespace of any kind still just separates words.
+    expect(normalizeName("Ann\nLee\tSmith")).toBe("Ann Lee Smith");
+  });
+
+  it("keeps letters, accents and emoji", () => {
+    expect(normalizeName("  José Núñez ")).toBe("José Núñez");
+    expect(normalizeName("Zoë 🏸")).toBe("Zoë 🏸");
+  });
+
   it("compares case-insensitively after normalizing", () => {
     expect(namesEqual("  ann  LEE", "Ann Lee")).toBe(true);
     expect(namesEqual("Ann", "Anna")).toBe(false);
@@ -38,6 +53,11 @@ describe("validateName", () => {
     expect(validateName("a".repeat(MAX_NAME_LENGTH), [])).toBeNull();
     expect(validateName(`  ${"a".repeat(MAX_NAME_LENGTH)}   `, [])).toBeNull();
     expect(validateName("a".repeat(MAX_NAME_LENGTH + 1), [])).toBe("too-long");
+  });
+
+  it("treats a name of only invisible characters as empty", () => {
+    expect(validateName("\u200B\u200B", [])).toBe("required");
+    expect(validateName("\u202E", [])).toBe("required");
   });
 
   it("flags duplicates, ignoring case and padding", () => {

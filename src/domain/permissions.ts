@@ -1,6 +1,6 @@
 import { accountIdsEqual } from "./accountId.ts";
 import { applyClubChange, roleInClub, type ClubChange } from "./clubChanges.ts";
-import type { ActiveSession, Club, ClubPlayer } from "./types.ts";
+import type { ActiveSession, Club, ClubPlayer, Role } from "./types.ts";
 
 /**
  * What an Account may do in a Club (GLOSSARY: Role, Organizer, Player). `accountId` is the viewing
@@ -25,11 +25,6 @@ export function canChangeRoles(club: Club, viewer: Viewer): boolean {
   return isShared(club) && isOrganizer(club, viewer);
 }
 
-/** See other people's Account IDs: only Organizers do. */
-export function canSeeAccountIds(club: Club, viewer: Viewer): boolean {
-  return canChangeRoles(club, viewer);
-}
-
 export function canStartSession(club: Club, viewer: Viewer): boolean {
   return canEditClub(club, viewer);
 }
@@ -52,7 +47,8 @@ export function ownRow(club: Club, viewer: Viewer): ClubPlayer | null {
   );
 }
 
-export function organizerCount(club: Club): number {
+/** How many of the rows (a Club's players, or a form's rows) are linked as Organizer. */
+export function organizerCount(club: { players: readonly { link?: { role: Role } }[] }): number {
   return club.players.filter((player) => player.link?.role === "organizer").length;
 }
 

@@ -10,6 +10,7 @@ import type {
   SessionRequestKind,
 } from "../domain/types.ts";
 import type { ClubPlayerPatch } from "../domain/clubChanges.ts";
+import { normalizeName, validateName } from "../domain/validation.ts";
 
 export type BackendErrorCode =
   /** The action needs a connection and the device is offline. */
@@ -71,8 +72,6 @@ export type Unsubscribe = () => void;
 /**
  * The one boundary the app talks to for everything that lives on a server (ADR-0006).
  * UI code only ever sees this interface, never Firebase.
- *
- * Grows with each ticket; today it only covers the device's own Account.
  */
 export interface Backend {
   /** Whether the device can reach the server right now (best effort). */
@@ -91,7 +90,7 @@ export interface Backend {
    */
   createAccount(name: string): Promise<Account>;
   /**
-   * Deletes this device's Account (ticket 11), after the steps that go with it: the Shared clubs in
+   * Deletes this device's Account, after the steps that go with it: the Shared clubs in
    * `deleteClubIds` (where this is the only linked Account) are deleted with their rows, Active
    * session, requests and Ended sessions, and this Account's row in each of `unlinkClubIds` is
    * unlinked (the row stays on the roster). Then the Account record goes, and so does the sign-in.
@@ -127,14 +126,14 @@ export interface Backend {
    */
   createSharedClub(input: { id: string; name: string; players: ClubPlayer[] }): Promise<Club>;
   renameSharedClub(clubId: string, name: string): Promise<void>;
-  /** Deletes the Club and its Club players. Organizer rules arrive with Roles (ticket 05). */
+  /** Deletes the Club and its Club players. */
   deleteSharedClub(clubId: string): Promise<void>;
   /** Needs a connection: rejects with `offline` otherwise. */
   addClubPlayer(clubId: string, player: ClubPlayer): Promise<void>;
   updateClubPlayer(clubId: string, playerId: string, patch: ClubPlayerPatch): Promise<void>;
   removeClubPlayer(clubId: string, playerId: string): Promise<void>;
 
-  // --- Linking Accounts and Roles (ticket 05) ----------------------------------------------
+  // --- Linking Accounts and Roles ----------------------------------------------
   //
   // A Club player row can be linked to an Account with a Role. Only an Organizer links, changes
   // Roles or unlinks (and may remove or edit any row); a linked Account may unlink only itself
@@ -154,11 +153,11 @@ export interface Backend {
   /** The current Account leaves the Club: its row stays on the roster, no longer linked. */
   leaveClub(clubId: string): Promise<void>;
 
-  // --- Shared Active session (ticket 06, ADR-0007) -------------------------------------------
+  // --- Shared Active session (ADR-0007) -------------------------------------------
   //
   // Each Shared club has at most one Active session: the Session host's whole copy of the
-  // Session, who the host is, and when it was last uploaded. Only the host changes it (taking
-  // over arrives with ticket 07); anyone on the Club reads it. The host's device stays the
+  // Session, who the host is, and when it was last uploaded. Only the host changes it (another
+  // Organizer can take over, see `takeOverSession`); anyone on the Club reads it. The host's device stays the
   // source of truth and keeps playing offline: `publishActiveSession` sends the latest copy when
   // the device is online, and the app calls it at most once at a time (see `sessionUploader.ts`).
 
@@ -207,7 +206,7 @@ export interface Backend {
    */
   takeOverSession(clubId: string): Promise<ActiveSession>;
   /**
-   * Turns a Local club into a Shared club (ticket 10). `club` is the Shared club to create (see
+   * Turns a Local club into a Shared club. `club` is the Shared club to create (see
    * `makeSharedClub` in the domain): the Local club's id, name and rows, with exactly one row
    * linked, to this Account, as Organizer. Its Ended sessions and, when there is one, its Active
    * session (this Account becomes the Session host) go with it. Needs a connection.
@@ -230,7 +229,7 @@ export interface Backend {
    */
   getActiveSession(clubId: string): Promise<ActiveSession | null>;
 
-  // --- Player requests (ticket 08, ADR-0007) ---------------------------------------------------
+  // --- Player requests (ADR-0007) ---------------------------------------------------
   //
   // A Player (or non-host Organizer) on the Club asks, for their own Session player, to switch
   // Sitting out on or off or to leave. The request is a record of its own that waits for the
@@ -264,6 +263,48 @@ export interface Backend {
     clubId: string,
     results: { id: string; status: "applied" | "skipped" }[],
   ): Promise<void>;
+}
+
+/** The Shared clubs part of the {@link Backend}: Clubs, their Club players, Account links and Roles. */
+export type SharedClubsApi = Pick<
+  Backend,
+  | "observeSharedClubs"
+  | "createSharedClub"
+  | "renameSharedClub"
+  | "deleteSharedClub"
+  | "addClubPlayer"
+  | "updateClubPlayer"
+  | "removeClubPlayer"
+  | "lookupAccount"
+  | "linkClubPlayer"
+  | "setClubPlayerRole"
+  | "unlinkClubPlayer"
+  | "leaveClub"
+>;
+
+/** The Active sessions, Ended sessions and Player requests part of the {@link Backend}. */
+export type ActiveSessionsApi = Pick<
+  Backend,
+  | "observeActiveSessions"
+  | "startSharedSession"
+  | "publishActiveSession"
+  | "endSharedSession"
+  | "takeOverSession"
+  | "getActiveSession"
+  | "requestSessionChange"
+  | "observeSessionRequests"
+  | "resolveSessionRequests"
+  | "observeEndedSessions"
+  | "makeSharedClub"
+>;
+
+/**
+ * The one name check every Backend makes (Account, Club and Club player names): the name as
+ * `normalizeName` leaves it, or `invalid-name` when it is empty or too long.
+ */
+export function requireValidName(name: string): string {
+  if (validateName(name, []) !== null) throw new BackendError("invalid-name");
+  return normalizeName(name);
 }
 
 /** How many Account IDs to try before giving up. */

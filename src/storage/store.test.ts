@@ -29,7 +29,6 @@ import {
   useAccount,
   useClubs,
   useEndedSessions,
-  useSession,
   useWelcomeDone,
 } from "./store.ts";
 
@@ -122,9 +121,12 @@ describe("clubs store", () => {
   });
 });
 
+/** The device's own Session, as a screen sees it. */
+const useDeviceSession = () => useActiveSessions().find((entry) => !entry.shared)?.session ?? null;
+
 describe("session store", () => {
   it("sets, notifies, and clears with null", () => {
-    const { result } = renderHook(() => useSession());
+    const { result } = renderHook(() => useDeviceSession());
     expect(result.current).toBeNull();
     act(() => setSession(session));
     expect(result.current).toEqual(session);
@@ -137,7 +139,7 @@ describe("session store", () => {
 
   it("refreshes on a storage event, including removal and clear()", () => {
     setSession(session);
-    const { result } = renderHook(() => useSession());
+    const { result } = renderHook(() => useDeviceSession());
     expect(result.current).toEqual(session);
     localStorage.removeItem("bq:v1:session");
     act(() => storageEvent("bq:v1:session"));

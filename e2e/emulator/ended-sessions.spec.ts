@@ -21,10 +21,10 @@ test.describe("Ended sessions of a Shared club", () => {
     await expect(page).toHaveURL(/\/sessions\/[^/]+\/summary$/);
 
     // Ana is sent Home; the Active session is gone from her Home, and the Ended one is in Past sessions.
-    await expect(anaPage).toHaveURL(/\/$/, { timeout: 20_000 });
+    await expect(anaPage).toHaveURL(/\/$/);
     await expect(anaPage.getByRole("link", { name: "View session" })).toHaveCount(0);
     const past = anaPage.getByRole("link", { name: "Past sessions" });
-    await expect(past).toBeVisible({ timeout: 20_000 });
+    await expect(past).toBeVisible();
     await past.click();
     await expect(anaPage.getByRole("link", { name: /Thursday night/ })).toBeVisible();
 
@@ -68,9 +68,7 @@ test.describe("Ended sessions of a Shared club", () => {
     await context.setOffline(false);
     await expect(anaPage).toHaveURL(/\/$/, { timeout: 45_000 });
     await anaPage.getByRole("link", { name: "Past sessions" }).click();
-    await expect(anaPage.getByRole("link", { name: /Thursday night/ })).toBeVisible({
-      timeout: 20_000,
-    });
+    await expect(anaPage.getByRole("link", { name: /Thursday night/ })).toBeVisible();
 
     await anaPage.context().close();
   });
@@ -87,7 +85,7 @@ test.describe("Ended sessions of a Shared club", () => {
     await page.getByRole("button", { name: "End session" }).click();
     await page.getByRole("dialog").getByRole("button", { name: "End session" }).click();
 
-    await expect(anaPage).toHaveURL(/\/$/, { timeout: 20_000 });
+    await expect(anaPage).toHaveURL(/\/$/);
     await expect(anaPage.getByRole("link", { name: "View session" })).toHaveCount(0);
     await expect(anaPage.getByRole("link", { name: "Past sessions" })).toHaveCount(0);
 

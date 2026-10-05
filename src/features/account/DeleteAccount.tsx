@@ -1,7 +1,8 @@
 import { useId, useMemo, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
-import { deleteMyAccount, useBackendOnline } from "../../backend/clubs.ts";
+import { deleteMyAccount } from "../../backend/clubs.ts";
 import { BackendError } from "../../backend/backend.ts";
+import { useOnline } from "../../backend/useOnline.ts";
 import { CheckIcon, LinkIcon, PlayIcon, TrashIcon } from "../../components/icons.tsx";
 import { Modal } from "../../components/Modal.tsx";
 import { OfflineNote } from "../../components/OfflineNote.tsx";
@@ -24,7 +25,7 @@ function deleteError(error: unknown): string {
 }
 
 /**
- * "Delete Account" (ticket 11), at the end of Account settings. Blocked, with the Clubs named, while
+ * "Delete Account", at the end of Account settings. Blocked, with the Clubs named, while
  * this Account is the only Organizer of a Shared club that has other people. Otherwise one dialog
  * lists the Shared clubs that will be deleted (with their Ended sessions) and the ones this Account
  * will be unlinked from. Needs a connection.
@@ -33,7 +34,7 @@ export function DeleteAccount({ account }: { account: Account }) {
   const clubs = useClubs();
   const endedSessions = useEndedSessions();
   const sharedSessions = useSharedSessions();
-  const online = useBackendOnline();
+  const online = useOnline();
   const [, navigate] = useLocation();
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);

@@ -19,7 +19,7 @@ const local = (extra: Partial<Club> = {}): Club => ({
 });
 
 /**
- * Making a Local club shared (ticket 10) on a Backend: the Club, its rows, its Ended sessions and its
+ * Making a Local club shared on a Backend: the Club, its rows, its Ended sessions and its
  * Active session go to the server in one go, and can be linked and seen as any Shared club.
  */
 export function runMakeSharedContract(name: string, createWorld: () => RolesContractWorld) {

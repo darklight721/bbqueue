@@ -1,7 +1,8 @@
 import { useId, useState } from "react";
 import { BackendError } from "../../../backend/backend.ts";
-import { useBackendOnline } from "../../../backend/clubs.ts";
+
 import { requestSessionChange } from "../../../backend/sessions.ts";
+import { useOnline } from "../../../backend/useOnline.ts";
 import { ConfirmDialog } from "../../../components/ConfirmDialog.tsx";
 import { OfflineNote } from "../../../components/OfflineNote.tsx";
 import type { SessionPlayer, SessionRequestKind } from "../../../domain/types.ts";
@@ -50,7 +51,7 @@ export function OwnRequestControls({
 }) {
   const { session, sharedClubId } = useSessionView();
   const actions = useSessionActions();
-  const online = useBackendOnline();
+  const online = useOnline();
   const requests = useRequests(sharedClubId).filter(
     (request) => request.sessionId === session.id && request.sessionPlayerId === player.id,
   );

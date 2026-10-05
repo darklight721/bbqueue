@@ -59,13 +59,11 @@ test.describe("Deleting an Account, between two people", () => {
     // Ana sees Roy linked.
     await anaPage.goto("/clubs");
     await anaPage.getByRole("link", { name: new RegExp(duo.name) }).click();
-    await expect(anaPage.getByText(roy.accountId)).toBeVisible({ timeout: 20_000 });
+    await expect(anaPage.getByText(roy.accountId)).toBeVisible();
 
     // Roy: the dialog lists both, then deletes.
     await page.goto("/clubs");
-    await expect(page.getByRole("link", { name: new RegExp(solo.name) })).toBeVisible({
-      timeout: 20_000,
-    });
+    await expect(page.getByRole("link", { name: new RegExp(solo.name) })).toBeVisible();
     await expect(page.getByRole("link", { name: new RegExp(duo.name) })).toBeVisible();
     await page.goto("/account");
     await page.getByRole("button", { name: "Delete Account" }).click();

@@ -16,7 +16,7 @@ Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/ag
 
 ### E2E specs are part of done
 
-Playwright specs live in `e2e/` (`pnpm e2e`; projects `chromium-mobile` and `webkit-mobile`). Seed state with `e2e/fixtures.ts` and drive sessions with `e2e/session-helpers.ts`.
+Playwright specs live in `e2e/` (`pnpm e2e`). Projects: `chromium-mobile` and `webkit-mobile` run the single-device specs against the local fake Backend; `chromium-mobile-emulator` and `webkit-mobile-emulator` run the specs in `e2e/emulator/` (two people, each in their own browser context) against the Firebase emulators. `pnpm e2e` always starts the emulators, so it needs Java on `PATH`. Seed state with `e2e/fixtures.ts` and drive sessions with `e2e/session-helpers.ts` (`e2e/emulator/` has its own helpers). Security Rules and the Firebase Backend are tested with `pnpm test:firebase` (also needs Java).
 
 When implementing a feature or fixing a bug, add or update an e2e test whenever the behaviour can't be credibly proven by unit tests (Vitest + jsdom):
 

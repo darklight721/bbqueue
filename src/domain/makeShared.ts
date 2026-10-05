@@ -1,5 +1,6 @@
 import { creatorPlayer } from "./clubChanges.ts";
-import type { Account, Club, ClubPlayer, Session } from "./types.ts";
+import { accountIdsEqual } from "./accountId.ts";
+import type { Account, Club, ClubPlayer, EndedSession, Session } from "./types.ts";
 import { namesEqual } from "./validation.ts";
 
 /** Who the person is on the roster of the Local club they are making shared. */
@@ -24,7 +25,7 @@ export type ShareProblem =
   | "name-taken";
 
 /**
- * A Local club made shared (ticket 10): the Club keeps its id, name and every row, and one row,
+ * A Local club made shared: the Club keeps its id, name and every row, and one row,
  * the person's own (an existing one, or a new one named after the Account at Intermediate), is
  * linked to their Account as Organizer. Nobody else is linked: that happens afterwards, as for any
  * Shared club. Pure; nothing is saved here.
@@ -75,4 +76,41 @@ export function sessionForSharing(session: Session, meRowId: string, accountId: 
       player.clubPlayerId === meRowId ? { ...player, accountId } : player,
     ),
   };
+}
+
+export type ShareInputProblem =
+  /** The Club to create isn't a Shared club. */
+  | "not-shared"
+  /** Not exactly one row is linked, as Organizer, to the Account that is making it. */
+  | "wrong-link"
+  /** An Ended session or the Active session belongs to another Club. */
+  | "other-club";
+
+/**
+ * What a Backend checks before it makes a Local club shared (see `Backend.makeSharedClub`): the
+ * Club is a Shared club with exactly one linked row, the Account's own, as Organizer, and what
+ * goes with it belongs to this Club. Null when the input is fine.
+ */
+export function shareInputProblem(
+  input: { club: Club; endedSessions: readonly EndedSession[]; activeSession: Session | null },
+  account: Account,
+): ShareInputProblem | null {
+  const { club, endedSessions, activeSession } = input;
+  if (club.kind !== "shared") return "not-shared";
+  const linked = club.players.filter((row) => row.link);
+  const link = linked[0]?.link;
+  if (
+    linked.length !== 1 ||
+    link?.role !== "organizer" ||
+    !accountIdsEqual(link.accountId, account.accountId)
+  ) {
+    return "wrong-link";
+  }
+  if (
+    endedSessions.some((ended) => ended.clubId !== club.id) ||
+    (activeSession && activeSession.clubId !== club.id)
+  ) {
+    return "other-club";
+  }
+  return null;
 }

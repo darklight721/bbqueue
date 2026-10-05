@@ -131,6 +131,16 @@ export function runBackendContract(name: string, create: (options: ContractOptio
       expect(await backend.getCurrentAccount()).toBeNull();
     });
 
+    it("rejects a name that is only invisible characters, and drops them from one that has some", async () => {
+      const backend = make();
+
+      expect(((await rejection(backend.createAccount("\u200B\u202E"))) as BackendError).code).toBe(
+        "invalid-name",
+      );
+      const account = await backend.createAccount("Ana\u200BBell");
+      expect(account.name).toBe("AnaBell");
+    });
+
     it("rejects a name that is too long", async () => {
       const backend = make();
 

@@ -20,62 +20,52 @@ import {
   type Firestore,
   type QuerySnapshot,
 } from "firebase/firestore";
+import { ENDED_SESSIONS_PER_CLUB } from "../domain/endedSessions.ts";
 import { newId } from "../domain/ids.ts";
+import { shareInputProblem } from "../domain/makeShared.ts";
 import { parseEndedSession, parseSession } from "../domain/parseSession.ts";
 import { MAX_NAME_LENGTH } from "../domain/validation.ts";
 import type {
-  Account,
   ActiveSession,
   EndedSession,
   Session,
   SessionRequest,
   SessionRequestKind,
 } from "../domain/types.ts";
-import { BackendError, type OnlineSource, type Unsubscribe } from "./backend.ts";
+import { BackendError, type ActiveSessionsApi, type Unsubscribe } from "./backend.ts";
 import {
   CACHE_TIMEOUT_MS,
+  confirmed,
+  requireViewer as requireViewerOf,
   retryDelay,
   settle,
   stringList,
   toBackendError,
   toRecord,
   withTimeout,
-} from "./firebaseClubs.ts";
-import type { ActiveSessionsApi } from "./simulatedSessions.ts";
+  type FirebaseDeps,
+} from "./firebaseShared.ts";
 
 /**
  * The Active session of a Shared club on Firestore (ADR-0007):
  * `clubs/{clubId}/activeSession/current` is one fixed record per Club, so "at most one per Club"
  * is part of the layout. It holds `{ sessionJson, hostUid, hostAccountId, hostName, updatedAt }`:
  * - `sessionJson`: the host's whole Session as JSON text. Firestore doesn't take arrays inside
- *   arrays (Teams, Queue slots), and the Session is only ever read or written as a whole.
+ * arrays (Teams, Queue slots), and the Session is only ever read or written as a whole.
  * - `hostUid` / `hostAccountId` / `hostName`: who the Session host is. The rules check `hostUid`.
  * - `updatedAt`: the server's time of the last upload, so viewers can say how old their copy is.
  *
  * Only the host writes it (see `firestore.rules`); the host's uploads are the most frequent write
  * in the app, so the rules decide from the record itself, with no extra reads.
  */
-export function createFirebaseActiveSessions(
-  db: Firestore,
-  deps: {
-    online: OnlineSource;
-    getAccount(): Promise<Account | null>;
-    currentUid(): string | null;
-    observeAccount(listener: (account: Account | null) => void): Unsubscribe;
-  },
-): ActiveSessionsApi {
+export function createFirebaseActiveSessions(db: Firestore, deps: FirebaseDeps): ActiveSessionsApi {
   const clubRef = (clubId: string) => doc(db, "clubs", clubId);
   const sessionRef = (clubId: string) => doc(db, "clubs", clubId, "activeSession", "current");
   const endedRef = (clubId: string) => collection(db, "clubs", clubId, "endedSessions");
   const requestsRef = (clubId: string) =>
     collection(db, "clubs", clubId, "activeSession", "current", "requests");
 
-  async function requireViewer(): Promise<{ account: Account; uid: string }> {
-    const account = await deps.getAccount();
-    const uid = deps.currentUid();
-    if (!account || !uid) throw new BackendError("no-account");
-    return { account, uid };
-  }
+  const requireViewer = () => requireViewerOf(deps);
 
   /** Fails with `not-found` for a Club that isn't there (or isn't mine) and `forbidden` for a Player. */
   async function requireOrganizer(clubId: string, uid: string): Promise<void> {
@@ -289,15 +279,7 @@ export function createFirebaseActiveSessions(
     async makeSharedClub({ club, endedSessions, activeSession }) {
       if (!deps.online.get()) throw new BackendError("offline");
       const { account, uid } = await requireViewer();
-      const linked = club.players.filter((row) => row.link);
-      if (
-        club.kind !== "shared" ||
-        linked.length !== 1 ||
-        linked[0]?.link?.role !== "organizer" ||
-        linked[0].link.accountId.toLowerCase() !== account.accountId.toLowerCase() ||
-        endedSessions.some((ended) => ended.clubId !== club.id) ||
-        (activeSession && activeSession.clubId !== club.id)
-      ) {
+      if (shareInputProblem({ club, endedSessions, activeSession }, account)) {
         throw new BackendError("failed");
       }
 
@@ -529,7 +511,7 @@ export function createFirebaseActiveSessions(
             stopSnapshot = onSnapshot(
               // The 50 most recent: what everybody sees. Older ones stay on the server (rules can't
               // count, and nobody may delete them) but aren't listed.
-              query(endedRef(clubId), orderBy("endedAt", "desc"), limit(50)),
+              query(endedRef(clubId), orderBy("endedAt", "desc"), limit(ENDED_SESSIONS_PER_CLUB)),
               (snapshot) => {
                 attempt = 0;
                 entry.sessions = snapshot.docs.flatMap((row) => {
@@ -725,24 +707,6 @@ export function createFirebaseActiveSessions(
 
 /** How long ending a Session waits for the server to say what it holds, when the cache can't. */
 const SERVER_PEEK_TIMEOUT_MS = 3_000;
-
-/** How long a write may take to reach the server before it counts as not having. */
-const CONFIRM_TIMEOUT_MS = 30_000;
-
-/** Resolves when the server has the write; a network that is really down rejects as `offline`. */
-async function confirmed<T>(write: Promise<T>): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      write,
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new BackendError("offline")), CONFIRM_TIMEOUT_MS);
-      }),
-    ]);
-  } finally {
-    clearTimeout(timer);
-  }
-}
 
 /**
  * The Ended session in a record, or null when it can't be read as one. A record is named by the

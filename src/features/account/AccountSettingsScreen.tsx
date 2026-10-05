@@ -9,6 +9,7 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import { BackendError, type Backend, type BackendErrorCode } from "../../backend/backend.ts";
+import { useOnline } from "../../backend/useOnline.ts";
 import { Avatar } from "../../components/Avatar.tsx";
 import {
   CheckIcon,
@@ -34,7 +35,6 @@ import { CreateAccountForm } from "./CreateAccountForm.tsx";
 import { DeleteAccount } from "./DeleteAccount.tsx";
 import { currentBrowser, shouldOfferInstallHint } from "./installHint.ts";
 import { OfflineNotice } from "./OfflineNotice.tsx";
-import { useOnline } from "./useOnline.ts";
 
 /** What went wrong saving a new name, in words. `invalid-name` shows as the field's own error. */
 const RENAME_ERROR_MESSAGE: Partial<Record<BackendErrorCode, string>> & { failed: string } = {

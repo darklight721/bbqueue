@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import type { ActiveSessionsReport } from "../backend/backend.ts";
 import { accountIdsEqual } from "../domain/accountId.ts";
+import { newestPerClub } from "../domain/endedSessions.ts";
 import type {
   Account,
   ActiveSession,
@@ -204,10 +205,6 @@ export function setSession(session: Session | null): void {
   );
 }
 
-export function useSession(): Session | null {
-  return useSyncExternalStore(subscribeSession, getSession);
-}
-
 // --- Active sessions of Shared clubs (ADR-0007) -------------------------------------------------
 //
 // Alongside the device's own single Session (Local club or no Club), the store holds one Active
@@ -296,7 +293,7 @@ export function applyActiveSessionOf(clubId: string, active: ActiveSession | nul
 }
 
 /**
- * This device no longer has an Account (ticket 11): everything of Shared clubs goes, the Clubs, their
+ * This device no longer has an Account: everything of Shared clubs goes, the Clubs, their
  * Active sessions, Ended sessions and requests. Local clubs, the device's own Session and its own
  * Ended sessions stay. A Session this Account was hosting stays in the device's own Session slot when
  * that is empty, so a night in progress isn't lost; another Organizer can take the Club's copy over.
@@ -323,7 +320,7 @@ export function clearSharedData(
   notify(lostHostSlot);
 }
 
-// --- Player requests (ticket 08) -----------------------------------------------------------------
+// --- Player requests -----------------------------------------------------------------
 //
 // What the Backend reports about requests, per Shared club: this Account's own while watching,
 // everybody's while hosting. Not kept on the device: Firestore's cache answers after a reload.
@@ -349,7 +346,7 @@ export function useRequests(clubId: string | null): SessionRequest[] {
   );
 }
 
-// --- Losing the host role (ticket 07) -------------------------------------------------------------
+// --- Losing the host role -------------------------------------------------------------
 
 const lostHostSlot = createSlot<Record<string, string>>({});
 lostHostSlot.loaded = true;
@@ -477,7 +474,7 @@ export function activeSessionOfClub(
 //
 // The device's own Ended sessions (no Club, a Local club, and the ones it hosted: ADR-0005, the 50
 // most recent) and the Ended sessions of the Shared clubs the Account is on, as the server has
-// them (ticket 09). Screens read one list: both, newest first, each Session once.
+// them. Screens read one list: both, newest first, each Session once.
 
 function getDeviceEndedSessions(): EndedSession[] {
   return get(endedSessionsSlot, loadEndedSessions);
@@ -486,9 +483,6 @@ function getDeviceEndedSessions(): EndedSession[] {
 export function getSharedEndedSessions(): EndedSession[] {
   return get(sharedEndedSlot, loadSharedEndedSessions);
 }
-
-/** How many Ended sessions of a Shared club the device keeps to look at (and the server lists). */
-export const MAX_SHARED_ENDED_PER_CLUB = 50;
 
 /**
  * Called when the Backend reports the Ended sessions of the Shared clubs this Account is on.
@@ -510,7 +504,7 @@ export function applyEndedSessionsReport(report: { sessions: EndedSession[]; clu
       byId.set(ended.id, ended);
     }
   }
-  const kept = newestPerClub([...byId.values()], MAX_SHARED_ENDED_PER_CLUB);
+  const kept = newestPerClub([...byId.values()]);
   const current = getSharedEndedSessions();
   if (kept.length === current.length && kept.every((ended, i) => ended.id === current[i]?.id))
     return;
@@ -518,18 +512,6 @@ export function applyEndedSessionsReport(report: { sessions: EndedSession[]; clu
   sharedEndedSlot.value = saved;
   sharedEndedSlot.loaded = true;
   notify(sharedEndedSlot);
-}
-
-/** The `count` newest of each Club's Ended sessions, newest first. */
-function newestPerClub(sessions: readonly EndedSession[], count: number): EndedSession[] {
-  const perClub = new Map<string, number>();
-  return [...sessions]
-    .sort((a, b) => b.endedAt - a.endedAt)
-    .filter((ended) => {
-      const n = (perClub.get(ended.clubId ?? "") ?? 0) + 1;
-      perClub.set(ended.clubId ?? "", n);
-      return n <= count;
-    });
 }
 
 let mergedEnded: {

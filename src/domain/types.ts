@@ -139,7 +139,7 @@ export interface ActiveSession {
   updatedAt: number;
 }
 
-/** What a Player may ask the Session host for, for their own Session player (ticket 08). */
+/** What a Player may ask the Session host for, for their own Session player. */
 export type SessionRequestKind = "sit-out" | "back-in" | "leave";
 
 export type SessionRequestStatus = "pending" | "applied" | "skipped";

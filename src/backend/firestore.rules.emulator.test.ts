@@ -214,6 +214,16 @@ describe("Account rules", () => {
     await assertFails(updateDoc(own, { name: "" }));
   });
 
+  it("refuses names with control, bidi or zero-width characters, and keeps letters, accents and emoji", async () => {
+    const invisible = ["Ro\u200Bb", "\u202EAna", "Ben\u0007", "\uFEFFCat", "Dan\u200D", "A\nB"];
+    for (const name of invisible) await assertFails(signUp({ ...ANA, name }));
+    await assertSucceeds(signUp({ ...ROY, name: "José Núñez 🏸" }));
+    const own = doc(as(ROY.uid), "accounts", ROY.uid);
+    await assertFails(updateDoc(own, { name: "Roy\u200B" }));
+    await assertFails(updateDoc(own, { name: "\u202Eyor" }));
+    await assertSucceeds(updateDoc(own, { name: "Zoë" }));
+  });
+
   it("lets anyone signed in look an Account up one at a time, but not list them", async () => {
     await seedAccounts(ROY, ANA);
     await assertSucceeds(getDoc(doc(as(ANA.uid), "accounts", ROY.uid)));
@@ -446,6 +456,20 @@ describe("Shared club rules", () => {
         skill: "beginner",
         link: { accountId: ANA.accountId, role: "player" },
       }),
+    );
+  });
+
+  it("refuses Club and Club player names with invisible characters", async () => {
+    await seedClub();
+    const db = as(ROY.uid);
+    await assertFails(updateDoc(doc(db, "clubs", "c1"), { name: "Fri\u200Bday" }));
+    await assertFails(updateDoc(doc(db, "clubs", "c1"), { name: "\u202Edaf" }));
+    await assertFails(
+      setDoc(doc(db, "clubs", "c1", "players", "p-z"), { name: "Dan\u200B", skill: "beginner" }),
+    );
+    await assertFails(updateDoc(doc(db, "clubs", "c1", "players", "p-cat"), { name: "C\u0000at" }));
+    await assertSucceeds(
+      setDoc(doc(db, "clubs", "c1", "players", "p-z"), { name: "Zoë 🏸", skill: "beginner" }),
     );
   });
 
@@ -1022,7 +1046,7 @@ describe("Shared Active session", () => {
       await assertFails(updateDoc(sessionDoc(db), { ...upload("x"), hostName: "Ana" }));
       // Nor the Session it is the record of: the Ended session is named by it.
       await assertFails(updateDoc(sessionDoc(db), { ...upload("x"), sessionId: "s2" }));
-      // Not even an Organizer takes over by writing to it (that is ticket 07).
+      // Not even an Organizer takes over by writing to it (that is taking over, below).
       await assertFails(
         updateDoc(sessionDoc(as(ANA.uid)), {
           hostUid: ANA.uid,

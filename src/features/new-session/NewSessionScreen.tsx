@@ -1,8 +1,9 @@
 import { type ReactNode, useId, useMemo, useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { BackendError } from "../../backend/backend.ts";
-import { saveClubs, useBackendOnline } from "../../backend/clubs.ts";
+import { saveClubs } from "../../backend/clubs.ts";
 import { startSharedSession } from "../../backend/sessions.ts";
+import { useOnline } from "../../backend/useOnline.ts";
 import { AddPlayerForm, type NewPlayer } from "../../components/AddPlayerForm.tsx";
 import { ConfirmDialog } from "../../components/ConfirmDialog.tsx";
 import { OfflineNote } from "../../components/OfflineNote.tsx";
@@ -58,7 +59,7 @@ export function NewSessionScreen() {
     () => everyClub.filter((candidate) => canStartSession(candidate, account?.accountId)),
     [everyClub, account],
   );
-  const online = useBackendOnline();
+  const online = useOnline();
   const activeSessions = useActiveSessions();
   const sortedClubs = useMemo(() => byName(clubs), [clubs]);
   const lockedClubId = sessionClubParam(search, clubs);

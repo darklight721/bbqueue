@@ -32,15 +32,11 @@ test.describe("Shared active session between two people", () => {
     // The host starts a Match; the Player sees it without doing anything.
     await court(page, 1).getByRole("button", { name: "Start match" }).click();
     await expect(court(page, 1).getByText("Playing", { exact: true })).toBeVisible();
-    await expect(court(anaPage, 1).getByText("Playing", { exact: true })).toBeVisible({
-      timeout: 20_000,
-    });
+    await expect(court(anaPage, 1).getByText("Playing", { exact: true })).toBeVisible();
     await expect(anaPage.getByRole("button", { name: /End match|Remove match/ })).toHaveCount(0);
 
     await endMatchWithoutScore(page);
-    await expect(court(anaPage, 1).getByText("Idle", { exact: true })).toBeVisible({
-      timeout: 20_000,
-    });
+    await expect(court(anaPage, 1).getByText("Idle", { exact: true })).toBeVisible();
     await expect(anaPage.getByText("1 match", { exact: true })).toBeVisible();
 
     // The Club screen, too, offers Roy the running Session instead of a second one.
@@ -124,7 +120,7 @@ test.describe("Shared active session between two people", () => {
     await page.getByRole("dialog").getByRole("button", { name: "End session" }).click();
     await expect(page).toHaveURL(/\/sessions\/[^/]+\/summary$/);
 
-    await expect(anaPage).toHaveURL(/\/$/, { timeout: 20_000 });
+    await expect(anaPage).toHaveURL(/\/$/);
     await expect(anaPage.getByText("'Thursday night' has ended.")).toBeVisible();
     await expect(anaPage.getByRole("link", { name: "View session" })).toHaveCount(0);
 

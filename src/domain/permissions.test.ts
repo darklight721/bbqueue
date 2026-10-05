@@ -2,7 +2,6 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   canChangeRoles,
   canEditClub,
-  canSeeAccountIds,
   canStartSession,
   clubChangeProblem,
   hasOrganizer,
@@ -33,14 +32,12 @@ describe("what an Account may do", () => {
   it("lets Organizers edit, change Roles, see Account IDs and start Sessions", () => {
     expect(canEditClub(shared, "roy-7k3f")).toBe(true);
     expect(canChangeRoles(shared, "ROY-7K3F")).toBe(true);
-    expect(canSeeAccountIds(shared, "roy-7k3f")).toBe(true);
     expect(canStartSession(shared, "roy-7k3f")).toBe(true);
   });
 
-  it("keeps Players to a read-only view with no Account IDs", () => {
+  it("keeps Players to a read-only view", () => {
     expect(canEditClub(shared, "ana-2222")).toBe(false);
     expect(canChangeRoles(shared, "ana-2222")).toBe(false);
-    expect(canSeeAccountIds(shared, "ana-2222")).toBe(false);
     expect(canStartSession(shared, "ana-2222")).toBe(false);
   });
 
@@ -53,7 +50,6 @@ describe("what an Account may do", () => {
     expect(canEditClub(local, null)).toBe(true);
     expect(canStartSession(local, "ana-2222")).toBe(true);
     expect(canChangeRoles(local, "roy-7k3f")).toBe(false);
-    expect(canSeeAccountIds(local, "roy-7k3f")).toBe(false);
   });
 });
 

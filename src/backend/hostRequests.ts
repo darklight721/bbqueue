@@ -14,7 +14,7 @@ export interface HostRequests {
 }
 
 /**
- * The Session host's side of Players' requests (ticket 08, ADR-0007) for one Shared club.
+ * The Session host's side of Players' requests (ADR-0007) for one Shared club.
  *
  * Requests are applied to the host's copy in the order they were made, through the engine
  * (`applyRequests`), which records each applied request's id in the Session (`appliedRequestIds`).

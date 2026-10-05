@@ -51,7 +51,7 @@ test.describe("Linking Accounts between two people", () => {
 
     // Ana: the Club is in her list straight away, with nothing to accept.
     const anaRow = anaPage.getByRole("link", { name: new RegExp(clubName) });
-    await expect(anaRow).toBeVisible({ timeout: 15_000 });
+    await expect(anaRow).toBeVisible();
     await anaRow.click();
 
     // Read-only: You on her row, no Account IDs, nothing to edit.
