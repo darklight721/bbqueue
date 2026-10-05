@@ -1,4 +1,4 @@
-import type { Account, Club } from "../domain/types.ts";
+import type { Account, ActiveSession, Club } from "../domain/types.ts";
 import type { Backend, OnlineSource, SimulatedBackendOptions } from "./backend.ts";
 import type { ClubOp } from "./simulatedClubs.ts";
 import { createSimulatedBackend } from "./simulatedBackend.ts";
@@ -11,10 +11,11 @@ export interface InMemoryServer {
   reserved: string[];
   accounts: Account[];
   clubs: Club[];
+  activeSessions: ActiveSession[];
 }
 
 export function createInMemoryServer(): InMemoryServer {
-  return { reserved: [], accounts: [], clubs: [] };
+  return { reserved: [], accounts: [], clubs: [], activeSessions: [] };
 }
 
 export interface InMemoryBackend extends Backend {
@@ -32,6 +33,7 @@ export function createInMemoryBackend(
   const server = options.server ?? createInMemoryServer();
   let account: Account | null = null;
   let pendingOps: ClubOp[] = [];
+  let pendingEnds: string[] = [];
   let isOnline = options.online ?? true;
   const onlineListeners = new Set<(online: boolean) => void>();
 
@@ -62,6 +64,14 @@ export function createInMemoryBackend(
       loadClubs: () => server.clubs,
       saveClubs: (next) => {
         server.clubs = next;
+      },
+      loadActiveSessions: () => server.activeSessions,
+      saveActiveSessions: (next) => {
+        server.activeSessions = next;
+      },
+      loadPendingSessionEnds: () => pendingEnds,
+      savePendingSessionEnds: (ids) => {
+        pendingEnds = ids;
       },
       loadPendingOps: () => pendingOps,
       savePendingOps: (ops) => {

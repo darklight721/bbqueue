@@ -6,11 +6,12 @@ import {
   canStartSession,
   clubChangeProblem,
   hasOrganizer,
+  isSessionHost,
   leaveClubProblem,
   organizerCount,
   ownRow,
 } from "./permissions.ts";
-import type { Club, ClubPlayer } from "./types.ts";
+import type { ActiveSession, Club, ClubPlayer } from "./types.ts";
 
 const roy: ClubPlayer = {
   id: "p-roy",
@@ -194,5 +195,22 @@ describe("clubChangeProblem", () => {
 
   it("puts no limits on a Local club", () => {
     expect(clubChangeProblem(local, null, { type: "removePlayer", playerId: "p-cat" })).toBeNull();
+  });
+});
+
+describe("isSessionHost", () => {
+  const shared = { hostAccountId: "roy-7k3f" } as ActiveSession;
+
+  it("is true for whoever holds the device's own Session (Local club or no Club)", () => {
+    expect(isSessionHost(null, "roy-7k3f")).toBe(true);
+    expect(isSessionHost(null, null)).toBe(true);
+  });
+
+  it("is true only for the Session host of a Shared club's Active session, ignoring capitalisation", () => {
+    expect(isSessionHost(shared, "roy-7k3f")).toBe(true);
+    expect(isSessionHost(shared, "ROY-7K3F")).toBe(true);
+    expect(isSessionHost(shared, "ana-2222")).toBe(false);
+    expect(isSessionHost(shared, null)).toBe(false);
+    expect(isSessionHost(shared, undefined)).toBe(false);
   });
 });

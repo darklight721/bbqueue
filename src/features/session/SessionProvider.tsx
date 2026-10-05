@@ -10,7 +10,12 @@ import {
   startMatch,
 } from "../../domain/engine/index.ts";
 import type { Session } from "../../domain/types.ts";
-import { getSession, setSession } from "../../storage/store.ts";
+import {
+  getSession,
+  getSharedSessions,
+  setHostedSession,
+  setSession,
+} from "../../storage/store.ts";
 import {
   SessionActionsContext,
   SessionViewContext,
@@ -31,7 +36,23 @@ function lastChangeAt(session: Session): number {
   return latest;
 }
 
-export function SessionProvider({ session, children }: { session: Session; children: ReactNode }) {
+/**
+ * Provides the Session and the named engine actions. `hostedClubId` is set when the Session is
+ * the Active session of a Shared club that this device hosts: changes are saved there (the
+ * uploader sends them on) instead of in the device's own Session slot. `readOnly` is for
+ * everyone who isn't the Session host: no action changes anything.
+ */
+export function SessionProvider({
+  session,
+  hostedClubId = null,
+  readOnly = false,
+  children,
+}: {
+  session: Session;
+  hostedClubId?: string | null;
+  readOnly?: boolean;
+  children: ReactNode;
+}) {
   const view = useMemo<SessionView>(() => {
     const asOf = lastChangeAt(session);
     return {
@@ -41,8 +62,9 @@ export function SessionProvider({ session, children }: { session: Session; child
       // status, courtNumber — don't depend on time; `wait`/`recent` are as of the last change.
       stats: allPlayerStats(session, asOf),
       playerById: new Map(session.players.map((player) => [player.id, player])),
+      readOnly,
     };
-  }, [session]);
+  }, [session, readOnly]);
 
   const [notice, setNotice] = useState<{ id: number; text: string } | null>(null);
   const counter = useRef(0);
@@ -54,7 +76,13 @@ export function SessionProvider({ session, children }: { session: Session; child
 
   const actions = useMemo<SessionActions>(() => {
     const run = (operation: EngineOperation): boolean => {
-      const current = getSession();
+      if (readOnly) {
+        notify(messageForReason("not-host"));
+        return false;
+      }
+      const current = hostedClubId
+        ? (getSharedSessions().find((entry) => entry.clubId === hostedClubId)?.session ?? null)
+        : getSession();
       if (!current) {
         notify(messageForReason("no-session"));
         return false;
@@ -64,7 +92,8 @@ export function SessionProvider({ session, children }: { session: Session; child
         notify(messageForReason(result.reason));
         return false;
       }
-      setSession(result.session);
+      if (hostedClubId) setHostedSession(hostedClubId, result.session);
+      else setSession(result.session);
       return true;
     };
     return {
@@ -78,7 +107,7 @@ export function SessionProvider({ session, children }: { session: Session; child
       addCourt: () => run((s, ctx) => addCourt(s, ctx)),
       removeCourt: (courtId) => run((s, ctx) => removeCourt(s, courtId, ctx)),
     };
-  }, [notify]);
+  }, [notify, hostedClubId, readOnly]);
 
   return (
     <SessionViewContext.Provider value={view}>

@@ -1,4 +1,4 @@
-import type { Account, Club, ClubPlayer, Role } from "../domain/types.ts";
+import type { Account, ActiveSession, Club, ClubPlayer, Role, Session } from "../domain/types.ts";
 import type { ClubPlayerPatch } from "../domain/clubChanges.ts";
 
 export type BackendErrorCode =
@@ -20,6 +20,8 @@ export type BackendErrorCode =
   | "unknown-account"
   /** The Account is already linked to another Club player in this Club. */
   | "already-linked"
+  /** The Shared club already has an Active session. */
+  | "session-exists"
   /** Every Account ID that was tried was already taken. */
   | "id-unavailable"
   | "failed";
@@ -32,6 +34,17 @@ export class BackendError extends Error {
     this.name = "BackendError";
     this.code = code;
   }
+}
+
+/** What `observeActiveSessions` reports. */
+export interface ActiveSessionsReport {
+  /** The Active sessions of the Shared clubs the Account is on, as far as they are known. */
+  sessions: ActiveSession[];
+  /**
+   * Shared clubs whose Active session isn't known yet (not heard from the server, nothing
+   * cached, e.g. offline after a fresh start). Whatever the device last had for them stays.
+   */
+  unknown: string[];
 }
 
 /** Stops an observer. */
@@ -108,6 +121,39 @@ export interface Backend {
   unlinkClubPlayer(clubId: string, playerId: string): Promise<void>;
   /** The current Account leaves the Club: its row stays on the roster, no longer linked. */
   leaveClub(clubId: string): Promise<void>;
+
+  // --- Shared Active session (ticket 06, ADR-0007) -------------------------------------------
+  //
+  // Each Shared club has at most one Active session: the Session host's whole copy of the
+  // Session, who the host is, and when it was last uploaded. Only the host changes it (taking
+  // over arrives with ticket 07); anyone on the Club reads it. The host's device stays the
+  // source of truth and keeps playing offline: `publishActiveSession` sends the latest copy when
+  // the device is online, and the app calls it at most once at a time (see `sessionUploader.ts`).
+
+  /**
+   * Calls `listener` right away and then on every change with the Active sessions of the Shared
+   * clubs the current Account is on. A Club's session disappears from the report when it ends.
+   */
+  observeActiveSessions(listener: (report: ActiveSessionsReport) => void): Unsubscribe;
+  /**
+   * Starts the Active session of a Shared club with `session`, recording this Account as the
+   * Session host. Needs a connection, because "at most one per Club" is decided on the server.
+   * Rejects with `offline`, `no-account`, `not-found` (no such Club), `forbidden` (not an
+   * Organizer) or `session-exists`.
+   */
+  startSharedSession(clubId: string, session: Session): Promise<ActiveSession>;
+  /**
+   * The Session host uploads the latest copy of the Session. Needs a connection (`offline`
+   * otherwise: the caller waits and sends the latest copy later). Rejects with `forbidden` when
+   * this Account isn't the Session host and `not-found` when the Club has no Active session.
+   */
+  publishActiveSession(clubId: string, session: Session): Promise<void>;
+  /**
+   * The Session host ends the Active session: the record is deleted and everybody else sees it
+   * go. Works offline: the delete waits and reaches the server when the connection is back.
+   * Rejects with `forbidden` when this Account isn't the Session host.
+   */
+  endSharedSession(clubId: string): Promise<void>;
 }
 
 /** How many Account IDs to try before giving up. */

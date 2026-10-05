@@ -2,6 +2,7 @@ import { accountIdsEqual, generateAccountId, normalizeAccountId } from "../domai
 import { MAX_NAME_LENGTH, normalizeName } from "../domain/validation.ts";
 import type { Account } from "../domain/types.ts";
 import { createSimulatedClubs, type SimulatedClubsState } from "./simulatedClubs.ts";
+import { createSimulatedSessions, type SimulatedSessionsState } from "./simulatedSessions.ts";
 import {
   BackendError,
   MAX_ACCOUNT_ID_ATTEMPTS,
@@ -12,7 +13,7 @@ import {
 } from "./backend.ts";
 
 /** Where a simulated backend keeps its "server" data. */
-export interface SimulatedState extends SimulatedClubsState {
+export interface SimulatedState extends SimulatedClubsState, SimulatedSessionsState {
   loadAccount(): Account | null;
   saveAccount(account: Account): void;
   /** Normalised Account IDs that are reserved. */
@@ -68,8 +69,11 @@ export function createSimulatedBackend(
     online,
   );
 
+  const sessions = createSimulatedSessions(state, () => state.loadAccount(), online);
+
   return {
     ...clubs,
+    ...sessions,
     isOnline: () => online.get(),
     observeOnline: (listener) => online.subscribe(listener),
 

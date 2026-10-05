@@ -21,7 +21,13 @@ import { canChangeRoles, canDeleteClub, canEditClub, ownRow } from "../../domain
 import { newId } from "../../domain/ids.ts";
 import { DEFAULT_SKILL, type Account, type Club, type Role } from "../../domain/types.ts";
 import { hasClubErrors, validateClub } from "../../domain/validation.ts";
-import { useAccount, useClubs, useEndedSessions, useSession } from "../../storage/store.ts";
+import {
+  activeSessionOfClub,
+  useAccount,
+  useActiveSessions,
+  useClubs,
+  useEndedSessions,
+} from "../../storage/store.ts";
 import { newSessionForClubPath } from "../new-session/newSession.ts";
 import { countLabel } from "../session-summary/summaryFormat.ts";
 import { AccountLinkSection } from "./AccountLinkSection.tsx";
@@ -54,9 +60,16 @@ function ClubEditor({ club }: { club: Club | null }) {
   const [, navigate] = useLocation();
   const clubs = useClubs();
   const endedSessions = useEndedSessions();
-  const activeSession = useSession();
+  const activeEntries = useActiveSessions();
   const isNew = club === null;
   const sessionCount = club ? endedSessions.filter((ended) => ended.clubId === club.id).length : 0;
+  // This Club's Active session: the device's own for a Local club, the Shared club's record otherwise.
+  const activeSession = club
+    ? (activeSessionOfClub(activeEntries, club.id)?.session ?? null)
+    : null;
+  // Only the device's own Session is replaced by starting a new one; a Shared club's isn't touched.
+  const replacesDeviceSession =
+    club?.kind === "local" && activeEntries.some((entry) => !entry.shared);
 
   const account = useAccount();
   const online = useBackendOnline();
@@ -444,7 +457,7 @@ function ClubEditor({ club }: { club: Club | null }) {
 
         {club ? (
           <nav aria-label="Club sessions" className="flex flex-col gap-3">
-            {activeSession?.clubId === club.id ? (
+            {activeSession ? (
               <ClubCardLink
                 href={`/sessions/${encodeURIComponent(activeSession.id)}`}
                 tone="active"
@@ -459,7 +472,9 @@ function ClubEditor({ club }: { club: Club | null }) {
                 tone="plain"
                 icon={<PlusIcon className="size-6" />}
                 label="New session"
-                detail={activeSession ? "Replaces the current session" : "Pick players and courts"}
+                detail={
+                  replacesDeviceSession ? "Replaces the current session" : "Pick players and courts"
+                }
                 onClick={leaveVia(newSessionForClubPath(club.id))}
               />
             )}

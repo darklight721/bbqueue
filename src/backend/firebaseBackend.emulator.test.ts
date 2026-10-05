@@ -5,6 +5,7 @@ import { ACCOUNT_ID_ALPHABET } from "../domain/accountId.ts";
 import { adminGetDoc, adminSetDoc, clearEmulator } from "../test/emulatorAdmin.ts";
 import { runSharedClubsContract } from "./backend.clubs.contract.ts";
 import { runRolesContract } from "./backend.roles.contract.ts";
+import { runSessionsContract } from "./backend.sessions.contract.ts";
 import { runBackendContract, type ContractOptions } from "./backend.contract.ts";
 import type { Backend, BackendError, OnlineSource } from "./backend.ts";
 import { createFirebaseBackend } from "./firebaseBackend.ts";
@@ -98,6 +99,7 @@ function createDevice(options: Partial<ContractOptions> = {}) {
 runBackendContract("Firebase emulator", (options) => createDevice(options).backend);
 runSharedClubsContract("Firebase emulator", () => createDevice());
 runRolesContract("Firebase emulator", () => ({ device: () => createDevice() }));
+runSessionsContract("Firebase emulator", () => ({ device: () => createDevice() }));
 
 describe("Firebase emulator: what reaches the server", () => {
   it("reserves the Account ID and writes the Account in one go", async () => {

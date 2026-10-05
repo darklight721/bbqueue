@@ -1,6 +1,8 @@
 import { type ReactNode, useId, useMemo, useState } from "react";
-import { useLocation, useSearch } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
+import { BackendError } from "../../backend/backend.ts";
 import { saveClubs, useBackendOnline } from "../../backend/clubs.ts";
+import { startSharedSession } from "../../backend/sessions.ts";
 import { AddPlayerForm, type NewPlayer } from "../../components/AddPlayerForm.tsx";
 import { ConfirmDialog } from "../../components/ConfirmDialog.tsx";
 import { OfflineNote } from "../../components/OfflineNote.tsx";
@@ -15,7 +17,15 @@ import { newId } from "../../domain/ids.ts";
 import type { Club, PointSystem } from "../../domain/types.ts";
 import { normalizeName } from "../../domain/validation.ts";
 import { canStartSession } from "../../domain/permissions.ts";
-import { getClubs, getSession, setSession, useAccount, useClubs } from "../../storage/store.ts";
+import {
+  activeSessionOfClub,
+  getClubs,
+  getSession,
+  setSession,
+  useAccount,
+  useActiveSessions,
+  useClubs,
+} from "../../storage/store.ts";
 import {
   byName,
   clashingGuestIds,
@@ -49,6 +59,7 @@ export function NewSessionScreen() {
     [everyClub, account],
   );
   const online = useBackendOnline();
+  const activeSessions = useActiveSessions();
   const sortedClubs = useMemo(() => byName(clubs), [clubs]);
   const lockedClubId = sessionClubParam(search, clubs);
 
@@ -60,6 +71,8 @@ export function NewSessionScreen() {
   const [hours, setHours] = useState(1);
   const [manualPoints, setManualPoints] = useState<PointSystem | null>(null);
   const [confirmReplace, setConfirmReplace] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
 
   const nameId = useId();
   const nameErrorId = useId();
@@ -79,17 +92,29 @@ export function NewSessionScreen() {
     [club, guests],
   );
 
+  // A Shared club has one Active session at a time (ADR-0007), and starting one is checked on the
+  // server: it needs a connection. Local clubs and no club only touch this device's own Session.
+  const sharedActive =
+    club?.kind === "shared"
+      ? (activeSessionOfClub(activeSessions, club.id)?.session ?? null)
+      : null;
+  const needsConnection = club?.kind === "shared" && online === false;
+
   const nameMissing = normalizeName(name) === "";
   const blocker =
     clubChoice === NO_CHOICE
       ? "Choose a club"
-      : nameMissing
-        ? "Enter a session name"
-        : playerCount < MIN_PLAYERS
-          ? `Add at least ${MIN_PLAYERS} players`
-          : clashes.size > 0
-            ? "Two players have the same name"
-            : null;
+      : sharedActive
+        ? "This club already has an active session"
+        : needsConnection
+          ? "You're offline. A shared club's session needs a connection to start"
+          : nameMissing
+            ? "Enter a session name"
+            : playerCount < MIN_PLAYERS
+              ? `Add at least ${MIN_PLAYERS} players`
+              : clashes.size > 0
+                ? "Two players have the same name"
+                : null;
   const canStart = blocker === null;
 
   function chooseClub(next: string) {
@@ -120,13 +145,19 @@ export function NewSessionScreen() {
   }
 
   function requestStart() {
-    if (!canStart) return;
+    if (!canStart || starting) return;
+    if (club?.kind === "shared") {
+      // Doesn't touch the device's own Session, so there is nothing to replace.
+      void startShared();
+      return;
+    }
     const existing = getSession();
     if (existing) setConfirmReplace(existing.name);
     else start();
   }
 
-  function start() {
+  /** The Session and the Club roster change that Start saves. */
+  function plan() {
     const allClubs = getClubs();
     const plan = planStart({
       name,
@@ -139,15 +170,43 @@ export function NewSessionScreen() {
       pointSystem,
       newId,
     });
-    if (plan.clubs) {
-      // A Shared club's roster is changed through the server: if that fails (offline, or no
-      // longer an Organizer) the Session still starts, just without the saved guests.
-      saveClubs(allClubs, plan.clubs).catch((error: unknown) =>
-        console.error("Failed to save guests to the Club", error),
-      );
-    }
     const session = createSession(plan.input, { now: Date.now(), rng: Math.random });
+    return { allClubs, plan, session };
+  }
+
+  /** Save guests marked "Save to club". */
+  function saveGuests(allClubs: Club[], clubs: Club[] | null) {
+    if (!clubs) return;
+    // A Shared club's roster is changed through the server: if that fails (offline, or no
+    // longer an Organizer) the Session still starts, just without the saved guests.
+    saveClubs(allClubs, clubs).catch((error: unknown) =>
+      console.error("Failed to save guests to the Club", error),
+    );
+  }
+
+  /** Local club or no Club: the Session goes in this device's own slot. */
+  function start() {
+    const { allClubs, plan: made, session } = plan();
+    saveGuests(allClubs, made.clubs);
     setSession(session);
+    navigate(`/sessions/${session.id}`);
+  }
+
+  /** Shared club: the server decides that the Club has no Active session yet, then this device hosts it. */
+  async function startShared() {
+    if (!club) return;
+    const { allClubs, plan: made, session } = plan();
+    setStarting(true);
+    setStartError(null);
+    try {
+      await startSharedSession(club.id, session);
+    } catch (error) {
+      console.error("Failed to start the shared session", error);
+      setStartError(startErrorMessage(error));
+      setStarting(false);
+      return;
+    }
+    saveGuests(allClubs, made.clubs);
     navigate(`/sessions/${session.id}`);
   }
 
@@ -164,19 +223,34 @@ export function NewSessionScreen() {
             >
               {selectedLabel(playerCount)}
             </p>
-            <p className="truncate text-sm text-base-content/65">
-              {blocker ??
-                `${courts} ${courts === 1 ? "court" : "courts"} · ${hours} ${hours === 1 ? "hour" : "hours"} · ${pointSystem} points`}
-            </p>
+            {startError ? (
+              <p role="alert" className="text-sm font-semibold text-error">
+                {startError}
+              </p>
+            ) : (
+              <p className="truncate text-sm text-base-content/65">
+                {blocker ??
+                  `${courts} ${courts === 1 ? "court" : "courts"} · ${hours} ${hours === 1 ? "hour" : "hours"} · ${pointSystem} points`}
+              </p>
+            )}
           </div>
-          <button
-            type="button"
-            className="btn btn-lg btn-primary shrink-0"
-            disabled={!canStart}
-            onClick={requestStart}
-          >
-            Start session
-          </button>
+          {sharedActive ? (
+            <Link
+              href={`/sessions/${encodeURIComponent(sharedActive.id)}`}
+              className="btn btn-lg btn-primary shrink-0"
+            >
+              Open active session
+            </Link>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-lg btn-primary shrink-0"
+              disabled={!canStart || starting}
+              onClick={requestStart}
+            >
+              Start session
+            </button>
+          )}
         </div>
       }
     >
@@ -339,6 +413,21 @@ export function NewSessionScreen() {
       />
     </Screen>
   );
+}
+
+function startErrorMessage(error: unknown): string {
+  switch (error instanceof BackendError ? error.code : null) {
+    case "offline":
+      return "You're offline. A shared club's session needs a connection to start.";
+    case "session-exists":
+      return "This club already has an active session.";
+    case "forbidden":
+      return "Only Organizers can start a session for this club.";
+    case "not-found":
+      return "This club is no longer available.";
+    default:
+      return "Couldn't start the session. Please try again.";
+  }
 }
 
 /**

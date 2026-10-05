@@ -1,4 +1,4 @@
-import type { Account, Club } from "../domain/types.ts";
+import type { Account, ActiveSession, Club } from "../domain/types.ts";
 import type { Backend, SimulatedBackendOptions } from "./backend.ts";
 import type { ClubOp } from "./simulatedClubs.ts";
 import { createSimulatedBackend } from "./simulatedBackend.ts";
@@ -13,6 +13,10 @@ export const FAKE_BACKEND_KEYS = {
   clubs: "bq:fake:clubs",
   /** Shared club changes made while offline that haven't reached the "server" yet. */
   pendingClubOps: "bq:fake:pending-club-ops",
+  /** Active sessions of Shared clubs on the "server": an array of ActiveSession. */
+  activeSessions: "bq:fake:active-sessions",
+  /** Clubs whose Active session this device ended while offline (the delete is still waiting). */
+  pendingSessionEnds: "bq:fake:pending-session-ends",
 } as const;
 
 function readJson<T>(key: string, guard: (value: unknown) => value is T): T | null {
@@ -67,6 +71,7 @@ export function createLocalFakeBackend(
 ): Backend {
   const accountKey = FAKE_BACKEND_KEYS.account + (options.deviceSuffix ?? "");
   const pendingKey = FAKE_BACKEND_KEYS.pendingClubOps + (options.deviceSuffix ?? "");
+  const pendingEndsKey = FAKE_BACKEND_KEYS.pendingSessionEnds + (options.deviceSuffix ?? "");
   return createSimulatedBackend(
     {
       loadAccount: () => readJson(accountKey, isAccount),
@@ -79,6 +84,13 @@ export function createLocalFakeBackend(
         localStorage.setItem(FAKE_BACKEND_KEYS.accountIds, JSON.stringify(ids)),
       loadClubs: () => (readJson(FAKE_BACKEND_KEYS.clubs, isRecordArray) ?? []).map(toSharedClub),
       saveClubs: (clubs) => localStorage.setItem(FAKE_BACKEND_KEYS.clubs, JSON.stringify(clubs)),
+      loadActiveSessions: () =>
+        (readJson(FAKE_BACKEND_KEYS.activeSessions, isRecordArray) ??
+          []) as unknown as ActiveSession[],
+      saveActiveSessions: (sessions) =>
+        localStorage.setItem(FAKE_BACKEND_KEYS.activeSessions, JSON.stringify(sessions)),
+      loadPendingSessionEnds: () => readJson(pendingEndsKey, isStringArray) ?? [],
+      savePendingSessionEnds: (ids) => localStorage.setItem(pendingEndsKey, JSON.stringify(ids)),
       loadPendingOps: () => (readJson(pendingKey, isRecordArray) ?? []) as ClubOp[],
       savePendingOps: (ops) => localStorage.setItem(pendingKey, JSON.stringify(ops)),
       observeExternalChanges(listener) {
@@ -86,6 +98,7 @@ export function createLocalFakeBackend(
           null,
           accountKey,
           pendingKey,
+          pendingEndsKey,
           ...Object.values(FAKE_BACKEND_KEYS),
         ];
         const onStorage = (event: StorageEvent) => {

@@ -3,7 +3,8 @@ import { Redirect } from "wouter";
 import { ChevronDownIcon } from "../../components/icons.tsx";
 import { Screen } from "../../components/Screen.tsx";
 import { displayClubName } from "../../domain/clubName.ts";
-import { useClubs, useSession } from "../../storage/store.ts";
+import { isSessionHost } from "../../domain/permissions.ts";
+import { useAccount, useActiveSessions, useClubs } from "../../storage/store.ts";
 import { CourtsSection } from "./courts/CourtsSection.tsx";
 import { EndSessionSection } from "./end/EndSessionSection.tsx";
 import { HistorySection } from "./history/HistorySection.tsx";
@@ -17,6 +18,7 @@ import {
   type JumpTarget,
 } from "./SectionJumpBar.tsx";
 import { SessionProvider } from "./SessionProvider.tsx";
+import { WatchingNote } from "./WatchingNote.tsx";
 
 /** Sections shown in the jump bar, in screen order. */
 const JUMP_TARGETS: readonly JumpTarget[] = [
@@ -29,9 +31,21 @@ const JUMP_TARGETS: readonly JumpTarget[] = [
 /**
  * The courtside screen. Top to bottom: Courts (hero), Queues, Players, History, End session.
  * Everything re-renders from the saved Session; every change is saved straight away.
+ *
+ * `sessionId` picks one of the Active sessions the device knows (its own, or a Shared club's);
+ * without it the device's own Session is shown. Anyone who isn't the Session host (ADR-0007)
+ * gets the same screen read-only.
  */
-export function SessionScreen() {
-  const session = useSession();
+export function SessionScreen({ sessionId }: { sessionId?: string } = {}) {
+  const entries = useActiveSessions();
+  const entry =
+    (sessionId
+      ? entries.find((candidate) => candidate.session.id === sessionId)
+      : entries.find((candidate) => !candidate.shared)) ?? null;
+  const session = entry?.session ?? null;
+  const shared = entry?.shared ?? null;
+  const account = useAccount();
+  const readOnly = !isSessionHost(shared, account?.accountId);
   const clubs = useClubs();
   // Not saved: Players starts open and History closed on every visit.
   const [playersOpen, setPlayersOpen] = useState(true);
@@ -47,26 +61,41 @@ export function SessionScreen() {
   const clubName = displayClubName(session.clubId, session.clubName, clubs);
 
   return (
-    <SessionProvider session={session}>
+    <SessionProvider
+      session={session}
+      hostedClubId={shared && !readOnly ? shared.clubId : null}
+      readOnly={readOnly}
+    >
       <Screen
         title={session.name}
         subtitle={clubName}
         backTo="/"
         wide
         right={
-          <button
-            type="button"
-            className="btn h-10 min-h-10 gap-1 rounded-full border-0 bg-primary/10 px-3 font-display text-lg font-bold whitespace-nowrap text-primary shadow-none hover:bg-primary/20"
-            aria-label={`${session.pointSystem} pts, change point system`}
-            aria-haspopup="dialog"
-            onClick={() => setPointsOpen(true)}
-          >
-            {session.pointSystem} pts
-            <ChevronDownIcon className="size-4" />
-          </button>
+          readOnly ? (
+            <span className="inline-flex h-10 items-center rounded-full bg-primary/10 px-3 font-display text-lg font-bold whitespace-nowrap text-primary">
+              {session.pointSystem} pts
+            </span>
+          ) : (
+            <button
+              type="button"
+              className="btn h-10 min-h-10 gap-1 rounded-full border-0 bg-primary/10 px-3 font-display text-lg font-bold whitespace-nowrap text-primary shadow-none hover:bg-primary/20"
+              aria-label={`${session.pointSystem} pts, change point system`}
+              aria-haspopup="dialog"
+              onClick={() => setPointsOpen(true)}
+            >
+              {session.pointSystem} pts
+              <ChevronDownIcon className="size-4" />
+            </button>
+          )
         }
       >
-        <PointSystemDialog open={pointsOpen} onClose={() => setPointsOpen(false)} />
+        {readOnly && shared ? (
+          <WatchingNote hostName={shared.hostName} updatedAt={shared.updatedAt} />
+        ) : null}
+        {readOnly ? null : (
+          <PointSystemDialog open={pointsOpen} onClose={() => setPointsOpen(false)} />
+        )}
         <SectionJumpBar targets={JUMP_TARGETS} onJump={openSection} />
         <div className="flex flex-col gap-10">
           <div id="courts" className={SECTION_SCROLL_MARGIN}>
@@ -81,7 +110,7 @@ export function SessionScreen() {
           <div id="history" className={SECTION_SCROLL_MARGIN}>
             <HistorySection open={historyOpen} onOpenChange={setHistoryOpen} />
           </div>
-          <EndSessionSection />
+          {readOnly ? null : <EndSessionSection />}
         </div>
         {/* Phones: room for the jump bar fixed at the bottom. */}
         <div aria-hidden="true" className={`-mt-6 ${JUMP_BAR_BOTTOM_SPACE}`} />

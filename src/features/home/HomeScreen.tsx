@@ -1,4 +1,4 @@
-import { useId, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useId, type CSSProperties, type ReactNode } from "react";
 import { Link } from "wouter";
 import { getBackend } from "../../backend/index.ts";
 import { Avatar } from "../../components/Avatar.tsx";
@@ -10,18 +10,28 @@ import {
   PlusIcon,
   UsersIcon,
 } from "../../components/icons.tsx";
-import { useAccount, useClubs, useEndedSessions, useSession } from "../../storage/store.ts";
+import { displayClubName } from "../../domain/clubName.ts";
+import { isSessionHost } from "../../domain/permissions.ts";
+import { setFlash, useFlash } from "../../storage/flash.ts";
+import { useAccount, useActiveSessions, useClubs, useEndedSessions } from "../../storage/store.ts";
 import { countLabel } from "../session-summary/summaryFormat.ts";
 import { CourtLines } from "./CourtLines.tsx";
 
-/** Start screen: resume the current Session, start a new one, manage Clubs or look back. */
+/**
+ * Start screen: every Active session this person can see (the device's own Session, and one per
+ * Shared club they are on), start a new one, manage Clubs or look back.
+ */
 export function HomeScreen() {
-  const session = useSession();
+  const entries = useActiveSessions();
+  const account = useAccount();
   const clubs = useClubs();
   const endedCount = useEndedSessions().length;
 
+  // The device's own Session (Local club or no Club): what New session would replace.
+  const session = entries.find((entry) => !entry.shared)?.session ?? null;
+  const sharedEntries = entries.filter((entry) => entry.shared);
   const clubCount = clubs.length;
-  const step = session ? 3 : 2;
+  const step = 2 + entries.length;
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -29,15 +39,38 @@ export function HomeScreen() {
 
       <main className="px-safe relative z-10 mx-auto -mt-8 flex w-full max-w-2xl flex-col pb-[max(1.5rem,env(safe-area-inset-bottom))]">
         <nav aria-label="Main" className="flex flex-col gap-3">
-          {session ? <ResumeLink sessionId={session.id} sessionName={session.name} /> : null}
+          <FlashNotice />
+
+          {session ? (
+            <ResumeLink
+              sessionId={session.id}
+              label="Resume session"
+              detail={session.name}
+              delay={1}
+            />
+          ) : null}
+
+          {sharedEntries.map(({ session: shared, shared: record }, index) => {
+            const hosting = isSessionHost(record, account?.accountId);
+            const clubName = displayClubName(shared.clubId, shared.clubName, clubs);
+            return (
+              <ResumeLink
+                key={shared.id}
+                sessionId={shared.id}
+                label={hosting ? "Resume session" : "View session"}
+                detail={`${shared.name} · ${clubName} · ${hosting ? "You're the host" : `Host: ${record!.hostName}`}`}
+                delay={(session ? 2 : 1) + index}
+              />
+            );
+          })}
 
           <ActionLink
             href="/sessions/new"
-            tone={session ? "plain" : "primary"}
+            tone={entries.length > 0 ? "plain" : "primary"}
             icon={<PlusIcon className="size-7" />}
             label="New session"
             detail={session ? "Replaces the current session" : "Pick players and courts"}
-            delay={session ? 2 : 1}
+            delay={1 + entries.length}
           />
 
           <ActionLink
@@ -135,7 +168,18 @@ function AccountLink() {
   );
 }
 
-function ResumeLink({ sessionId, sessionName }: { sessionId: string; sessionName: string }) {
+/** A "Resume session" or "View session" card: opens an Active session. */
+function ResumeLink({
+  sessionId,
+  label,
+  detail,
+  delay,
+}: {
+  sessionId: string;
+  label: string;
+  detail: string;
+  delay: number;
+}) {
   const labelId = useId();
   const detailId = useId();
   return (
@@ -144,21 +188,47 @@ function ResumeLink({ sessionId, sessionName }: { sessionId: string; sessionName
       aria-labelledby={labelId}
       aria-describedby={detailId}
       className="animate-rise group flex min-h-24 items-center gap-4 rounded-box bg-neutral p-4 pr-3 text-neutral-content shadow-lg ring-1 ring-black/5 transition-transform active:scale-[0.98]"
-      style={delayStyle(1)}
+      style={delayStyle(delay)}
     >
       <span className="grid size-14 shrink-0 place-items-center rounded-full bg-volt text-[#14201a]">
         <PlayIcon className="size-7 translate-x-0.5" />
       </span>
       <span className="flex min-w-0 flex-1 flex-col">
         <span id={labelId} className="font-display text-2xl leading-tight font-bold uppercase">
-          Resume session
+          {label}
         </span>
         <span id={detailId} className="truncate text-base text-neutral-content/75">
-          {sessionName}
+          {detail}
         </span>
       </span>
       <ChevronRightIcon className="size-6 shrink-0 opacity-60 transition-transform group-hover:translate-x-0.5" />
     </Link>
+  );
+}
+
+/** A one-time message from another screen (a Session you had open ended). */
+function FlashNotice() {
+  const message = useFlash();
+  useEffect(() => {
+    if (!message) return;
+    const timer = setTimeout(() => setFlash(null), 8000);
+    return () => clearTimeout(timer);
+  }, [message]);
+  return (
+    <div role="status" aria-live="polite">
+      {message ? (
+        <div className="flex items-center gap-2 rounded-box bg-neutral py-2 pr-2 pl-4 text-neutral-content shadow-lg">
+          <p className="min-w-0 flex-1 font-semibold">{message}</p>
+          <button
+            type="button"
+            className="btn btn-ghost text-neutral-content"
+            onClick={() => setFlash(null)}
+          >
+            OK
+          </button>
+        </div>
+      ) : null}
+    </div>
   );
 }
 

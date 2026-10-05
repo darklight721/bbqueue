@@ -1,7 +1,16 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
-import type { Club, EndedSession, Session } from "../domain/types.ts";
+import type { ActiveSession, Club, EndedSession, Session } from "../domain/types.ts";
 import {
+  addHostedSession,
+  applyActiveSessionsReport,
+  findActiveSession,
+  getActiveSessions,
+  getSharedSessions,
+  isPublishedCopy,
+  removeSharedSession,
+  setHostedSession,
+  useActiveSessions,
   getAccount,
   getClubs,
   getSharedClubs,
@@ -278,5 +287,103 @@ describe("Local and Shared clubs", () => {
     setSharedClubs([shared]);
     setSharedClubs([]);
     expect(getClubs().map((c) => c.id)).toEqual([]);
+  });
+});
+
+describe("Active sessions of Shared clubs", () => {
+  const shared = (id: string, clubId = "c1", host = "roy-7k3f"): ActiveSession => ({
+    clubId,
+    session: { ...session, id, clubId, clubName: "Riverside" },
+    hostAccountId: host,
+    hostName: "Roy",
+    updatedAt: 5000,
+  });
+
+  beforeEach(() => {
+    localStorage.clear();
+    resetStoreForTests();
+    setAccount({ accountId: "ana-2222", name: "Ana" });
+  });
+
+  it("holds the device's own Session next to one Active session per Shared club", () => {
+    setSession(session);
+    applyActiveSessionsReport({ sessions: [shared("s2", "c1"), shared("s3", "c2")], unknown: [] });
+
+    const entries = getActiveSessions();
+
+    expect(entries.map((e) => [e.session.id, e.shared?.clubId ?? null])).toEqual([
+      ["s1", null],
+      ["s2", "c1"],
+      ["s3", "c2"],
+    ]);
+    expect(findActiveSession("s2")?.shared?.hostAccountId).toBe("roy-7k3f");
+    expect(findActiveSession("nope")).toBeNull();
+    // Stable between reads, so React doesn't re-render for nothing.
+    expect(getActiveSessions()).toBe(entries);
+  });
+
+  it("keeps a Shared club's Session on the device across a reload, for viewing offline", () => {
+    applyActiveSessionsReport({ sessions: [shared("s2")], unknown: [] });
+
+    resetStoreForTests();
+
+    expect(getSharedSessions().map((e) => e.session.id)).toEqual(["s2"]);
+    expect(getSharedSessions()[0]?.updatedAt).toBe(5000);
+  });
+
+  it("drops a session the server no longer reports", () => {
+    applyActiveSessionsReport({ sessions: [shared("s2")], unknown: [] });
+    applyActiveSessionsReport({ sessions: [], unknown: [] });
+
+    expect(getSharedSessions()).toEqual([]);
+  });
+
+  it("runs a hosted Session on the device: changes stay, and a late report doesn't undo them", () => {
+    setAccount({ accountId: "roy-7k3f", name: "Roy" });
+    addHostedSession(shared("s2"));
+    const changed = { ...shared("s2").session, name: "Changed on court" };
+
+    setHostedSession("c1", changed);
+    applyActiveSessionsReport({ sessions: [shared("s2")], unknown: [] });
+
+    expect(getSharedSessions()[0]?.session.name).toBe("Changed on court");
+    // And it isn't dropped when the server has nothing to say about it yet.
+    applyActiveSessionsReport({ sessions: [], unknown: [] });
+    expect(getSharedSessions()).toHaveLength(1);
+  });
+
+  it("marks copies the server has, so only the host's own changes need uploading", () => {
+    setAccount({ accountId: "roy-7k3f", name: "Roy" });
+    const started = shared("s2");
+    addHostedSession(started);
+    expect(isPublishedCopy(started.session)).toBe(true);
+
+    const changed = { ...started.session, name: "Changed" };
+    setHostedSession("c1", changed);
+    expect(isPublishedCopy(changed)).toBe(false);
+
+    applyActiveSessionsReport({ sessions: [shared("s9", "c2")], unknown: [] });
+    expect(isPublishedCopy(getSharedSessions().find((e) => e.clubId === "c2")!.session)).toBe(true);
+  });
+
+  it("doesn't bring back a session this device just ended when a late report still lists it", () => {
+    setAccount({ accountId: "roy-7k3f", name: "Roy" });
+    addHostedSession(shared("s2"));
+
+    removeSharedSession("c1", { endedHere: true });
+    applyActiveSessionsReport({ sessions: [shared("s2")], unknown: [] });
+
+    expect(getSharedSessions()).toEqual([]);
+  });
+
+  it("re-renders hooks when either kind of Active session changes", () => {
+    const { result } = renderHook(() => useActiveSessions());
+    expect(result.current).toEqual([]);
+
+    act(() => setSession(session));
+    expect(result.current.map((e) => e.session.id)).toEqual(["s1"]);
+
+    act(() => applyActiveSessionsReport({ sessions: [shared("s2")], unknown: [] }));
+    expect(result.current.map((e) => e.session.id)).toEqual(["s1", "s2"]);
   });
 });

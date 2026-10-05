@@ -69,5 +69,14 @@ export function createLazyFirebaseBackend(
     unlinkClubPlayer: (clubId, playerId) =>
       loaded.then((backend) => backend.unlinkClubPlayer(clubId, playerId)),
     leaveClub: (clubId) => loaded.then((backend) => backend.leaveClub(clubId)),
+
+    // Shared Active session
+    observeActiveSessions: (listener) =>
+      observeWhenLoaded((backend) => backend.observeActiveSessions(listener)),
+    startSharedSession: (clubId, session) =>
+      loaded.then((backend) => backend.startSharedSession(clubId, session)),
+    publishActiveSession: (clubId, session) =>
+      loaded.then((backend) => backend.publishActiveSession(clubId, session)),
+    endSharedSession: (clubId) => loaded.then((backend) => backend.endSharedSession(clubId)),
   };
 }

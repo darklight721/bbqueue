@@ -18,7 +18,7 @@ const TEAM_LABEL = ["Team A", "Team B"] as const;
 
 /** A hand-built next match: Team A vs Team B, warnings, and Move to court buttons. */
 export function QueueCard({ queue, number }: { queue: Queue; number: number }) {
-  const { session, playerById, asOf } = useSessionView();
+  const { session, playerById, asOf, readOnly } = useSessionView();
   const actions = useSessionActions();
   const [picking, setPicking] = useState<SlotRef | null>(null);
   const headingId = useId();
@@ -56,15 +56,17 @@ export function QueueCard({ queue, number }: { queue: Queue; number: number }) {
         <span className="text-sm font-semibold text-base-content/60 tabular-nums">
           {filled.length} of 4
         </span>
-        <button
-          type="button"
-          className="btn -my-2 -mr-2 ml-auto btn-square size-11 btn-ghost text-base-content/60 hover:text-error"
-          aria-label={`Remove queue ${number}`}
-          title="Remove queue"
-          onClick={() => actions.run((s) => removeQueue(s, queue.id))}
-        >
-          <TrashIcon className="size-6" />
-        </button>
+        {readOnly ? null : (
+          <button
+            type="button"
+            className="btn -my-2 -mr-2 ml-auto btn-square size-11 btn-ghost text-base-content/60 hover:text-error"
+            aria-label={`Remove queue ${number}`}
+            title="Remove queue"
+            onClick={() => actions.run((s) => removeQueue(s, queue.id))}
+          >
+            <TrashIcon className="size-6" />
+          </button>
+        )}
       </header>
 
       <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-3 px-4">
@@ -93,57 +95,59 @@ export function QueueCard({ queue, number }: { queue: Queue; number: number }) {
         </ul>
       ) : null}
 
-      <div
-        role="group"
-        aria-labelledby={moveCaptionId}
-        className="mt-3 flex flex-col gap-2 border-t border-base-300 bg-base-200/50 px-4 py-3"
-      >
-        <p
-          id={moveCaptionId}
-          className="text-xs font-bold tracking-[0.14em] text-base-content/60 uppercase"
+      {readOnly ? null : (
+        <div
+          role="group"
+          aria-labelledby={moveCaptionId}
+          className="mt-3 flex flex-col gap-2 border-t border-base-300 bg-base-200/50 px-4 py-3"
         >
-          Move to court
-        </p>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {checks.map(({ court, check }) => {
-            const busy = court.activeMatchId !== null;
-            const hintId = `${moveCaptionId}-${court.id}`;
-            return (
-              <div key={court.id} className="flex flex-col gap-0.5">
-                <button
-                  type="button"
-                  className={`btn ${check.ok ? "btn-primary" : "btn-outline border-base-300"}`}
-                  disabled={!check.ok}
-                  aria-describedby={
-                    check.ok ? undefined : busy ? hintId : queueReason ? queueReasonId : undefined
-                  }
-                  onClick={() => {
-                    const moved = actions.run((s, ctx) =>
-                      moveQueueToCourt(s, queue.id, court.id, ctx),
-                    );
-                    if (moved) actions.notify(`Match started on court ${court.number}`);
-                  }}
-                >
-                  Court {court.number} · {busy ? "Playing" : "Idle"}
-                </button>
-                {busy ? (
-                  <span id={hintId} className="text-center text-xs text-base-content/60">
-                    {moveBlockedReason({ ok: false, reason: "court-busy" })}
-                  </span>
-                ) : null}
-              </div>
-            );
-          })}
-        </div>
-        {queueReason ? (
-          <p id={queueReasonId} className="text-sm font-semibold text-base-content/75">
-            {queueReason}
+          <p
+            id={moveCaptionId}
+            className="text-xs font-bold tracking-[0.14em] text-base-content/60 uppercase"
+          >
+            Move to court
           </p>
-        ) : null}
-      </div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {checks.map(({ court, check }) => {
+              const busy = court.activeMatchId !== null;
+              const hintId = `${moveCaptionId}-${court.id}`;
+              return (
+                <div key={court.id} className="flex flex-col gap-0.5">
+                  <button
+                    type="button"
+                    className={`btn ${check.ok ? "btn-primary" : "btn-outline border-base-300"}`}
+                    disabled={!check.ok}
+                    aria-describedby={
+                      check.ok ? undefined : busy ? hintId : queueReason ? queueReasonId : undefined
+                    }
+                    onClick={() => {
+                      const moved = actions.run((s, ctx) =>
+                        moveQueueToCourt(s, queue.id, court.id, ctx),
+                      );
+                      if (moved) actions.notify(`Match started on court ${court.number}`);
+                    }}
+                  >
+                    Court {court.number} · {busy ? "Playing" : "Idle"}
+                  </button>
+                  {busy ? (
+                    <span id={hintId} className="text-center text-xs text-base-content/60">
+                      {moveBlockedReason({ ok: false, reason: "court-busy" })}
+                    </span>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+          {queueReason ? (
+            <p id={queueReasonId} className="text-sm font-semibold text-base-content/75">
+              {queueReason}
+            </p>
+          ) : null}
+        </div>
+      )}
 
       <PlayerPicker
-        open={picking !== null}
+        open={!readOnly && picking !== null}
         title={picking ? `${TEAM_LABEL[picking.team]} · spot ${picking.slot + 1}` : ""}
         exclude={filled}
         onPick={(playerId) => {
@@ -166,7 +170,7 @@ function TeamSlots({
   onPick: (ref: SlotRef) => void;
   onClear: (ref: SlotRef, playerId: null) => void;
 }) {
-  const { playerById } = useSessionView();
+  const { playerById, readOnly } = useSessionView();
   const label = TEAM_LABEL[team];
   return (
     <div className="flex min-w-0 flex-col gap-2">
@@ -177,6 +181,16 @@ function TeamSlots({
         {queue.slots[team].map((playerId, index) => {
           const slot = index as 0 | 1;
           const spot = `${label}, spot ${slot + 1}`;
+          if (playerId === null && readOnly) {
+            return (
+              <li
+                key={slot}
+                className="flex min-h-16 items-center justify-center rounded-field border-[1.5px] border-dashed border-base-content/25 text-sm text-base-content/60"
+              >
+                Empty
+              </li>
+            );
+          }
           if (playerId === null) {
             return (
               <li key={slot}>
@@ -201,14 +215,16 @@ function TeamSlots({
               <span className="min-w-0 flex-1">
                 <SessionPlayerChip playerId={playerId} />
               </span>
-              <button
-                type="button"
-                aria-label={`Clear ${name}`}
-                className="btn btn-ghost btn-circle size-11 shrink-0 text-base-content/60"
-                onClick={() => onClear({ team, slot }, null)}
-              >
-                <CloseIcon className="size-5" />
-              </button>
+              {readOnly ? null : (
+                <button
+                  type="button"
+                  aria-label={`Clear ${name}`}
+                  className="btn btn-ghost btn-circle size-11 shrink-0 text-base-content/60"
+                  onClick={() => onClear({ team, slot }, null)}
+                >
+                  <CloseIcon className="size-5" />
+                </button>
+              )}
             </li>
           );
         })}

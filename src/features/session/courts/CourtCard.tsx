@@ -18,7 +18,7 @@ export function CourtCard({ court }: { court: Court }) {
 }
 
 function BusyCourt({ court, match }: { court: Court; match: Match }) {
-  const { session, playerById } = useSessionView();
+  const { session, playerById, readOnly } = useSessionView();
   const actions = useSessionActions();
   const headingId = useId();
   const [scoring, setScoring] = useState(false);
@@ -55,18 +55,24 @@ function BusyCourt({ court, match }: { court: Court; match: Match }) {
         <TeamsView teams={match.teams} />
       </div>
 
-      <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-2 px-4 pb-4">
-        <button
-          type="button"
-          className="btn btn-lg btn-outline border-base-300"
-          onClick={() => setConfirmRemove(true)}
-        >
-          Remove match
-        </button>
-        <button type="button" className="btn btn-lg btn-secondary" onClick={() => setScoring(true)}>
-          End match
-        </button>
-      </div>
+      {readOnly ? null : (
+        <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-2 px-4 pb-4">
+          <button
+            type="button"
+            className="btn btn-lg btn-outline border-base-300"
+            onClick={() => setConfirmRemove(true)}
+          >
+            Remove match
+          </button>
+          <button
+            type="button"
+            className="btn btn-lg btn-secondary"
+            onClick={() => setScoring(true)}
+          >
+            End match
+          </button>
+        </div>
+      )}
 
       <ScoreDialog
         open={scoring}
@@ -98,6 +104,7 @@ function BusyCourt({ court, match }: { court: Court; match: Match }) {
 }
 
 function IdleCourt({ court }: { court: Court }) {
+  const { readOnly } = useSessionView();
   const actions = useSessionActions();
   const headingId = useId();
   const lineup = court.lineup;
@@ -115,15 +122,17 @@ function IdleCourt({ court }: { court: Court }) {
         <span className="rounded-full border-[1.5px] border-base-content/25 px-2.5 py-0.5 text-xs font-bold tracking-wider text-base-content/70 uppercase">
           Idle
         </span>
-        <button
-          type="button"
-          className="btn -my-2 -mr-2 ml-auto btn-square size-11 btn-ghost text-base-content/60 hover:text-error"
-          aria-label={`Remove court ${court.number}`}
-          title="Remove court"
-          onClick={() => actions.removeCourt(court.id)}
-        >
-          <TrashIcon className="size-6" />
-        </button>
+        {readOnly ? null : (
+          <button
+            type="button"
+            className="btn -my-2 -mr-2 ml-auto btn-square size-11 btn-ghost text-base-content/60 hover:text-error"
+            aria-label={`Remove court ${court.number}`}
+            title="Remove court"
+            onClick={() => actions.removeCourt(court.id)}
+          >
+            <TrashIcon className="size-6" />
+          </button>
+        )}
       </header>
 
       <div className="flex-1 p-4">
@@ -143,26 +152,28 @@ function IdleCourt({ court }: { court: Court }) {
         )}
       </div>
 
-      <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-2 px-4 pb-4">
-        <button
-          type="button"
-          className="btn btn-lg btn-outline border-base-300"
-          disabled={!lineup}
-          onClick={() => actions.rehashCourt(court.id)}
-        >
-          <RefreshIcon className="size-5" />
-          Rehash
-        </button>
-        <button
-          type="button"
-          className="btn btn-lg btn-primary"
-          disabled={!lineup}
-          onClick={() => actions.startMatch(court.id)}
-        >
-          <PlayIcon className="size-5" />
-          Start match
-        </button>
-      </div>
+      {readOnly ? null : (
+        <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-2 px-4 pb-4">
+          <button
+            type="button"
+            className="btn btn-lg btn-outline border-base-300"
+            disabled={!lineup}
+            onClick={() => actions.rehashCourt(court.id)}
+          >
+            <RefreshIcon className="size-5" />
+            Rehash
+          </button>
+          <button
+            type="button"
+            className="btn btn-lg btn-primary"
+            disabled={!lineup}
+            onClick={() => actions.startMatch(court.id)}
+          >
+            <PlayIcon className="size-5" />
+            Start match
+          </button>
+        </div>
+      )}
     </section>
   );
 }

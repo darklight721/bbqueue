@@ -5,7 +5,7 @@ import { SectionHeader } from "../SectionHeader.tsx";
 import { CourtCard } from "./CourtCard.tsx";
 
 export function CourtsSection() {
-  const { session } = useSessionView();
+  const { session, readOnly } = useSessionView();
   const actions = useSessionActions();
   const courts = [...session.courts].sort((a, b) => a.number - b.number);
   const atMax = courts.length >= MAX_COURTS;
@@ -20,7 +20,7 @@ export function CourtsSection() {
         detail={`${busyCount} of ${courts.length} playing`}
         action={
           // With a single court there is nothing to rehash "all" of: hide it.
-          courts.length >= 2 ? (
+          !readOnly && courts.length >= 2 ? (
             <button
               type="button"
               className="btn btn-outline border-base-300"
@@ -41,18 +41,22 @@ export function CourtsSection() {
         ))}
       </div>
 
-      <div className="flex flex-col items-center gap-1">
-        <button
-          type="button"
-          className="btn btn-lg w-full border-[1.5px] border-dashed border-base-300 bg-transparent shadow-none"
-          disabled={atMax}
-          onClick={() => actions.addCourt()}
-        >
-          <PlusIcon className="size-5" />
-          Add court
-        </button>
-        {atMax ? <p className="text-sm text-base-content/60">Up to {MAX_COURTS} courts.</p> : null}
-      </div>
+      {readOnly ? null : (
+        <div className="flex flex-col items-center gap-1">
+          <button
+            type="button"
+            className="btn btn-lg w-full border-[1.5px] border-dashed border-base-300 bg-transparent shadow-none"
+            disabled={atMax}
+            onClick={() => actions.addCourt()}
+          >
+            <PlusIcon className="size-5" />
+            Add court
+          </button>
+          {atMax ? (
+            <p className="text-sm text-base-content/60">Up to {MAX_COURTS} courts.</p>
+          ) : null}
+        </div>
+      )}
     </section>
   );
 }

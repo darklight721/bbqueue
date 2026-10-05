@@ -7,6 +7,8 @@ import {
   loadEndedSessions,
   loadSession,
   loadSharedClubs,
+  loadSharedSessions,
+  saveSharedSessions,
   saveClubs,
   saveEndedSession,
   saveSession,
@@ -331,5 +333,36 @@ describe("Club kind and Account links", () => {
     saveSharedClubs([shared, club]);
     expect(loadSharedClubs()).toEqual([shared]);
     expect(loadClubs()).toEqual([]);
+  });
+});
+
+describe("Active sessions of Shared clubs", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("round-trips them, and fills in what older copies of a Session lack", () => {
+    const entry = {
+      clubId: "c1",
+      hostAccountId: "roy-7k3f",
+      hostName: "Roy",
+      updatedAt: 1234,
+      session: { ...session, clubName: undefined as unknown as null },
+    };
+    saveSharedSessions([entry]);
+
+    const loaded = loadSharedSessions();
+
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0]).toMatchObject({ clubId: "c1", hostName: "Roy", updatedAt: 1234 });
+    expect(loaded[0]?.session.clubName).toBeNull();
+  });
+
+  it("ignores data that isn't a list of Active sessions", () => {
+    localStorage.setItem(
+      "bq:v1:shared-sessions",
+      JSON.stringify({ version: 1, data: [{ clubId: "c1" }] }),
+    );
+    expect(loadSharedSessions()).toEqual([]);
+    localStorage.setItem("bq:v1:shared-sessions", "not json");
+    expect(loadSharedSessions()).toEqual([]);
   });
 });

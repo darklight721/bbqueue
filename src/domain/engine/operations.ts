@@ -33,6 +33,8 @@ export interface NewPlayerInput {
   name: string;
   skill: SkillLevel;
   clubPlayerId?: string | null;
+  /** The Account the Club player is linked to; copied into the Session player (ADR-0002). */
+  accountId?: string;
 }
 
 export interface CreateSessionInput {
@@ -52,6 +54,7 @@ function snapshotPlayer(input: NewPlayerInput, ctx: EngineContext): SessionPlaye
     name: normalizeName(input.name),
     skill: input.skill,
     clubPlayerId: input.clubPlayerId ?? null,
+    ...(input.accountId ? { accountId: input.accountId } : {}),
     sittingOut: false,
     removed: false,
     joinedAt: ctx.now,

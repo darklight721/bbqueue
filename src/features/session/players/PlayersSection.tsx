@@ -38,7 +38,7 @@ export function PlayersSection({
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 } = {}) {
-  const { session, stats } = useSessionView();
+  const { session, stats, readOnly } = useSessionView();
   const actions = useSessionActions();
   const [ownOpen, setOwnOpen] = useState(true);
   const open = openProp ?? ownOpen;
@@ -77,7 +77,7 @@ export function PlayersSection({
 
       {open ? (
         <div id={bodyId} className="flex flex-col gap-4">
-          <AddSessionPlayer />
+          {readOnly ? null : <AddSessionPlayer />}
 
           {players.length > 0 ? (
             <div className="flex flex-col gap-2">
@@ -167,7 +167,7 @@ function SortControl({
 }
 
 function PlayerRow({ player, onRemove }: { player: SessionPlayer; onRemove: () => void }) {
-  const { stats } = useSessionView();
+  const { stats, readOnly } = useSessionView();
   const actions = useSessionActions();
   const status = playerStatus(player, stats.get(player.id));
   const onCourt = status.tone === "on-court";
@@ -192,35 +192,39 @@ function PlayerRow({ player, onRemove }: { player: SessionPlayer; onRemove: () =
         </div>
       </div>
 
-      <button
-        type="button"
-        className={`btn w-[4.5rem] shrink-0 px-2 ${
-          player.sittingOut ? "btn-primary" : "btn-outline border-base-300"
-        }`}
-        aria-label={`${player.sittingOut ? "Back in" : "Sit out"} ${player.name}`}
-        onClick={() =>
-          actions.run((s, ctx) => setSittingOut(s, player.id, !player.sittingOut, ctx))
-        }
-      >
-        {player.sittingOut ? "Back in" : "Sit out"}
-      </button>
-      <button
-        type="button"
-        className={`btn btn-ghost btn-square shrink-0 ${
-          onCourt
-            ? "text-base-content/30 pointer-events-auto!"
-            : "text-base-content/70 hover:text-error"
-        }`}
-        aria-label={`Remove ${player.name}`}
-        aria-disabled={onCourt ? true : undefined}
-        title={onCourt ? messageForReason("player-in-active-match") : undefined}
-        onClick={() => {
-          if (onCourt) actions.notify(messageForReason("player-in-active-match"));
-          else onRemove();
-        }}
-      >
-        <CloseIcon className="size-6" />
-      </button>
+      {readOnly ? null : (
+        <>
+          <button
+            type="button"
+            className={`btn w-[4.5rem] shrink-0 px-2 ${
+              player.sittingOut ? "btn-primary" : "btn-outline border-base-300"
+            }`}
+            aria-label={`${player.sittingOut ? "Back in" : "Sit out"} ${player.name}`}
+            onClick={() =>
+              actions.run((s, ctx) => setSittingOut(s, player.id, !player.sittingOut, ctx))
+            }
+          >
+            {player.sittingOut ? "Back in" : "Sit out"}
+          </button>
+          <button
+            type="button"
+            className={`btn btn-ghost btn-square shrink-0 ${
+              onCourt
+                ? "text-base-content/30 pointer-events-auto!"
+                : "text-base-content/70 hover:text-error"
+            }`}
+            aria-label={`Remove ${player.name}`}
+            aria-disabled={onCourt ? true : undefined}
+            title={onCourt ? messageForReason("player-in-active-match") : undefined}
+            onClick={() => {
+              if (onCourt) actions.notify(messageForReason("player-in-active-match"));
+              else onRemove();
+            }}
+          >
+            <CloseIcon className="size-6" />
+          </button>
+        </>
+      )}
     </li>
   );
 }

@@ -836,3 +836,211 @@ describe("Leaving a Club", () => {
     await assertFails(getDoc(club(ANA.uid)));
   });
 });
+
+describe("Shared Active session", () => {
+  const sessionDoc = (db: Firestore) => doc(db, "clubs", "c1", "activeSession", "current");
+
+  /** A record as the app writes it when an Organizer starts a Session. */
+  const startRecord = (person: Person, extra: Record<string, unknown> = {}) => ({
+    sessionJson: JSON.stringify({ id: "s1", name: "Tuesday night" }),
+    hostUid: person.uid,
+    hostAccountId: person.accountId,
+    hostName: person.name,
+    updatedAt: serverTimestamp(),
+    ...extra,
+  });
+
+  /** Roy's session is running (written with the rules out of the way). */
+  async function seedRunning() {
+    await seedClub();
+    await seed(async (db) => {
+      await setDoc(sessionDoc(db), {
+        sessionJson: JSON.stringify({ id: "s1", name: "Tuesday night" }),
+        hostUid: ROY.uid,
+        hostAccountId: ROY.accountId,
+        hostName: ROY.name,
+      });
+    });
+  }
+
+  /** Ana becomes an Organizer too (a second Organizer who isn't the host). */
+  async function makeAnaOrganizer() {
+    await seed(async (db) => {
+      await updateDoc(doc(db, "clubs", "c1"), { organizerUids: [ROY.uid, ANA.uid] });
+    });
+  }
+
+  describe("starting", () => {
+    it("lets an Organizer start it, naming themselves as the host", async () => {
+      await seedClub();
+      await assertSucceeds(setDoc(sessionDoc(as(ROY.uid)), startRecord(ROY)));
+    });
+
+    it("refuses a Player, somebody who isn't on the Club, and somebody not signed in", async () => {
+      await seedClub();
+      await assertFails(setDoc(sessionDoc(as(ANA.uid)), startRecord(ANA)));
+      await assertFails(setDoc(sessionDoc(as(BEN.uid)), startRecord(BEN)));
+      await assertFails(setDoc(sessionDoc(anonymous()), startRecord(ROY)));
+    });
+
+    it("lets a Club have only one: nobody else can start another while one exists", async () => {
+      await seedRunning();
+      await makeAnaOrganizer();
+      await assertFails(setDoc(sessionDoc(as(ANA.uid)), startRecord(ANA)));
+      // Nor can the host swap in a different host or host name by starting again.
+      await assertFails(setDoc(sessionDoc(as(ROY.uid)), startRecord(ROY, { hostName: "Roi" })));
+    });
+
+    it("lets a Club start a new one once the last has ended", async () => {
+      await seedRunning();
+      await assertSucceeds(deleteDoc(sessionDoc(as(ROY.uid))));
+      await makeAnaOrganizer();
+      await assertSucceeds(setDoc(sessionDoc(as(ANA.uid)), startRecord(ANA)));
+    });
+
+    it("refuses a record that names somebody else as the host", async () => {
+      await seedClub();
+      await makeAnaOrganizer();
+      await assertFails(setDoc(sessionDoc(as(ROY.uid)), startRecord(ANA)));
+      // Right uid, wrong Account ID: the reservation says it isn't Roy's.
+      await assertFails(
+        setDoc(sessionDoc(as(ROY.uid)), startRecord(ROY, { hostAccountId: ANA.accountId })),
+      );
+      await assertFails(
+        setDoc(sessionDoc(as(ROY.uid)), startRecord(ROY, { hostAccountId: "nobody-0000" })),
+      );
+    });
+
+    it("refuses a record with other fields, a missing field, a time of the host's choosing or a bad Session text", async () => {
+      await seedClub();
+      const db = as(ROY.uid);
+      await assertFails(setDoc(sessionDoc(db), startRecord(ROY, { isAdmin: true })));
+      const { hostName: _hostName, ...withoutName } = startRecord(ROY);
+      await assertFails(setDoc(sessionDoc(db), withoutName));
+      await assertFails(setDoc(sessionDoc(db), startRecord(ROY, { updatedAt: new Date(0) })));
+      await assertFails(setDoc(sessionDoc(db), startRecord(ROY, { sessionJson: "" })));
+      await assertFails(setDoc(sessionDoc(db), startRecord(ROY, { sessionJson: { id: "s1" } })));
+      await assertFails(
+        setDoc(sessionDoc(db), startRecord(ROY, { sessionJson: "x".repeat(700_001) })),
+      );
+      await assertFails(setDoc(sessionDoc(db), startRecord(ROY, { hostName: "" })));
+      await assertSucceeds(
+        setDoc(sessionDoc(db), startRecord(ROY, { sessionJson: "x".repeat(700_000) })),
+      );
+    });
+
+    it("keeps the record at the one fixed place", async () => {
+      await seedClub();
+      await assertFails(
+        setDoc(doc(as(ROY.uid), "clubs", "c1", "activeSession", "other"), startRecord(ROY)),
+      );
+    });
+  });
+
+  describe("reading", () => {
+    it("lets anyone on the Club read it, and nobody else", async () => {
+      await seedRunning();
+      await assertSucceeds(getDoc(sessionDoc(as(ROY.uid))));
+      await assertSucceeds(getDoc(sessionDoc(as(ANA.uid))));
+      await assertFails(getDoc(sessionDoc(as(BEN.uid))));
+      await assertFails(getDoc(sessionDoc(anonymous())));
+    });
+
+    it("lets a member read that there is none", async () => {
+      await seedClub();
+      await assertSucceeds(getDoc(sessionDoc(as(ANA.uid))));
+    });
+  });
+
+  describe("uploading", () => {
+    const upload = (name: string) => ({
+      sessionJson: JSON.stringify({ id: "s1", name }),
+      updatedAt: serverTimestamp(),
+    });
+
+    it("lets the Session host replace the Session text", async () => {
+      await seedRunning();
+      await assertSucceeds(updateDoc(sessionDoc(as(ROY.uid)), upload("Later")));
+    });
+
+    it("lets only the Session host upload", async () => {
+      await seedRunning();
+      await makeAnaOrganizer();
+      await assertFails(updateDoc(sessionDoc(as(ANA.uid)), upload("Ana's")));
+      await assertFails(updateDoc(sessionDoc(as(BEN.uid)), upload("Ben's")));
+      await assertFails(updateDoc(sessionDoc(anonymous()), upload("Nobody's")));
+    });
+
+    it("never lets the host change, or hand over, who the host is", async () => {
+      await seedRunning();
+      await makeAnaOrganizer();
+      const db = as(ROY.uid);
+      await assertFails(updateDoc(sessionDoc(db), { ...upload("x"), hostUid: ANA.uid }));
+      await assertFails(updateDoc(sessionDoc(db), { hostUid: ANA.uid }));
+      await assertFails(
+        updateDoc(sessionDoc(db), { ...upload("x"), hostAccountId: ANA.accountId }),
+      );
+      await assertFails(updateDoc(sessionDoc(db), { ...upload("x"), hostName: "Ana" }));
+      // Not even an Organizer takes over by writing to it (that is ticket 07).
+      await assertFails(
+        updateDoc(sessionDoc(as(ANA.uid)), {
+          hostUid: ANA.uid,
+          hostAccountId: ANA.accountId,
+          hostName: "Ana",
+          ...upload("x"),
+        }),
+      );
+    });
+
+    it("refuses other fields, a time of the host's choosing and a bad Session text", async () => {
+      await seedRunning();
+      const db = as(ROY.uid);
+      await assertFails(updateDoc(sessionDoc(db), { ...upload("x"), isAdmin: true }));
+      await assertFails(updateDoc(sessionDoc(db), { ...upload("x"), updatedAt: new Date(0) }));
+      await assertFails(
+        updateDoc(sessionDoc(db), { sessionJson: "", updatedAt: serverTimestamp() }),
+      );
+      await assertFails(
+        updateDoc(sessionDoc(db), {
+          sessionJson: "x".repeat(700_001),
+          updatedAt: serverTimestamp(),
+        }),
+      );
+    });
+
+    it("lets a host who lost the Organizer Role, or left the Club, keep uploading until somebody takes over", async () => {
+      await seedRunning();
+      await seed(async (db) => {
+        await updateDoc(doc(db, "clubs", "c1"), { organizerUids: [ANA.uid] });
+      });
+      await assertSucceeds(updateDoc(sessionDoc(as(ROY.uid)), upload("Still hosting")));
+      await seed(async (db) => {
+        await updateDoc(doc(db, "clubs", "c1"), { memberUids: [ANA.uid] });
+      });
+      await assertSucceeds(
+        updateDoc(sessionDoc(as(ROY.uid)), upload("Still hosting, off the Club")),
+      );
+    });
+  });
+
+  describe("ending", () => {
+    it("lets only the Session host delete it", async () => {
+      await seedRunning();
+      await makeAnaOrganizer();
+      await assertFails(deleteDoc(sessionDoc(as(ANA.uid))));
+      await assertFails(deleteDoc(sessionDoc(as(BEN.uid))));
+      await assertFails(deleteDoc(sessionDoc(anonymous())));
+      await assertSucceeds(deleteDoc(sessionDoc(as(ROY.uid))));
+    });
+
+    it("lets an Organizer who isn't the host delete it only together with the whole Club", async () => {
+      await seedRunning();
+      await makeAnaOrganizer();
+      const db = as(ANA.uid);
+      const batch = writeBatch(db);
+      batch.delete(sessionDoc(db));
+      batch.delete(doc(db, "clubs", "c1"));
+      await assertSucceeds(batch.commit());
+    });
+  });
+});

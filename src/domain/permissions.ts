@@ -1,6 +1,6 @@
 import { accountIdsEqual } from "./accountId.ts";
 import { applyClubChange, roleInClub, type ClubChange } from "./clubChanges.ts";
-import type { Club, ClubPlayer } from "./types.ts";
+import type { ActiveSession, Club, ClubPlayer } from "./types.ts";
 
 /**
  * What an Account may do in a Club (GLOSSARY: Role, Organizer, Player). `accountId` is the viewing
@@ -117,4 +117,14 @@ export function clubChangeProblem(
 
   if (hasOrganizer(club) && !hasOrganizer(applyClubChange(club, change))) return "last-organizer";
   return null;
+}
+
+/**
+ * Whether `viewer` runs this Active session (ADR-0007). The device's own Session (a Local club or
+ * no Club, `shared` null) is always run by whoever holds the device; a Shared club's Session only
+ * by its Session host. Everyone else sees it read-only.
+ */
+export function isSessionHost(shared: ActiveSession | null, viewer: Viewer): boolean {
+  if (!shared) return true;
+  return !!viewer && accountIdsEqual(shared.hostAccountId, viewer);
 }

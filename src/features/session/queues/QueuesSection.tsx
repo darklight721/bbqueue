@@ -8,7 +8,7 @@ const HEADING_ID = "session-queues";
 
 /** Hand-built next matches. Queues don't hold players; a player can be in several. */
 export function QueuesSection() {
-  const { session } = useSessionView();
+  const { session, readOnly } = useSessionView();
   const actions = useSessionActions();
   const count = session.queues.length;
   const add = () => actions.run((s, ctx) => ({ ok: true as const, session: addQueue(s, ctx) }));
@@ -21,7 +21,11 @@ export function QueuesSection() {
         detail={count > 0 ? `${count} ${count === 1 ? "queue" : "queues"}` : undefined}
       />
 
-      {count === 0 ? (
+      {count === 0 && readOnly ? (
+        <p className="rounded-box border-[1.5px] border-dashed border-base-300 px-4 py-5 text-center text-base-content/70">
+          No queues.
+        </p>
+      ) : count === 0 ? (
         <div className="flex flex-col items-center gap-4 rounded-box border-[1.5px] border-dashed border-base-300 px-6 py-6 text-center">
           <p className="max-w-sm text-base-content/70">
             Pick the next four players by hand, then move them onto a free court.
@@ -35,7 +39,7 @@ export function QueuesSection() {
               <QueueCard key={queue.id} queue={queue} number={index + 1} />
             ))}
           </div>
-          <AddQueueButton onClick={add} dashed />
+          {readOnly ? null : <AddQueueButton onClick={add} dashed />}
         </>
       )}
     </section>

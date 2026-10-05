@@ -11,6 +11,11 @@ export interface SessionView {
   /** The time `stats` were computed for (latest timestamp in the Session). Pass as `now` to
    *  other engine read helpers (e.g. queueWarnings) so they agree with `stats`. */
   asOf: number;
+  /**
+   * True for anyone who isn't the Session host (ADR-0007): they watch, and every control that
+   * would change the Session is hidden or turned off.
+   */
+  readOnly: boolean;
 }
 
 export type EngineOperation = (session: Session, ctx: EngineContext) => Result<string>;

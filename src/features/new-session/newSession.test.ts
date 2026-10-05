@@ -124,4 +124,37 @@ describe("newSession helpers", () => {
     expect(plan.input.clubName).toBeNull();
     expect(plan.input.players).toEqual([{ name: "Eve", skill: "beginner", clubPlayerId: null }]);
   });
+
+  it("keeps the Account a Club player was linked to at Start, for linked players only (ADR-0002)", () => {
+    const shared: Club = {
+      id: "s",
+      name: "Shared",
+      kind: "shared",
+      players: [
+        {
+          id: "a",
+          name: "Ana",
+          skill: "beginner",
+          link: { accountId: "ana-2222", role: "player" },
+        },
+        { id: "b", name: "Ben", skill: "beginner" },
+      ],
+    };
+    const plan = planStart({
+      name: "x",
+      club: shared,
+      allClubs: [shared],
+      checkedIds: new Set(["a", "b"]),
+      guests: [{ id: "g", name: "Eve", skill: "beginner", saveToClub: false }],
+      courts: 1,
+      hours: 1,
+      pointSystem: 21,
+      newId: () => "id",
+    });
+    expect(plan.input.players).toEqual([
+      { name: "Ana", skill: "beginner", clubPlayerId: "a", accountId: "ana-2222" },
+      { name: "Ben", skill: "beginner", clubPlayerId: "b" },
+      { name: "Eve", skill: "beginner", clubPlayerId: null },
+    ]);
+  });
 });

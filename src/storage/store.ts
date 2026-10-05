@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
-import type { Account, Club, EndedSession, Session } from "../domain/types.ts";
+import type { ActiveSessionsReport } from "../backend/backend.ts";
+import type { Account, ActiveSession, Club, EndedSession, Session } from "../domain/types.ts";
 import {
   STORAGE_KEYS,
   clearAccount,
@@ -10,6 +11,7 @@ import {
   loadInstallHintDismissed,
   loadSession,
   loadSharedClubs,
+  loadSharedSessions,
   loadWelcomeDone,
   removeLegacySummary,
   saveAccount,
@@ -18,8 +20,10 @@ import {
   saveInstallHintDismissed,
   saveSession,
   saveSharedClubs,
+  saveSharedSessions,
   saveWelcomeDone,
 } from "./storage.ts";
+import { mergeActiveSessions } from "./sharedSessions.ts";
 
 /** In-memory cache backed by storage.ts. `loaded` distinguishes "not read yet" from `null`. */
 interface Slot<T> {
@@ -35,6 +39,7 @@ function createSlot<T>(initial: T): Slot<T> {
 const localClubsSlot = createSlot<Club[]>([]);
 const sharedClubsSlot = createSlot<Club[]>([]);
 const sessionSlot = createSlot<Session | null>(null);
+const sharedSessionsSlot = createSlot<ActiveSession[]>([]);
 const endedSessionsSlot = createSlot<EndedSession[]>([]);
 const accountSlot = createSlot<Account | null>(null);
 const welcomeDoneSlot = createSlot<boolean>(false);
@@ -79,6 +84,15 @@ function subscribeClubs(listener: () => void) {
   };
 }
 const subscribeSession = subscribeTo(sessionSlot);
+const subscribeSharedSessions = subscribeTo(sharedSessionsSlot);
+function subscribeActiveSessions(listener: () => void) {
+  const stopDevice = subscribeSession(listener);
+  const stopShared = subscribeSharedSessions(listener);
+  return () => {
+    stopDevice();
+    stopShared();
+  };
+}
 const subscribeEndedSessions = subscribeTo(endedSessionsSlot);
 const subscribeAccount = subscribeTo(accountSlot);
 const subscribeWelcomeDone = subscribeTo(welcomeDoneSlot);
@@ -92,6 +106,7 @@ if (typeof window !== "undefined") {
     if (all || event.key === STORAGE_KEYS.clubs) refresh(localClubsSlot);
     if (all || event.key === STORAGE_KEYS.sharedClubs) refresh(sharedClubsSlot);
     if (all || event.key === STORAGE_KEYS.session) refresh(sessionSlot);
+    if (all || event.key === STORAGE_KEYS.sharedSessions) refresh(sharedSessionsSlot);
     if (all || event.key === STORAGE_KEYS.endedSessions) refresh(endedSessionsSlot);
     if (all || event.key === STORAGE_KEYS.account) refresh(accountSlot);
     if (all || event.key === STORAGE_KEYS.welcomeDone) refresh(welcomeDoneSlot);
@@ -153,6 +168,119 @@ export function setSession(session: Session | null): void {
 
 export function useSession(): Session | null {
   return useSyncExternalStore(subscribeSession, getSession);
+}
+
+// --- Active sessions of Shared clubs (ADR-0007) -------------------------------------------------
+//
+// Alongside the device's own single Session (Local club or no Club), the store holds one Active
+// session per Shared club: what the server last reported, or, for a Club this Account hosts, the
+// Session this device runs. Hosted copies are changed here first and uploaded afterwards.
+
+/** Sessions this device ended itself: a late report must not bring them back. */
+const endedHere = new Set<string>();
+
+export function getSharedSessions(): ActiveSession[] {
+  return get(sharedSessionsSlot, loadSharedSessions);
+}
+
+export function useSharedSessions(): ActiveSession[] {
+  return useSyncExternalStore(subscribeSharedSessions, getSharedSessions);
+}
+
+/** Calls `listener` whenever the Shared clubs' Active sessions change (outside React). */
+export function observeSharedSessions(listener: () => void): () => void {
+  return subscribeSharedSessions(listener);
+}
+
+function setSharedSessions(sessions: ActiveSession[]): void {
+  if (JSON.stringify(sessions) === JSON.stringify(getSharedSessions())) return;
+  set(sharedSessionsSlot, sessions, saveSharedSessions);
+}
+
+/** Called when the Backend reports what the server has; see `mergeActiveSessions`. */
+export function applyActiveSessionsReport(report: ActiveSessionsReport): void {
+  for (const reported of report.sessions) publishedCopies.add(reported.session);
+  setSharedSessions(
+    mergeActiveSessions({
+      current: getSharedSessions(),
+      report,
+      me: getAccount()?.accountId,
+      ended: endedHere,
+    }),
+  );
+}
+
+/** Copies of a Session that the server is known to have: the host's uploader skips them. */
+const publishedCopies = new WeakSet<Session>();
+
+export function isPublishedCopy(session: Session): boolean {
+  return publishedCopies.has(session);
+}
+
+/** This device now hosts the Active session of a Shared club (it just started it, so the server has it). */
+export function addHostedSession(entry: ActiveSession): void {
+  endedHere.delete(entry.session.id);
+  publishedCopies.add(entry.session);
+  setSharedSessions([...getSharedSessions().filter((s) => s.clubId !== entry.clubId), entry]);
+}
+
+/** The Session host changed the Session: keep it on this device; the uploader sends it on. */
+export function setHostedSession(clubId: string, session: Session): void {
+  setSharedSessions(getSharedSessions().map((s) => (s.clubId === clubId ? { ...s, session } : s)));
+}
+
+/** Drop a Shared club's Active session from the device (it ended, or is gone from the server). */
+export function removeSharedSession(clubId: string, options: { endedHere?: boolean } = {}): void {
+  const existing = getSharedSessions().find((s) => s.clubId === clubId);
+  if (existing && options.endedHere) endedHere.add(existing.session.id);
+  setSharedSessions(getSharedSessions().filter((s) => s.clubId !== clubId));
+}
+
+/** What the Session screen and Home work with: one Active session, wherever it lives. */
+export interface ActiveSessionEntry {
+  session: Session;
+  /** The Shared club's record; null for the device's own Session (Local club or no Club). */
+  shared: ActiveSession | null;
+}
+
+let mergedActive: {
+  device: Session | null;
+  shared: ActiveSession[];
+  entries: ActiveSessionEntry[];
+} | null = null;
+
+/** Every Active session this device can show: its own Session, then one per Shared club. */
+export function getActiveSessions(): ActiveSessionEntry[] {
+  const device = getSession();
+  const shared = getSharedSessions();
+  if (mergedActive?.device !== device || mergedActive.shared !== shared) {
+    mergedActive = {
+      device,
+      shared,
+      entries: [
+        ...(device ? [{ session: device, shared: null }] : []),
+        ...shared.map((entry) => ({ session: entry.session, shared: entry })),
+      ],
+    };
+  }
+  return mergedActive.entries;
+}
+
+export function useActiveSessions(): ActiveSessionEntry[] {
+  return useSyncExternalStore(subscribeActiveSessions, getActiveSessions);
+}
+
+/** The Active session with this Session id, or null. */
+export function findActiveSession(sessionId: string): ActiveSessionEntry | null {
+  return getActiveSessions().find((entry) => entry.session.id === sessionId) ?? null;
+}
+
+/** The Active session of a Club, wherever it lives, or null. */
+export function activeSessionOfClub(
+  entries: readonly ActiveSessionEntry[],
+  clubId: string,
+): ActiveSessionEntry | null {
+  return entries.find((entry) => entry.session.clubId === clubId) ?? null;
 }
 
 /** Ended sessions, newest first by `endedAt`. */
@@ -219,6 +347,7 @@ export function resetStoreForTests(): void {
     localClubsSlot,
     sharedClubsSlot,
     sessionSlot,
+    sharedSessionsSlot,
     endedSessionsSlot,
     accountSlot,
     welcomeDoneSlot,
@@ -226,4 +355,5 @@ export function resetStoreForTests(): void {
   ]) {
     slot.loaded = false;
   }
+  endedHere.clear();
 }

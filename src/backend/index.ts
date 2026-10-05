@@ -1,8 +1,21 @@
-import { setAccount, setSharedClubs } from "../storage/store.ts";
+import type { Session } from "../domain/types.ts";
+import { accountIdsEqual } from "../domain/accountId.ts";
+import { setFlash } from "../storage/flash.ts";
+import {
+  applyActiveSessionsReport,
+  getAccount,
+  getSharedSessions,
+  isPublishedCopy,
+  observeSharedSessions,
+  removeSharedSession,
+  setAccount,
+  setSharedClubs,
+} from "../storage/store.ts";
 import type { Backend } from "./backend.ts";
 import { FIREBASE_EMULATOR_CONFIG } from "./firebaseEmulator.ts";
 import { createLazyFirebaseBackend, firebaseConfigFromEnv } from "./firebaseBackendLazy.ts";
 import { createLocalFakeBackend } from "./localFakeBackend.ts";
+import { createCoalescingUploader, type Uploader } from "./sessionUploader.ts";
 
 export type { Backend } from "./backend.ts";
 export { BackendError } from "./backend.ts";
@@ -57,4 +70,86 @@ export function startAccountSync(backend: Backend | null = getBackend()): () => 
 export function startSharedClubSync(backend: Backend | null = getBackend()): () => void {
   if (!backend) return () => {};
   return backend.observeSharedClubs(setSharedClubs);
+}
+
+/**
+ * Keep the Active sessions of Shared clubs in step with the Backend, both ways (ADR-0007). What
+ * the server reports lands in the store (and so on the device, for viewing offline). For every
+ * Club this Account hosts, the store's copy is uploaded after each change: whole, coalesced, one
+ * write at a time, and only while online. Call once at startup; uploads keep going whichever
+ * screen is open.
+ */
+export function startActiveSessionSync(maybeBackend: Backend | null = getBackend()): () => void {
+  if (!maybeBackend) return () => {};
+  const backend: Backend = maybeBackend;
+  const uploaders = new Map<
+    string,
+    { sessionId: string; uploader: Uploader<Session>; last: Session | null }
+  >();
+
+  function stopUploader(clubId: string) {
+    uploaders.get(clubId)?.uploader.stop();
+    uploaders.delete(clubId);
+  }
+
+  function syncUploads() {
+    const me = getAccount()?.accountId;
+    const hosted = me
+      ? getSharedSessions().filter((entry) => accountIdsEqual(entry.hostAccountId, me))
+      : [];
+    for (const clubId of [...uploaders.keys()]) {
+      if (!hosted.some((entry) => entry.clubId === clubId)) stopUploader(clubId);
+    }
+    for (const entry of hosted) {
+      const { clubId } = entry;
+      if (uploaders.get(clubId)?.sessionId !== entry.session.id) stopUploader(clubId);
+      let host = uploaders.get(clubId);
+      if (!host) {
+        host = {
+          sessionId: entry.session.id,
+          last: null,
+          uploader: createCoalescingUploader<Session>({
+            send: (session) => backend.publishActiveSession(clubId, session),
+            isOnline: () => backend.isOnline(),
+            observeOnline: (listener) => backend.observeOnline(listener),
+            onError(error) {
+              const code = (error as { code?: unknown } | null)?.code;
+              // Somebody else hosts it now (the observer tells the store).
+              if (code === "forbidden") return "stop";
+              // The Club's session is gone from the server (the Club was deleted, or this
+              // Account was taken off it): nothing left to upload to.
+              if (code === "not-found") {
+                removeSharedSession(clubId);
+                setFlash(
+                  `The active session of ${entry.session.clubName ?? "the club"} is no longer shared.`,
+                );
+                return "stop";
+              }
+              console.warn("Uploading the session failed, trying again", error);
+              return "retry";
+            },
+          }),
+        };
+        uploaders.set(clubId, host);
+      }
+      if (host.last !== entry.session) {
+        host.last = entry.session;
+        // Copies the server is known to have don't need sending.
+        if (!isPublishedCopy(entry.session)) host.uploader.push(entry.session);
+      }
+    }
+  }
+
+  const stopObserving = backend.observeActiveSessions((report) => {
+    applyActiveSessionsReport(report);
+    syncUploads();
+  });
+  const stopStore = observeSharedSessions(syncUploads);
+  syncUploads();
+
+  return () => {
+    stopObserving();
+    stopStore();
+    for (const clubId of [...uploaders.keys()]) stopUploader(clubId);
+  };
 }

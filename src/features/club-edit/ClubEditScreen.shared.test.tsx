@@ -7,7 +7,16 @@ import { App } from "../../app/App.tsx";
 import { createInMemoryBackend, type InMemoryBackend } from "../../backend/inMemoryBackend.ts";
 import { setBackendForTests, startAccountSync, startSharedClubSync } from "../../backend/index.ts";
 import type { Club } from "../../domain/types.ts";
-import { getClubs, resetStoreForTests, setAccount, setWelcomeDone } from "../../storage/store.ts";
+import { createRng, createSession } from "../../domain/engine/index.ts";
+import type { Session } from "../../domain/types.ts";
+import {
+  applyActiveSessionsReport,
+  getClubs,
+  resetStoreForTests,
+  setAccount,
+  setSession,
+  setWelcomeDone,
+} from "../../storage/store.ts";
 
 function renderAt(path: string) {
   const location = memoryLocation({ path, record: true });
@@ -39,6 +48,22 @@ afterEach(() => {
   stops = [];
   setBackendForTests(null);
 });
+
+/** A Session on this device with no Club. */
+function deviceSession(): Session {
+  return createSession(
+    {
+      name: "Local night",
+      clubId: null,
+      clubName: null,
+      pointSystem: 21,
+      plannedHours: 1,
+      courts: 1,
+      players: ["A", "B", "C", "D"].map((name) => ({ name, skill: "intermediate" as const })),
+    },
+    { now: 1, rng: createRng(1) },
+  );
+}
 
 const nameInputs = () => screen.getAllByRole("textbox", { name: "Player name" });
 
@@ -168,6 +193,37 @@ describe("Club screens with Accounts", () => {
       await user.click(screen.getByRole("button", { name: "Save" }));
 
       expect(getClubs()[0]?.players.map((p) => p.name)).toEqual(["Roy Smith"]);
+    });
+
+    it("offers New session, which doesn't replace the device's own Session", () => {
+      setSession(deviceSession());
+      renderAt("/clubs/c1");
+
+      const link = screen.getByRole("link", { name: "New session" });
+      expect(link).toHaveAttribute("href", "/sessions/new?club=c1");
+      expect(link).toHaveTextContent("Pick players and courts");
+    });
+
+    it("offers Open active session instead once the Club has one, whoever hosts it", () => {
+      const running = { ...deviceSession(), id: "shared-1", name: "Thursday", clubId: "c1" };
+      applyActiveSessionsReport({
+        sessions: [
+          {
+            clubId: "c1",
+            session: running,
+            hostAccountId: "ana-2222",
+            hostName: "Ana",
+            updatedAt: 1,
+          },
+        ],
+        unknown: [],
+      });
+      renderAt("/clubs/c1");
+
+      expect(screen.queryByRole("link", { name: "New session" })).not.toBeInTheDocument();
+      const link = screen.getByRole("link", { name: "Open active session" });
+      expect(link).toHaveAttribute("href", "/sessions/shared-1");
+      expect(link).toHaveTextContent("Thursday");
     });
 
     it("deletes the Club", async () => {

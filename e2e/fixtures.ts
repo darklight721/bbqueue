@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import type {
   Account,
+  ActiveSession,
   Club,
   ClubPlayer,
   Court,
@@ -16,6 +17,7 @@ import type {
 export const STORAGE_KEYS = {
   clubs: "bq:v1:clubs",
   sharedClubs: "bq:v1:shared-clubs",
+  sharedSessions: "bq:v1:shared-sessions",
   session: "bq:v1:session",
   endedSessions: "bq:v1:ended-sessions",
   account: "bq:v1:account",
@@ -33,6 +35,8 @@ export const FAKE_BACKEND_KEYS = {
   accounts: "bq:fake:accounts",
   clubs: "bq:fake:clubs",
   pendingClubOps: "bq:fake:pending-club-ops",
+  activeSessions: "bq:fake:active-sessions",
+  pendingSessionEnds: "bq:fake:pending-session-ends",
 } as const;
 
 /**
@@ -66,6 +70,8 @@ export interface SeedData {
    * players is linked to it.
    */
   sharedClubs?: Club[];
+  /** Active sessions of Shared clubs on the fake "server" (each one's club must be in `sharedClubs`). */
+  activeSessions?: ActiveSession[];
   /** Seeds the Account in the app and in the fake Backend, as if it had been created on this device. */
   account?: Account;
   clubs?: Club[];
@@ -188,7 +194,10 @@ export function makeEndedSessionFromMatches(
  */
 export async function seedStorage(page: Page, seed: SeedData): Promise<void> {
   const entries = (Object.keys(seed) as (keyof SeedData)[])
-    .filter((name): name is Exclude<keyof SeedData, "otherAccounts"> => name !== "otherAccounts")
+    .filter(
+      (name): name is Exclude<keyof SeedData, "otherAccounts" | "activeSessions"> =>
+        name !== "otherAccounts" && name !== "activeSessions",
+    )
     .filter((name) => seed[name] !== undefined)
     .map((name): [string, string] => [
       STORAGE_KEYS[name],
@@ -196,6 +205,9 @@ export async function seedStorage(page: Page, seed: SeedData): Promise<void> {
     ]);
   if (seed.sharedClubs) {
     entries.push([FAKE_BACKEND_KEYS.clubs, JSON.stringify(seed.sharedClubs)]);
+  }
+  if (seed.activeSessions) {
+    entries.push([FAKE_BACKEND_KEYS.activeSessions, JSON.stringify(seed.activeSessions)]);
   }
   const everyone = [...(seed.account ? [seed.account] : []), ...(seed.otherAccounts ?? [])];
   if (seed.account) entries.push([FAKE_BACKEND_KEYS.account, JSON.stringify(seed.account)]);
@@ -312,4 +324,17 @@ export async function readFakePendingClubOps(page: Page): Promise<unknown[]> {
     const raw = localStorage.getItem(key);
     return raw === null ? [] : (JSON.parse(raw) as unknown[]);
   }, FAKE_BACKEND_KEYS.pendingClubOps);
+}
+
+/** Active sessions of Shared clubs on the fake "server". */
+export async function readFakeActiveSessions(page: Page): Promise<ActiveSession[]> {
+  return page.evaluate((key) => {
+    const raw = localStorage.getItem(key);
+    return raw === null ? [] : (JSON.parse(raw) as ActiveSession[]);
+  }, FAKE_BACKEND_KEYS.activeSessions);
+}
+
+/** The Active sessions of Shared clubs cached on the device (what viewers see offline). */
+export async function readSharedSessions(page: Page): Promise<ActiveSession[]> {
+  return (await readStoredData<ActiveSession[]>(page, "sharedSessions")) ?? [];
 }

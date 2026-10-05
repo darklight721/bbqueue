@@ -59,6 +59,17 @@ export type SharedClubsApi = Pick<
  */
 const serverListeners = new Set<() => void>();
 
+/** Hears about changes any simulated device makes to the shared "server". */
+export function listenToServer(listener: () => void): () => void {
+  serverListeners.add(listener);
+  return () => void serverListeners.delete(listener);
+}
+
+/** Tell every simulated device that the shared "server" changed. */
+export function serverChanged(): void {
+  for (const listener of [...serverListeners]) listener();
+}
+
 function applyOp(clubs: Club[], op: ClubOp): Club[] {
   switch (op.type) {
     case "create":
@@ -114,7 +125,7 @@ export function createSimulatedClubs(
       state.savePendingOps([...state.loadPendingOps(), op]);
     }
     emit();
-    for (const listener of [...serverListeners]) listener();
+    serverChanged();
   }
 
   function findAccount(accountId: string): Account | null {
@@ -162,11 +173,11 @@ export function createSimulatedClubs(
       listeners.add(listener);
       listener(view());
       const report = () => listener(view());
-      serverListeners.add(report);
+      const stopServer = listenToServer(report);
       const stopExternal = state.observeExternalChanges?.(report);
       return () => {
         listeners.delete(listener);
-        serverListeners.delete(report);
+        stopServer();
         stopExternal?.();
       };
     },

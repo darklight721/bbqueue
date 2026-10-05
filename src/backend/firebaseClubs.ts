@@ -33,7 +33,7 @@ import type { SharedClubsApi } from "./simulatedClubs.ts";
 
 /** Listeners that fail are tried again after 250 ms, doubling each time up to this. */
 const MAX_RETRY_DELAY_MS = 30_000;
-const retryDelay = (attempt: number) => Math.min(250 * 2 ** attempt, MAX_RETRY_DELAY_MS);
+export const retryDelay = (attempt: number) => Math.min(250 * 2 ** attempt, MAX_RETRY_DELAY_MS);
 
 /** How long to wait for the server before treating a write as queued (see {@link settle}). */
 export const SETTLE_TIMEOUT_MS = 8_000;
@@ -446,6 +446,9 @@ export function createFirebaseClubs(
       await requireClub(clubId);
       const batch = writeBatch(db);
       for (const row of (await getDocs(playersRef(clubId))).docs) batch.delete(row.ref);
+      // The Club's Active session goes with it (the rules let an Organizer delete it then).
+      const active = doc(db, "clubs", clubId, "activeSession", "current");
+      if ((await readDoc(active))?.exists()) batch.delete(active);
       batch.delete(clubRef(clubId));
       await settle(deps.online, batch.commit());
     },
@@ -539,7 +542,7 @@ interface LoadedClub {
   organizerUids: string[];
 }
 
-const stringList = (value: unknown): string[] =>
+export const stringList = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 
 /** A Club player's name must be there and not longer than the rules allow. */
@@ -615,7 +618,7 @@ function toRecord(player: ClubPlayer, linkUid?: string): DocumentData {
 }
 
 /** Firestore errors in the Backend's words. */
-function toBackendError(error: unknown): BackendError {
+export function toBackendError(error: unknown): BackendError {
   if (error instanceof BackendError) return error;
   const code = (error as { code?: unknown } | null)?.code;
   if (code === "permission-denied")

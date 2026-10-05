@@ -53,6 +53,11 @@ export interface SessionPlayer {
   skill: SkillLevel;
   /** Link back to the Club player this was snapshotted from; null for Guests not saved to the Club. */
   clubPlayerId: string | null;
+  /**
+   * The Account the Club player was linked to when the Session started (ADR-0002: a snapshot,
+   * later unlinking or relinking doesn't change it). Absent for Guests and unlinked Club players.
+   */
+  accountId?: string;
   sittingOut: boolean;
   /** Removed players stay in the Session for history lookups but are hidden from lists. */
   removed: boolean;
@@ -112,6 +117,20 @@ export interface Session {
   queues: Queue[];
   /** playerId → epoch ms of the last Streak reset caused by Sitting out. */
   streakResetAt: Record<string, number>;
+}
+
+/**
+ * The Active session of a Shared club as the server has it (ADR-0007): the Session host's whole
+ * copy of the Session, who the host is, and when the last upload reached the server.
+ */
+export interface ActiveSession {
+  clubId: string;
+  session: Session;
+  /** The Account ID of the Session host: the Organizer who started the Session (or took it over). */
+  hostAccountId: string;
+  hostName: string;
+  /** Epoch ms of the host's last upload, by the server's clock. */
+  updatedAt: number;
 }
 
 /** One row of an Ended session's Standings: a player who played at least one match, with their place. */

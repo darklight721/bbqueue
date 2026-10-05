@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { runBackendContract } from "./backend.contract.ts";
 import { runSharedClubsContract } from "./backend.clubs.contract.ts";
 import { runRolesContract } from "./backend.roles.contract.ts";
+import { runSessionsContract } from "./backend.sessions.contract.ts";
 import { createInMemoryBackend, createInMemoryServer } from "./inMemoryBackend.ts";
 
 runBackendContract("in-memory", createInMemoryBackend);
@@ -11,6 +12,16 @@ runSharedClubsContract("in-memory", () => {
 });
 
 runRolesContract("in-memory", () => {
+  const server = createInMemoryServer();
+  return {
+    device() {
+      const backend = createInMemoryBackend({ server });
+      return { backend, setOnline: (online) => backend.setOnline(online) };
+    },
+  };
+});
+
+runSessionsContract("in-memory", () => {
   const server = createInMemoryServer();
   return {
     device() {

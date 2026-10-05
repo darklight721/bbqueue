@@ -30,7 +30,9 @@ import {
 } from "./backend.ts";
 import { FIREBASE_EMULATOR } from "./firebaseEmulator.ts";
 import { createFirebaseClubs } from "./firebaseClubs.ts";
+import { createFirebaseActiveSessions } from "./firebaseSessions.ts";
 import type { SharedClubsApi } from "./simulatedClubs.ts";
+import type { ActiveSessionsApi } from "./simulatedSessions.ts";
 
 /**
  * Firebase version of {@link Backend}: Anonymous Auth + Firestore with the offline cache on.
@@ -92,7 +94,7 @@ export function createFirebaseBackend(
    */
   let justCreatedUntil = 0;
 
-  const backend: Omit<Backend, keyof SharedClubsApi> = {
+  const backend: Omit<Backend, keyof SharedClubsApi | keyof ActiveSessionsApi> = {
     isOnline: () => online.get(),
     observeOnline: (listener) => online.subscribe(listener),
 
@@ -187,14 +189,17 @@ export function createFirebaseBackend(
     },
   };
 
+  const shared = {
+    online,
+    getAccount: () => backend.getCurrentAccount(),
+    currentUid: () => auth.currentUser?.uid ?? null,
+    observeAccount: (listener: (account: Account | null) => void) =>
+      backend.observeCurrentAccount(listener),
+  };
   return {
     ...backend,
-    ...createFirebaseClubs(db, {
-      online,
-      getAccount: () => backend.getCurrentAccount(),
-      currentUid: () => auth.currentUser?.uid ?? null,
-      observeAccount: (listener) => backend.observeCurrentAccount(listener),
-    }),
+    ...createFirebaseClubs(db, shared),
+    ...createFirebaseActiveSessions(db, shared),
   };
 }
 

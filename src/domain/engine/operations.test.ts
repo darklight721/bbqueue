@@ -57,6 +57,25 @@ function created(count: number, courts = 1, seed = 1) {
 }
 
 describe("createSession", () => {
+  it("keeps the Account a Club player was linked to when the Session started, and only then", () => {
+    const ctx = makeCtx(1);
+    const s = createSession(
+      {
+        ...input(4, 1),
+        players: [
+          { name: "Ana", skill: "beginner", clubPlayerId: "cp-1", accountId: "ana-2222" },
+          { name: "Ben", skill: "beginner", clubPlayerId: "cp-2" },
+          { name: "Cat", skill: "beginner" },
+          { name: "Dan", skill: "beginner" },
+        ],
+      },
+      ctx,
+    );
+    expect(s.players[0]?.accountId).toBe("ana-2222");
+    // Guests and unlinked Club players have none (not even an empty key).
+    expect(s.players.slice(1).every((p) => !("accountId" in p))).toBe(true);
+  });
+
   it("snapshots players and creates numbered Courts with Lineups", () => {
     const { session: s } = created(8, 2);
     expect(s.players).toHaveLength(8);

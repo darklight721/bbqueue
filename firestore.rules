@@ -1,6 +1,6 @@
 rules_version = '2';
 
-// Security Rules (tickets 02, 04 and 05). Tested on the Firebase emulator:
+// Security Rules (tickets 02, 04, 05 and 06). Tested on the Firebase emulator:
 // src/backend/firestore.rules.emulator.test.ts (`pnpm test:firebase`).
 //
 // Data (see src/backend/firebaseBackend.ts and firebaseClubs.ts):
@@ -8,6 +8,11 @@ rules_version = '2';
 //   accountIds/{normalised id}        { uid }     reserves an Account ID for good
 //   clubs/{clubId}                    { name, memberUids, organizerUids, createdAt }
 //   clubs/{clubId}/players/{playerId} { name, skill, link?: { accountId, uid, role } }
+//   clubs/{clubId}/activeSession/current
+//                                     { sessionJson, hostUid, hostAccountId, hostName, updatedAt }
+//
+// The Active session of a Shared club is one fixed record, so a Club has at most one. It holds the
+// Session host's whole Session (as JSON text) and who the host is; see the rules at the end.
 //
 // A person is their Firebase `uid`; the readable Account ID is how others find them. A Club
 // player row is the truth about who is linked and with which Role. `memberUids` and
@@ -214,6 +219,54 @@ service cloud.firestore {
               after().organizerUids.size() > 0
               && (!('link' in resource.data) || !(resource.data.link.uid in after().memberUids))
             )
+          );
+      }
+
+      // The Active session (ADR-0007): the Session host's whole Session, kept in one fixed record
+      // so a Club can have at most one (creating needs that no record exists yet).
+      //
+      // - Read: anyone on the Club (`memberUids`).
+      // - Create: an Organizer, naming themselves as the host. Their Account ID must be the one
+      //   reserved for their uid, so the host's name on screen can't be somebody else's.
+      // - Update: only the host (`hostUid`), and only the Session text and the time. `hostUid`,
+      //   `hostAccountId` and `hostName` can't change here. Taking over (ticket 07) will be a
+      //   second clause that an Organizer may use to make themselves the host.
+      // - Delete: only the host, or an Organizer while the whole Club is being deleted.
+      //
+      // Updates, the most frequent writes in the app, decide from the record alone, with no extra
+      // reads. So a host who loses the Organizer Role, or who leaves the Club, may keep uploading
+      // until somebody takes over: deliberate, because the host's device is the source of truth
+      // and a half-finished night shouldn't be cut off by a Role change.
+      match /activeSession/{docId} {
+        // The Session is JSON text; a Session takes about 40-100 KB and a record may not pass 1 MB.
+        function validSessionJson(text) {
+          return text is string && text.size() > 0 && text.size() <= 700000;
+        }
+
+        allow read: if signedIn() && request.auth.uid in before().memberUids;
+
+        allow create: if signedIn()
+          && docId == 'current'
+          && request.auth.uid in before().organizerUids
+          && request.resource.data.keys().hasOnly(['sessionJson', 'hostUid', 'hostAccountId', 'hostName', 'updatedAt'])
+          && request.resource.data.keys().hasAll(['sessionJson', 'hostUid', 'hostAccountId', 'hostName', 'updatedAt'])
+          && validSessionJson(request.resource.data.sessionJson)
+          && request.resource.data.hostUid == request.auth.uid
+          && request.resource.data.hostAccountId is string
+          && get(/databases/$(database)/documents/accountIds/$(request.resource.data.hostAccountId.lower())).data.uid == request.auth.uid
+          && validName(request.resource.data.hostName)
+          && request.resource.data.updatedAt == request.time;
+
+        allow update: if signedIn()
+          && resource.data.hostUid == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['sessionJson', 'updatedAt'])
+          && validSessionJson(request.resource.data.sessionJson)
+          && request.resource.data.updatedAt == request.time;
+
+        allow delete: if signedIn()
+          && (
+            resource.data.hostUid == request.auth.uid
+            || (!existsAfter(clubPath()) && request.auth.uid in before().organizerUids)
           );
       }
     }

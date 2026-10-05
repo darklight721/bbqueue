@@ -1,5 +1,6 @@
 import type {
   Account,
+  ActiveSession,
   Club,
   ClubKind,
   ClubPlayer,
@@ -12,6 +13,7 @@ const CLUBS_KEY = "bq:v1:clubs";
 const SESSION_KEY = "bq:v1:session";
 const ENDED_SESSIONS_KEY = "bq:v1:ended-sessions";
 const SHARED_CLUBS_KEY = "bq:v1:shared-clubs";
+const SHARED_SESSIONS_KEY = "bq:v1:shared-sessions";
 const ACCOUNT_KEY = "bq:v1:account";
 const WELCOME_DONE_KEY = "bq:v1:welcome-done";
 const INSTALL_HINT_DISMISSED_KEY = "bq:v1:install-hint-dismissed";
@@ -24,6 +26,7 @@ export const MAX_ENDED_SESSIONS = 50;
 export const STORAGE_KEYS = {
   clubs: CLUBS_KEY,
   sharedClubs: SHARED_CLUBS_KEY,
+  sharedSessions: SHARED_SESSIONS_KEY,
   session: SESSION_KEY,
   endedSessions: ENDED_SESSIONS_KEY,
   account: ACCOUNT_KEY,
@@ -55,6 +58,18 @@ const isSession: Guard<Session> = (value): value is Session =>
   Array.isArray(value.courts) &&
   Array.isArray(value.matches) &&
   Array.isArray(value.queues);
+
+const isSharedSessions: Guard<ActiveSession[]> = (value): value is ActiveSession[] =>
+  Array.isArray(value) &&
+  value.every(
+    (entry) =>
+      isRecord(entry) &&
+      typeof entry.clubId === "string" &&
+      typeof entry.hostAccountId === "string" &&
+      typeof entry.hostName === "string" &&
+      typeof entry.updatedAt === "number" &&
+      isSession(entry.session),
+  );
 
 const isAccount: Guard<Account> = (value): value is Account =>
   isRecord(value) && typeof value.accountId === "string" && typeof value.name === "string";
@@ -186,6 +201,21 @@ export function saveSession(session: Session): void {
 
 export function clearSession(): void {
   remove(SESSION_KEY);
+}
+
+/**
+ * The Active sessions of Shared clubs as last received from the Backend, so viewers see the last
+ * copy after a reload while offline, and a host keeps the Session it runs on this device.
+ */
+export function loadSharedSessions(): ActiveSession[] {
+  return (read(SHARED_SESSIONS_KEY, isSharedSessions) ?? []).map((entry) => ({
+    ...entry,
+    session: normalizeSession(entry.session),
+  }));
+}
+
+export function saveSharedSessions(sessions: ActiveSession[]): void {
+  write(SHARED_SESSIONS_KEY, sessions);
 }
 
 export function removeLegacySummary(): void {

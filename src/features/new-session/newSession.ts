@@ -98,7 +98,13 @@ export function planStart(args: {
   if (club) {
     for (const player of byName(club.players)) {
       if (args.checkedIds.has(player.id)) {
-        players.push({ name: player.name, skill: player.skill, clubPlayerId: player.id });
+        players.push({
+          name: player.name,
+          skill: player.skill,
+          clubPlayerId: player.id,
+          // The Account linked at Start stays with the Session player (ADR-0002).
+          ...(player.link ? { accountId: player.link.accountId } : {}),
+        });
       }
     }
   }

@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useLocation } from "wouter";
 import { ConfirmDialog } from "../../../components/ConfirmDialog.tsx";
 import { endSession } from "../../../domain/engine/index.ts";
-import { addEndedSession, getSession, setSession } from "../../../storage/store.ts";
+import { endSharedSession } from "../../../backend/sessions.ts";
+import { addEndedSession, findActiveSession, setSession } from "../../../storage/store.ts";
 import { useSessionView } from "../context.ts";
 
 /** "1 match in progress will…", "3 matches in progress will…" */
@@ -20,13 +21,15 @@ export function EndSessionSection() {
 
   function end() {
     setConfirming(false);
-    const current = getSession();
-    if (!current) return;
-    const ended = endSession(current, { now: Date.now(), rng: Math.random });
+    const entry = findActiveSession(session.id);
+    if (!entry) return;
+    const ended = endSession(entry.session, { now: Date.now(), rng: Math.random });
     // Everything lands in one render, so the new route wins over SessionScreen's
-    // "no Session" redirect. A Session without Ended matches is not kept.
+    // "no Session" redirect. A Session without Ended matches is not kept. The Ended session stays
+    // on this device; publishing it to a Shared club comes with ticket 09.
     if (ended) addEndedSession(ended);
-    setSession(null);
+    if (entry.shared) endSharedSession(entry.shared.clubId);
+    else setSession(null);
     navigate(ended ? `/sessions/${ended.id}/summary` : "/");
   }
 

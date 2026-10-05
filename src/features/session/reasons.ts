@@ -17,6 +17,7 @@ const REASON_MESSAGES: Record<string, string> = {
   "name-required": "Enter a name.",
   "duplicate-name": "That name is already used in this session.",
   "no-session": "There's no session in progress.",
+  "not-host": "Only the session host can change this session.",
 };
 
 export function messageForReason(reason: string): string {
