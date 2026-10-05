@@ -14,6 +14,7 @@ const SESSION_KEY = "bq:v1:session";
 const ENDED_SESSIONS_KEY = "bq:v1:ended-sessions";
 const SHARED_CLUBS_KEY = "bq:v1:shared-clubs";
 const SHARED_SESSIONS_KEY = "bq:v1:shared-sessions";
+const SHARED_ENDED_SESSIONS_KEY = "bq:v1:shared-ended-sessions";
 const ACCOUNT_KEY = "bq:v1:account";
 const WELCOME_DONE_KEY = "bq:v1:welcome-done";
 const INSTALL_HINT_DISMISSED_KEY = "bq:v1:install-hint-dismissed";
@@ -27,6 +28,7 @@ export const STORAGE_KEYS = {
   clubs: CLUBS_KEY,
   sharedClubs: SHARED_CLUBS_KEY,
   sharedSessions: SHARED_SESSIONS_KEY,
+  sharedEndedSessions: SHARED_ENDED_SESSIONS_KEY,
   session: SESSION_KEY,
   endedSessions: ENDED_SESSIONS_KEY,
   account: ACCOUNT_KEY,
@@ -248,6 +250,34 @@ export function saveEndedSession(
     } catch (error) {
       if (list.length <= 1) {
         console.error(`Failed to save ${ENDED_SESSIONS_KEY}`, error);
+        return list;
+      }
+      list = list.slice(0, -1);
+    }
+  }
+}
+
+/**
+ * Ended sessions of Shared clubs as last received from the Backend, so they can be looked at offline
+ * after a reload. Newest first. If storage is full, the oldest are dropped until it fits (a final
+ * failure is logged, not thrown); returns what was kept.
+ */
+export function loadSharedEndedSessions(): EndedSession[] {
+  const stored = (read(SHARED_ENDED_SESSIONS_KEY, isEndedSessions) ?? []).map(
+    normalizeEndedSession,
+  );
+  return [...stored].sort((a, b) => b.endedAt - a.endedAt);
+}
+
+export function saveSharedEndedSessions(sessions: readonly EndedSession[]): EndedSession[] {
+  let list = [...sessions];
+  for (;;) {
+    try {
+      writeOrThrow(SHARED_ENDED_SESSIONS_KEY, list);
+      return list;
+    } catch (error) {
+      if (list.length === 0) {
+        console.error(`Failed to save ${SHARED_ENDED_SESSIONS_KEY}`, error);
         return list;
       }
       list = list.slice(0, -1);

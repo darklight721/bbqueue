@@ -1,6 +1,13 @@
-import type { Account, ActiveSession, Club, SessionRequest } from "../domain/types.ts";
+import type {
+  Account,
+  ActiveSession,
+  Club,
+  EndedSession,
+  SessionRequest,
+} from "../domain/types.ts";
 import type { Backend, SimulatedBackendOptions } from "./backend.ts";
 import type { ClubOp } from "./simulatedClubs.ts";
+import type { SimulatedPendingEnd } from "./simulatedSessions.ts";
 import { createSimulatedBackend } from "./simulatedBackend.ts";
 
 /** Separate from the app's own `bq:v1:*` keys: this stands in for the server. */
@@ -17,6 +24,8 @@ export const FAKE_BACKEND_KEYS = {
   activeSessions: "bq:fake:active-sessions",
   /** Player requests on the "server": an array of SessionRequest, oldest first. */
   requests: "bq:fake:requests",
+  /** Ended sessions of Shared clubs on the "server": an array of EndedSession. */
+  endedSessions: "bq:fake:ended-sessions",
   /** Clubs whose Active session this device ended while offline (the delete is still waiting). */
   pendingSessionEnds: "bq:fake:pending-session-ends",
 } as const;
@@ -95,7 +104,13 @@ export function createLocalFakeBackend(
         (readJson(FAKE_BACKEND_KEYS.requests, isRecordArray) ?? []) as unknown as SessionRequest[],
       saveRequests: (requests) =>
         localStorage.setItem(FAKE_BACKEND_KEYS.requests, JSON.stringify(requests)),
-      loadPendingSessionEnds: () => readJson(pendingEndsKey, isStringArray) ?? [],
+      loadEndedSessions: () =>
+        (readJson(FAKE_BACKEND_KEYS.endedSessions, isRecordArray) ??
+          []) as unknown as EndedSession[],
+      saveEndedSessions: (sessions) =>
+        localStorage.setItem(FAKE_BACKEND_KEYS.endedSessions, JSON.stringify(sessions)),
+      loadPendingSessionEnds: () =>
+        (readJson(pendingEndsKey, isRecordArray) ?? []) as unknown as SimulatedPendingEnd[],
       savePendingSessionEnds: (ids) => localStorage.setItem(pendingEndsKey, JSON.stringify(ids)),
       loadPendingOps: () => (readJson(pendingKey, isRecordArray) ?? []) as ClubOp[],
       savePendingOps: (ops) => localStorage.setItem(pendingKey, JSON.stringify(ops)),

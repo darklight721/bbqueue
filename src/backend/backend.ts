@@ -3,6 +3,7 @@ import type {
   ActiveSession,
   Club,
   ClubPlayer,
+  EndedSession,
   Role,
   Session,
   SessionRequest,
@@ -54,6 +55,14 @@ export interface ActiveSessionsReport {
    * cached, e.g. offline after a fresh start). Whatever the device last had for them stays.
    */
   unknown: string[];
+}
+
+/** What `observeEndedSessions` reports. */
+export interface EndedSessionsReport {
+  /** The Ended sessions of the Shared clubs the Account is on: the 50 most recent per Club, as far as known. */
+  sessions: EndedSession[];
+  /** The Shared clubs the Account is on. Whatever the device has of any other Club can go. */
+  clubIds: string[];
 }
 
 /** Stops an observer. */
@@ -161,8 +170,19 @@ export interface Backend {
    * The Session host ends the Active session: the record is deleted and everybody else sees it
    * go. Works offline: the delete waits and reaches the server when the connection is back.
    * Rejects with `forbidden` when this Account isn't the Session host.
+   *
+   * With `ended` (a Session with at least one Ended match, in the slimmed shape of ADR-0005) the
+   * Ended session is published to the Club in the same step, so it is never lost with the Active
+   * session, also when the device is offline (both wait for the connection together). It is
+   * created once by the host and never changed or deleted by anyone.
    */
-  endSharedSession(clubId: string): Promise<void>;
+  endSharedSession(clubId: string, ended?: EndedSession | null): Promise<void>;
+  /**
+   * Calls `listener` right away and then on every change with the Ended sessions of the Shared
+   * clubs the current Account is on: the 50 most recent per Club (rules can't count, so older ones
+   * stay on the server but are left out of this listing).
+   */
+  observeEndedSessions(listener: (report: EndedSessionsReport) => void): Unsubscribe;
   /**
    * An Organizer who isn't the Session host makes themselves the host (ADR-0007), straight away
    * and in a transaction, keeping the Session as the server has it (what the old host never

@@ -4,7 +4,9 @@ import {
   makeClub,
   makeMidMatchSession,
   makeSession,
+  makeEndedSessionFromMatches,
   readFakeActiveSessions,
+  readFakeEndedSessions,
   readSharedSessions,
   readStoredData,
   seedStorage,
@@ -267,6 +269,9 @@ test.describe("Shared active session", () => {
     await expect.poll(async () => await serverSession(page)).toBeUndefined();
     expect(await readSharedSessions(page)).toEqual([]);
     expect(await readStoredData<unknown[]>(page, "endedSessions")).toHaveLength(1);
+    // And it was published to the Club.
+    const published = await readFakeEndedSessions(page);
+    expect(published.map((e) => [e.name, e.clubId])).toEqual([["Thursday night", riverside.id]]);
     await page.goto("/");
     await expect(page.getByRole("link", { name: "Resume session" })).toHaveCount(0);
     // The Club can start a new one.
@@ -368,5 +373,53 @@ test.describe("Shared active session", () => {
 
     await expect(page.getByRole("button", { name: "Ask to sit out" })).toBeDisabled();
     await expect(page.getByRole("button", { name: "Leave this session" })).toBeDisabled();
+  });
+
+  test("a Shared club's Ended sessions are in Past sessions and the Club's sessions list, with the device's own, and open to details and summary", async ({
+    page,
+  }) => {
+    const theirs = makeEndedSessionFromMatches(
+      [{ a: ["Ana", "Ben"], b: ["Cat", "Dan"], score: [21, 15] }],
+      {
+        name: "Thursday at Riverside",
+        clubId: riverside.id,
+        clubName: riverside.name,
+        endedAt: 1_700_007_200_000,
+      },
+    );
+    const own = makeEndedSessionFromMatches(
+      [{ a: ["Eve", "Fay"], b: ["Gus", "Hal"], score: [21, 9] }],
+      { name: "Garage night", endedAt: 1_700_000_000_000 },
+    );
+    await seedStorage(page, {
+      account: ana,
+      otherAccounts: [roy],
+      sharedClubs: [riverside],
+      sharedEndedSessions: [theirs],
+      endedSessions: [own],
+    });
+
+    await page.goto("/");
+    await expect(page.getByRole("link", { name: "Past sessions" })).toHaveAccessibleDescription(
+      "2 sessions",
+    );
+    await page.getByRole("link", { name: "Past sessions" }).click();
+    const rows = page.getByRole("link", { name: /Thursday at Riverside|Garage night/ });
+    await expect(rows.first()).toContainText("Thursday at Riverside");
+    await expect(rows.last()).toContainText("Garage night");
+
+    // The Club's own list, from the (read-only) Club screen.
+    await page.goto(`/clubs/${riverside.id}`);
+    await page.getByRole("link", { name: /Sessions/ }).click();
+    await expect(page.getByRole("link", { name: /Thursday at Riverside/ })).toBeVisible();
+    await expect(page.getByRole("link", { name: /Garage night/ })).toHaveCount(0);
+
+    await page.getByRole("link", { name: /Thursday at Riverside/ }).click();
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Thursday at Riverside" }),
+    ).toBeVisible();
+    await page.getByRole("link", { name: "View summary" }).click();
+    await expect(page.getByRole("heading", { level: 1, name: "Session summary" })).toBeVisible();
+    await expect(page.getByText("Thursday at Riverside")).toBeVisible();
   });
 });

@@ -3,6 +3,7 @@ import { accountIdsEqual } from "../domain/accountId.ts";
 import { setFlash } from "../storage/flash.ts";
 import {
   applyActiveSessionOf,
+  applyEndedSessionsReport,
   applyActiveSessionsReport,
   getAccount,
   getSharedSessions,
@@ -225,11 +226,13 @@ export function startActiveSessionSync(maybeBackend: Backend | null = getBackend
     applyActiveSessionsReport(report);
     syncAll();
   });
+  const stopEnded = backend.observeEndedSessions(applyEndedSessionsReport);
   const stopStore = observeSharedSessions(syncAll);
   syncAll();
 
   return () => {
     stopObserving();
+    stopEnded();
     stopStore();
     for (const clubId of [...hosting.keys()]) stopHosting(clubId);
     for (const clubId of [...watching.keys()]) stopWatching(clubId);

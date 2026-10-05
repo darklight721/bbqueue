@@ -8,3 +8,4 @@ We keep only the 50 most recently ended, and older ones are dropped without aski
 
 - An Ended session can't be resumed or replayed through the queueing engine, because the data needed for Streaks and fairness isn't kept.
 - Summaries saved before this change are discarded on upgrade, because they have no matches or session id.
+- Shared clubs (ticket 09): the same slimmed Ended session is published to the Club, `clubs/{clubId}/endedSessions/{sessionId}`, in the batch that ends the Session. Only the Session host creates it and nobody can change or delete it. Security Rules can't count, so "the 50 most recent per Club" is what the app lists (newest 50 by `endedAt`, and 50 per Club cached on each device); older ones stay on the server unlisted. Everyone on the Club sees them next to the device's own Ended sessions, each Session once. The device still keeps its own copy of a Session it hosted.

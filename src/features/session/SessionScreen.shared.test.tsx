@@ -17,6 +17,7 @@ import type { ActiveSession, Session } from "../../domain/types.ts";
 import { setFlash } from "../../storage/flash.ts";
 import {
   applyActiveSessionsReport,
+  getEndedSessions,
   getSession,
   getSharedSessions,
   resetStoreForTests,
@@ -285,5 +286,10 @@ describe("The Session screen for the Session host of a Shared club", () => {
     let report: ActiveSession[] | null = null;
     backend.observeActiveSessions((r) => (report = r.sessions))();
     expect(report).toEqual([]);
+    // The Ended session was published to the Club too, and is still on this device.
+    let published: { id: string; clubId: string | null }[] = [];
+    backend.observeEndedSessions((r) => (published = r.sessions))();
+    expect(published.map((e) => [e.id, e.clubId])).toEqual([[session.id, "c1"]]);
+    expect(getEndedSessions().map((e) => e.id)).toEqual([session.id]);
   });
 });

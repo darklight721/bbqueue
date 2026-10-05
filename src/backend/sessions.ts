@@ -1,4 +1,4 @@
-import type { Session, SessionRequestKind } from "../domain/types.ts";
+import type { EndedSession, Session, SessionRequestKind } from "../domain/types.ts";
 import { addHostedSession, removeSharedSession } from "../storage/store.ts";
 import { BackendError } from "./backend.ts";
 import { getBackend } from "./index.ts";
@@ -29,15 +29,17 @@ export async function takeOverSession(clubId: string): Promise<void> {
 
 /**
  * The Session host ends a Shared club's Active session: it leaves the device's store at once, and
- * the record is deleted on the server (waiting for the connection when offline). Failures are
- * logged, never thrown: ending the night is not held up by the server.
+ * the record is deleted on the server (waiting for the connection when offline). `ended` (the
+ * slimmed Ended session, when the Session had at least one Ended match) is published to the Club
+ * in the same step (ticket 09), so it can't be lost with the Active session; it also stays on the
+ * device, as today. Failures are logged, never thrown: ending the night is not held up by the
+ * server.
  */
-export function endSharedSession(clubId: string): void {
+export function endSharedSession(clubId: string, ended: EndedSession | null = null): void {
   removeSharedSession(clubId, { endedHere: true });
   getBackend()
-    ?.endSharedSession(clubId)
+    ?.endSharedSession(clubId, ended)
     .catch((error: unknown) => console.error("Failed to end the shared session", error));
-  // Ticket 09 publishes the Ended session to the Club here.
 }
 
 /**

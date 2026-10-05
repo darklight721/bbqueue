@@ -1,7 +1,7 @@
 import { accountIdsEqual } from "../domain/accountId.ts";
 import { roleInClub } from "../domain/clubChanges.ts";
 import { newId } from "../domain/ids.ts";
-import type { Account, ActiveSession, SessionRequest } from "../domain/types.ts";
+import type { Account, ActiveSession, EndedSession, SessionRequest } from "../domain/types.ts";
 import { BackendError, type Backend, type OnlineSource } from "./backend.ts";
 import { listenToServer, serverChanged, type SimulatedClubsState } from "./simulatedClubs.ts";
 
@@ -16,10 +16,22 @@ export interface SimulatedSessionsState extends Pick<
   /** Player requests on the "server", oldest first, across all Clubs. */
   loadRequests(): SessionRequest[];
   saveRequests(requests: SessionRequest[]): void;
-  /** Clubs whose Active session this device ended while offline; the delete is still queued. */
-  loadPendingSessionEnds(): string[];
-  savePendingSessionEnds(clubIds: string[]): void;
+  /** Ended sessions of Shared clubs on the "server". */
+  loadEndedSessions(): EndedSession[];
+  saveEndedSessions(sessions: EndedSession[]): void;
+  /** Ends this device made while offline (the delete, and the Ended session to publish) still queued. */
+  loadPendingSessionEnds(): SimulatedPendingEnd[];
+  savePendingSessionEnds(ends: SimulatedPendingEnd[]): void;
 }
+
+/** A Shared club's Session this device ended while offline, waiting for the connection. */
+export interface SimulatedPendingEnd {
+  clubId: string;
+  ended: EndedSession | null;
+}
+
+/** How many Ended sessions of a Club the "server" lists (the 50 most recent, as Firestore does). */
+const LISTED_ENDED = 50;
 
 export type ActiveSessionsApi = Pick<
   Backend,
@@ -32,6 +44,7 @@ export type ActiveSessionsApi = Pick<
   | "requestSessionChange"
   | "observeSessionRequests"
   | "resolveSessionRequests"
+  | "observeEndedSessions"
 >;
 
 /**
@@ -52,17 +65,27 @@ export function createSimulatedSessions(
     const pending = state.loadPendingSessionEnds();
     if (pending.length === 0 || !online.get()) return;
     const account = getAccount();
-    const ending = pending.filter((clubId) =>
-      state.loadActiveSessions().some((s) => s.clubId === clubId && mine(account?.accountId, s)),
-    );
-    state.saveActiveSessions(
-      state
-        .loadActiveSessions()
-        .filter((s) => !(pending.includes(s.clubId) && mine(account?.accountId, s))),
-    );
-    state.saveRequests(state.loadRequests().filter((r) => !ending.includes(r.clubId)));
+    for (const end of pending) {
+      const current = record(end.clubId);
+      // Only the host's end goes through (somebody may have taken over while this device was away).
+      if (!current || !mine(account?.accountId, current)) continue;
+      removeRecord(end.clubId);
+      if (end.ended) publish(end.ended);
+    }
     state.savePendingSessionEnds([]);
     serverChanged();
+  }
+
+  function removeRecord(clubId: string) {
+    state.saveActiveSessions(state.loadActiveSessions().filter((s) => s.clubId !== clubId));
+    state.saveRequests(state.loadRequests().filter((r) => r.clubId !== clubId));
+  }
+
+  /** The Ended session is created once and never changes (the rules refuse updates). */
+  function publish(ended: EndedSession) {
+    const all = state.loadEndedSessions();
+    if (all.some((existing) => existing.id === ended.id)) return;
+    state.saveEndedSessions([...all, ended]);
   }
 
   /** The Active sessions this device shows: the Clubs I'm on, minus the ends still waiting. */
@@ -70,7 +93,7 @@ export function createSimulatedSessions(
     const account = getAccount();
     if (!account) return [];
     const clubs = state.loadClubs();
-    const pending = state.loadPendingSessionEnds();
+    const pending = state.loadPendingSessionEnds().map((end) => end.clubId);
     return state
       .loadActiveSessions()
       .filter(
@@ -262,7 +285,7 @@ export function createSimulatedSessions(
       }
     },
 
-    endSharedSession(clubId) {
+    endSharedSession(clubId, ended = null) {
       try {
         const account = getAccount();
         if (!account) throw new BackendError("no-account");
@@ -270,16 +293,51 @@ export function createSimulatedSessions(
         if (!current) return Promise.resolve();
         if (!mine(account.accountId, current)) throw new BackendError("forbidden");
         if (online.get()) {
-          state.saveActiveSessions(state.loadActiveSessions().filter((s) => s.clubId !== clubId));
-          state.saveRequests(state.loadRequests().filter((r) => r.clubId !== clubId));
+          removeRecord(clubId);
+          if (ended) publish(ended);
         } else {
-          state.savePendingSessionEnds([...new Set([...state.loadPendingSessionEnds(), clubId])]);
+          state.savePendingSessionEnds([
+            ...state.loadPendingSessionEnds().filter((end) => end.clubId !== clubId),
+            { clubId, ended },
+          ]);
         }
         serverChanged();
         return Promise.resolve();
       } catch (error) {
         return Promise.reject(error);
       }
+    },
+
+    observeEndedSessions(listener) {
+      const report = () => {
+        const account = getAccount();
+        if (!account) {
+          listener({ sessions: [], clubIds: [] });
+          return;
+        }
+        const clubIds = state
+          .loadClubs()
+          .filter((club) => roleInClub(club, account.accountId) !== null)
+          .map((club) => club.id);
+        const perClub = new Map<string, number>();
+        const sessions = state
+          .loadEndedSessions()
+          .filter((ended) => ended.clubId !== null && clubIds.includes(ended.clubId))
+          .sort((a, b) => b.endedAt - a.endedAt)
+          .filter((ended) => {
+            const count = (perClub.get(ended.clubId!) ?? 0) + 1;
+            perClub.set(ended.clubId!, count);
+            return count <= LISTED_ENDED;
+          });
+        listener({ sessions, clubIds });
+      };
+      report();
+      const stopServer = listenToServer(report);
+      const stopExternal = state.observeExternalChanges?.(report);
+      return () => {
+        stopServer();
+        stopExternal?.();
+      };
     },
   };
 }

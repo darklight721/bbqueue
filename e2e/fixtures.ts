@@ -36,6 +36,7 @@ export const FAKE_BACKEND_KEYS = {
   clubs: "bq:fake:clubs",
   pendingClubOps: "bq:fake:pending-club-ops",
   activeSessions: "bq:fake:active-sessions",
+  endedSessions: "bq:fake:ended-sessions",
   pendingSessionEnds: "bq:fake:pending-session-ends",
 } as const;
 
@@ -72,6 +73,8 @@ export interface SeedData {
   sharedClubs?: Club[];
   /** Active sessions of Shared clubs on the fake "server" (each one's club must be in `sharedClubs`). */
   activeSessions?: ActiveSession[];
+  /** Ended sessions of Shared clubs on the fake "server" (each one's club must be in `sharedClubs`). */
+  sharedEndedSessions?: EndedSession[];
   /** Seeds the Account in the app and in the fake Backend, as if it had been created on this device. */
   account?: Account;
   clubs?: Club[];
@@ -195,8 +198,12 @@ export function makeEndedSessionFromMatches(
 export async function seedStorage(page: Page, seed: SeedData): Promise<void> {
   const entries = (Object.keys(seed) as (keyof SeedData)[])
     .filter(
-      (name): name is Exclude<keyof SeedData, "otherAccounts" | "activeSessions"> =>
-        name !== "otherAccounts" && name !== "activeSessions",
+      (
+        name,
+      ): name is Exclude<
+        keyof SeedData,
+        "otherAccounts" | "activeSessions" | "sharedEndedSessions"
+      > => name !== "otherAccounts" && name !== "activeSessions" && name !== "sharedEndedSessions",
     )
     .filter((name) => seed[name] !== undefined)
     .map((name): [string, string] => [
@@ -208,6 +215,9 @@ export async function seedStorage(page: Page, seed: SeedData): Promise<void> {
   }
   if (seed.activeSessions) {
     entries.push([FAKE_BACKEND_KEYS.activeSessions, JSON.stringify(seed.activeSessions)]);
+  }
+  if (seed.sharedEndedSessions) {
+    entries.push([FAKE_BACKEND_KEYS.endedSessions, JSON.stringify(seed.sharedEndedSessions)]);
   }
   const everyone = [...(seed.account ? [seed.account] : []), ...(seed.otherAccounts ?? [])];
   if (seed.account) entries.push([FAKE_BACKEND_KEYS.account, JSON.stringify(seed.account)]);
@@ -337,4 +347,12 @@ export async function readFakeActiveSessions(page: Page): Promise<ActiveSession[
 /** The Active sessions of Shared clubs cached on the device (what viewers see offline). */
 export async function readSharedSessions(page: Page): Promise<ActiveSession[]> {
   return (await readStoredData<ActiveSession[]>(page, "sharedSessions")) ?? [];
+}
+
+/** Ended sessions of Shared clubs on the fake "server". */
+export async function readFakeEndedSessions(page: Page): Promise<EndedSession[]> {
+  return page.evaluate((key) => {
+    const raw = localStorage.getItem(key);
+    return raw === null ? [] : (JSON.parse(raw) as EndedSession[]);
+  }, FAKE_BACKEND_KEYS.endedSessions);
 }

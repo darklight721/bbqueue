@@ -6,6 +6,8 @@ import {
   getDocFromServer,
   getDocs,
   getDocsFromCache,
+  limit,
+  orderBy,
   setDoc,
   writeBatch,
   onSnapshot,
@@ -22,6 +24,7 @@ import { newId } from "../domain/ids.ts";
 import type {
   Account,
   ActiveSession,
+  EndedSession,
   Session,
   SessionRequest,
   SessionRequestKind,
@@ -53,6 +56,7 @@ export function createFirebaseActiveSessions(
 ): ActiveSessionsApi {
   const clubRef = (clubId: string) => doc(db, "clubs", clubId);
   const sessionRef = (clubId: string) => doc(db, "clubs", clubId, "activeSession", "current");
+  const endedRef = (clubId: string) => collection(db, "clubs", clubId, "endedSessions");
   const requestsRef = (clubId: string) =>
     collection(db, "clubs", clubId, "activeSession", "current", "requests");
 
@@ -311,7 +315,7 @@ export function createFirebaseActiveSessions(
       }
     },
 
-    async endSharedSession(clubId) {
+    async endSharedSession(clubId, ended = null) {
       const uid = deps.currentUid();
       if (!uid) throw new BackendError("no-account");
       let record: DocumentData | undefined;
@@ -330,6 +334,16 @@ export function createFirebaseActiveSessions(
       // The record goes with the requests made in it, in one batch (so also when it waits offline).
       const batch = writeBatch(db);
       batch.delete(sessionRef(clubId));
+      // The Ended session is created in the same batch, so it lands with the delete (and waits
+      // with it offline). The rules let only the host create it, and nobody change it after.
+      if (ended) {
+        batch.set(doc(endedRef(clubId), ended.id), {
+          hostUid: uid,
+          endedAt: ended.endedAt,
+          endedJson: JSON.stringify(ended),
+          createdAt: serverTimestamp(),
+        });
+      }
       try {
         const requests = deps.online.get()
           ? await getDocs(requestsRef(clubId))
@@ -339,6 +353,120 @@ export function createFirebaseActiveSessions(
         // Requests we can't list stay behind; they are for this Session only and are ignored later.
       }
       await settle(deps.online, batch.commit());
+    },
+
+    observeEndedSessions(listener) {
+      let stopClubs: Unsubscribe = () => {};
+      let watching: string | null | undefined;
+      const stopAccount = deps.observeAccount((account) => {
+        const uid = account ? deps.currentUid() : null;
+        if (uid === watching) return;
+        watching = uid;
+        stopClubs();
+        stopClubs = uid ? watchClubs(uid) : () => {};
+        if (!uid) listener({ sessions: [], clubIds: [] });
+      });
+
+      function watchClubs(uid: string): Unsubscribe {
+        interface Entry {
+          sessions: EndedSession[];
+          stop: Unsubscribe;
+        }
+        const clubs = new Map<string, Entry>();
+        let stopped = false;
+        let reported = false;
+
+        function emit() {
+          listener({
+            sessions: [...clubs.values()].flatMap((entry) => entry.sessions),
+            clubIds: [...clubs.keys()],
+          });
+        }
+
+        function watchEnded(clubId: string, entry: Entry) {
+          let attempt = 0;
+          let retry: ReturnType<typeof setTimeout> | undefined;
+          let stopSnapshot: Unsubscribe = () => {};
+          const listen = () => {
+            stopSnapshot = onSnapshot(
+              // The 50 most recent: what everybody sees. Older ones stay on the server (rules can't
+              // count, and nobody may delete them) but aren't listed.
+              query(endedRef(clubId), orderBy("endedAt", "desc"), limit(50)),
+              (snapshot) => {
+                attempt = 0;
+                entry.sessions = snapshot.docs.flatMap((row) => {
+                  const parsed = toEndedSession(clubId, row.data());
+                  return parsed ? [parsed] : [];
+                });
+                emit();
+              },
+              (error) => {
+                if (clubs.get(clubId) !== entry) return;
+                console.warn("Ended sessions listener failed, trying again", error);
+                retry = setTimeout(listen, retryDelay(attempt++));
+              },
+            );
+          };
+          entry.stop = () => {
+            clearTimeout(retry);
+            stopSnapshot();
+          };
+          listen();
+        }
+
+        function handleClubs(snapshot: QuerySnapshot) {
+          // A cold start can answer "no Clubs" from an empty cache before the server has spoken.
+          if (!reported && snapshot.empty && snapshot.metadata.fromCache) return;
+          const seen = new Set<string>();
+          for (const clubDoc of snapshot.docs) {
+            seen.add(clubDoc.id);
+            if (clubs.has(clubDoc.id)) continue;
+            const entry: Entry = { sessions: [], stop: () => {} };
+            clubs.set(clubDoc.id, entry);
+            watchEnded(clubDoc.id, entry);
+          }
+          for (const [id, entry] of clubs) {
+            if (seen.has(id)) continue;
+            entry.stop();
+            clubs.delete(id);
+          }
+          reported = true;
+          emit();
+        }
+
+        const members = query(collection(db, "clubs"), where("memberUids", "array-contains", uid));
+        let attempt = 0;
+        let retry: ReturnType<typeof setTimeout> | undefined;
+        let stopMembers: Unsubscribe = () => {};
+        const listenMembers = () => {
+          stopMembers = onSnapshot(
+            members,
+            (snapshot) => {
+              attempt = 0;
+              handleClubs(snapshot);
+            },
+            (error) => {
+              if (stopped) return;
+              console.warn("Clubs listener (Ended sessions) failed, trying again", error);
+              retry = setTimeout(listenMembers, retryDelay(attempt++));
+            },
+          );
+        };
+        listenMembers();
+
+        return () => {
+          stopped = true;
+          clearTimeout(retry);
+          stopMembers();
+          for (const entry of clubs.values()) entry.stop();
+          clubs.clear();
+        };
+      }
+
+      return () => {
+        stopAccount();
+        stopClubs();
+      };
     },
 
     async requestSessionChange(clubId, input) {
@@ -455,6 +583,28 @@ export function createFirebaseActiveSessions(
       if (failures.length === results.length) throw new BackendError("forbidden");
     },
   };
+}
+
+/** The Ended session in a record, or null when it can't be read as one. */
+function toEndedSession(clubId: string, data: DocumentData): EndedSession | null {
+  if (typeof data.endedJson !== "string") return null;
+  try {
+    const ended = JSON.parse(data.endedJson) as EndedSession;
+    if (
+      typeof ended?.id !== "string" ||
+      typeof ended.name !== "string" ||
+      typeof ended.startedAt !== "number" ||
+      typeof ended.endedAt !== "number" ||
+      !Array.isArray(ended.players) ||
+      !Array.isArray(ended.matches)
+    ) {
+      return null;
+    }
+    // The Club it was published to is the truth, whatever the copy says.
+    return { ...ended, clubId };
+  } catch {
+    return null;
+  }
 }
 
 /** The request in a record, or null when it can't be read as one. */

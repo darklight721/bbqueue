@@ -19,6 +19,7 @@ import {
   loadInstallHintDismissed,
   loadSession,
   loadSharedClubs,
+  loadSharedEndedSessions,
   loadSharedSessions,
   loadWelcomeDone,
   removeLegacySummary,
@@ -28,6 +29,7 @@ import {
   saveInstallHintDismissed,
   saveSession,
   saveSharedClubs,
+  saveSharedEndedSessions,
   saveSharedSessions,
   saveWelcomeDone,
 } from "./storage.ts";
@@ -49,6 +51,7 @@ const sharedClubsSlot = createSlot<Club[]>([]);
 const sessionSlot = createSlot<Session | null>(null);
 const sharedSessionsSlot = createSlot<ActiveSession[]>([]);
 const endedSessionsSlot = createSlot<EndedSession[]>([]);
+const sharedEndedSlot = createSlot<EndedSession[]>([]);
 const accountSlot = createSlot<Account | null>(null);
 const welcomeDoneSlot = createSlot<boolean>(false);
 const installHintDismissedSlot = createSlot<boolean>(false);
@@ -101,7 +104,18 @@ function subscribeActiveSessions(listener: () => void) {
     stopShared();
   };
 }
-const subscribeEndedSessions = subscribeTo(endedSessionsSlot);
+const subscribeDeviceEnded = subscribeTo(endedSessionsSlot);
+const subscribeSharedEnded = subscribeTo(sharedEndedSlot);
+function subscribeEndedSessions(listener: () => void) {
+  const stops = [
+    subscribeDeviceEnded(listener),
+    subscribeSharedEnded(listener),
+    subscribeSharedClubs(listener),
+  ];
+  return () => {
+    for (const stop of stops) stop();
+  };
+}
 const subscribeAccount = subscribeTo(accountSlot);
 const subscribeWelcomeDone = subscribeTo(welcomeDoneSlot);
 const subscribeInstallHintDismissed = subscribeTo(installHintDismissedSlot);
@@ -116,6 +130,7 @@ if (typeof window !== "undefined") {
     if (all || event.key === STORAGE_KEYS.session) refresh(sessionSlot);
     if (all || event.key === STORAGE_KEYS.sharedSessions) refresh(sharedSessionsSlot);
     if (all || event.key === STORAGE_KEYS.endedSessions) refresh(endedSessionsSlot);
+    if (all || event.key === STORAGE_KEYS.sharedEndedSessions) refresh(sharedEndedSlot);
     if (all || event.key === STORAGE_KEYS.account) refresh(accountSlot);
     if (all || event.key === STORAGE_KEYS.welcomeDone) refresh(welcomeDoneSlot);
     if (all || event.key === STORAGE_KEYS.installHintDismissed) refresh(installHintDismissedSlot);
@@ -365,14 +380,86 @@ export function activeSessionOfClub(
   return entries.find((entry) => entry.session.clubId === clubId) ?? null;
 }
 
-/** Ended sessions, newest first by `endedAt`. */
-export function getEndedSessions(): EndedSession[] {
+// --- Ended sessions ---------------------------------------------------------------------------------
+//
+// The device's own Ended sessions (no Club, a Local club, and the ones it hosted: ADR-0005, the 50
+// most recent) and the Ended sessions of the Shared clubs the Account is on, as the server has
+// them (ticket 09). Screens read one list: both, newest first, each Session once.
+
+function getDeviceEndedSessions(): EndedSession[] {
   return get(endedSessionsSlot, loadEndedSessions);
 }
 
-/** Keeps `ended` first, at most 50 (ADR-0005); drops the oldest if storage is full. */
+export function getSharedEndedSessions(): EndedSession[] {
+  return get(sharedEndedSlot, loadSharedEndedSessions);
+}
+
+/** How many Ended sessions of a Shared club the device keeps to look at (and the server lists). */
+export const MAX_SHARED_ENDED_PER_CLUB = 50;
+
+/**
+ * Called when the Backend reports the Ended sessions of the Shared clubs this Account is on.
+ * Ended sessions never change, so what the device already has is kept, the newest 50 per Club;
+ * those of a Club this Account is no longer on are dropped.
+ */
+export function applyEndedSessionsReport(report: { sessions: EndedSession[]; clubIds: string[] }) {
+  const clubIds = new Set(report.clubIds);
+  const byId = new Map<string, EndedSession>();
+  for (const ended of getSharedEndedSessions()) {
+    if (ended.clubId && clubIds.has(ended.clubId)) byId.set(ended.id, ended);
+  }
+  for (const ended of report.sessions) {
+    if (ended.clubId && clubIds.has(ended.clubId)) byId.set(ended.id, ended);
+  }
+  const perClub = new Map<string, number>();
+  const kept = [...byId.values()]
+    .sort((a, b) => b.endedAt - a.endedAt)
+    .filter((ended) => {
+      const count = (perClub.get(ended.clubId!) ?? 0) + 1;
+      perClub.set(ended.clubId!, count);
+      return count <= MAX_SHARED_ENDED_PER_CLUB;
+    });
+  const current = getSharedEndedSessions();
+  if (kept.length === current.length && kept.every((ended, i) => ended.id === current[i]?.id))
+    return;
+  const saved = saveSharedEndedSessions(kept);
+  sharedEndedSlot.value = saved;
+  sharedEndedSlot.loaded = true;
+  notify(sharedEndedSlot);
+}
+
+let mergedEnded: {
+  device: EndedSession[];
+  shared: EndedSession[];
+  clubs: Club[];
+  list: EndedSession[];
+} | null = null;
+
+/** Every Ended session this device can show, newest first, each Session once. */
+export function getEndedSessions(): EndedSession[] {
+  const device = getDeviceEndedSessions();
+  const shared = getSharedEndedSessions();
+  const clubs = getSharedClubs();
+  if (
+    mergedEnded?.device !== device ||
+    mergedEnded.shared !== shared ||
+    mergedEnded.clubs !== clubs
+  ) {
+    const mine = new Set(clubs.map((club) => club.id));
+    const known = new Set(device.map((ended) => ended.id));
+    const list = [
+      ...device,
+      // A Shared club this Account has left isn't shown any more, even before the next report.
+      ...shared.filter((ended) => !known.has(ended.id) && ended.clubId && mine.has(ended.clubId)),
+    ].sort((a, b) => b.endedAt - a.endedAt);
+    mergedEnded = { device, shared, clubs, list };
+  }
+  return mergedEnded.list;
+}
+
+/** Keeps `ended` first on the device, at most 50 (ADR-0005); drops the oldest if storage is full. */
 export function addEndedSession(ended: EndedSession): void {
-  const kept = saveEndedSession(getEndedSessions(), ended);
+  const kept = saveEndedSession(getDeviceEndedSessions(), ended);
   endedSessionsSlot.value = kept;
   endedSessionsSlot.loaded = true;
   notify(endedSessionsSlot);
@@ -431,6 +518,7 @@ export function resetStoreForTests(): void {
     sessionSlot,
     sharedSessionsSlot,
     endedSessionsSlot,
+    sharedEndedSlot,
     accountSlot,
     welcomeDoneSlot,
     installHintDismissedSlot,

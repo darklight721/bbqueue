@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { createRng, createSession } from "../domain/engine/index.ts";
-import type { Account, ActiveSession, Session, SessionRequest } from "../domain/types.ts";
+import type {
+  Account,
+  ActiveSession,
+  EndedSession,
+  Session,
+  SessionRequest,
+} from "../domain/types.ts";
 import { eventually } from "../test/eventually.ts";
 import { BackendError, type Backend } from "./backend.ts";
 import type { RolesContractWorld } from "./backend.roles.contract.ts";
@@ -22,6 +28,35 @@ export function makeClubSession(name = "Tuesday night", clubId = "c1"): Session 
     },
     { now: 1_700_000_000_000, rng: createRng(3) },
   );
+}
+
+/** A slimmed Ended session of Club c1 with one Ended match; `endedAt` tells them apart and orders them. */
+export function makeClubEnded(session: Session, endedAt: number): EndedSession {
+  const [a, b, c, d] = session.players;
+  return {
+    id: session.id,
+    name: session.name,
+    clubId: session.clubId,
+    clubName: session.clubName,
+    pointSystem: 21,
+    startedAt: endedAt - 3_600_000,
+    endedAt,
+    players: [a!, b!, c!, d!].map((p) => ({ id: p.id, name: p.name, skill: p.skill })),
+    matches: [
+      {
+        number: 1,
+        courtNumber: 1,
+        teams: [
+          [a!.id, b!.id],
+          [c!.id, d!.id],
+        ],
+        target: 21,
+        startedAt: endedAt - 1_800_000,
+        endedAt: endedAt - 900_000,
+        score: [21, 15],
+      },
+    ],
+  };
 }
 
 /**
@@ -528,6 +563,126 @@ export function runSessionsContract(name: string, createWorld: () => RolesContra
         await roy.backend.endSharedSession("c1");
 
         await eventually(() => expect(mine()).toEqual([]));
+      });
+    });
+
+    describe("Ended sessions of a Shared club", () => {
+      const watchEnded = (who: { backend: Backend }) => {
+        let latest: { sessions: EndedSession[]; clubIds: string[] } | null = null;
+        stops.push(
+          who.backend.observeEndedSessions((report) => {
+            latest = report;
+          }),
+        );
+        return () => latest ?? { sessions: [], clubIds: [] };
+      };
+
+      it("publishes the Ended session to the Club when the host ends the Session, for everybody on it", async () => {
+        const { roy, ana, ben } = await setup();
+        const annaWatches = watchEnded(ana);
+        const royWatches = watchEnded(roy);
+        const benWatches = watchEnded(ben);
+        const session = makeClubSession();
+        await roy.backend.startSharedSession("c1", session);
+        await eventually(() => expect(ana.session("c1")).toBeDefined());
+        const ended = makeClubEnded(session, 1_700_000_000_000);
+
+        await roy.backend.endSharedSession("c1", ended);
+
+        await eventually(() => expect(annaWatches().sessions).toEqual([ended]));
+        await eventually(() => expect(royWatches().sessions).toEqual([ended]));
+        expect(annaWatches().clubIds).toEqual(["c1"]);
+        await eventually(() => expect(ana.session("c1")).toBeUndefined());
+        // Not on the Club: nothing.
+        expect(benWatches().sessions).toEqual([]);
+        expect(benWatches().clubIds).toEqual([]);
+      });
+
+      it("publishes nothing when the Session had no Ended match, and still clears the Active session", async () => {
+        const { roy, ana } = await setup();
+        const watches = watchEnded(ana);
+        await roy.backend.startSharedSession("c1", makeClubSession());
+        await eventually(() => expect(ana.session("c1")).toBeDefined());
+
+        await roy.backend.endSharedSession("c1", null);
+
+        await eventually(() => expect(ana.session("c1")).toBeUndefined());
+        expect(watches().sessions).toEqual([]);
+      });
+
+      it("only lets the host publish", async () => {
+        const { roy, ana } = await setup();
+        const session = makeClubSession();
+        await roy.backend.startSharedSession("c1", session);
+        await eventually(() => expect(ana.session("c1")).toBeDefined());
+        await eventually(() => expect(roy.session("c1")).toBeDefined());
+
+        const error = await rejection(
+          ana.backend.endSharedSession("c1", makeClubEnded(session, 1_700_000_000_000)),
+        );
+
+        expect(error.code).toBe("forbidden");
+        expect(watchEnded(ana)().sessions).toEqual([]);
+      });
+
+      it("when the host ends offline, the Ended session and the end wait together and land when it is back", async () => {
+        const { roy, ana } = await setup();
+        const watches = watchEnded(ana);
+        const session = makeClubSession();
+        await roy.backend.startSharedSession("c1", session);
+        await eventually(() => expect(ana.session("c1")).toBeDefined());
+        await eventually(() => expect(roy.session("c1")).toBeDefined());
+        const ended = makeClubEnded(session, 1_700_000_000_000);
+
+        roy.setOnline(false);
+        await roy.backend.endSharedSession("c1", ended);
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        expect(watches().sessions).toEqual([]);
+        expect(ana.session("c1")).toBeDefined();
+
+        roy.setOnline(true);
+        await eventually(() => expect(watches().sessions).toEqual([ended]), 20_000);
+        await eventually(() => expect(ana.session("c1")).toBeUndefined(), 20_000);
+      });
+
+      it("lists the newest first, 50 at most per Club", async () => {
+        const { roy, ana } = await setup();
+        const watches = watchEnded(ana);
+        const ids: string[] = [];
+        for (let i = 0; i < 51; i++) {
+          const session = makeClubSession(`Night ${i}`);
+          await roy.backend.startSharedSession("c1", session);
+          await roy.backend.endSharedSession(
+            "c1",
+            makeClubEnded(session, 1_700_000_000_000 + i * 1000),
+          );
+          ids.push(session.id);
+        }
+
+        // Once the newest is in, the oldest has dropped out of the 50.
+        await eventually(() => {
+          const listed = watches().sessions;
+          expect(listed.map((s) => s.id)).toContain(ids[50]);
+          expect(listed).toHaveLength(50);
+          expect(listed.map((s) => s.id)).not.toContain(ids[0]);
+          expect(listed.map((s) => s.endedAt)).toEqual(
+            [...listed.map((s) => s.endedAt)].sort((a, b) => b - a),
+          );
+        }, 30_000);
+      }, 120_000);
+
+      it("stops listing a Club's Ended sessions to somebody who leaves it", async () => {
+        const { roy, ana } = await setup();
+        const watches = watchEnded(ana);
+        const session = makeClubSession();
+        await roy.backend.startSharedSession("c1", session);
+        await roy.backend.endSharedSession("c1", makeClubEnded(session, 1_700_000_000_000));
+        await eventually(() => expect(watches().sessions).toHaveLength(1));
+
+        await ana.backend.leaveClub("c1");
+
+        await eventually(() => expect(watches().clubIds).toEqual([]));
+        expect(watches().sessions).toEqual([]);
       });
     });
   });

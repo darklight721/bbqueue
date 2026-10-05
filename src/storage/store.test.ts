@@ -2,6 +2,7 @@ import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 import type { ActiveSession, Club, EndedSession, Session } from "../domain/types.ts";
 import {
+  applyEndedSessionsReport,
   addHostedSession,
   applyActiveSessionsReport,
   findActiveSession,
@@ -385,5 +386,83 @@ describe("Active sessions of Shared clubs", () => {
 
     act(() => applyActiveSessionsReport({ sessions: [shared("s2")], unknown: [] }));
     expect(result.current.map((e) => e.session.id)).toEqual(["s1", "s2"]);
+  });
+});
+
+describe("Ended sessions of Shared clubs", () => {
+  const ended = (id: string, clubId: string | null, endedAt: number): EndedSession => ({
+    id,
+    name: id,
+    clubId,
+    clubName: null,
+    pointSystem: 21,
+    startedAt: endedAt - 1000,
+    endedAt,
+    players: [],
+    matches: [],
+  });
+
+  beforeEach(() => {
+    localStorage.clear();
+    resetStoreForTests();
+    setSharedClubs([
+      { id: "c1", name: "One", kind: "shared", players: [] },
+      { id: "c2", name: "Two", kind: "shared", players: [] },
+    ]);
+  });
+
+  it("shows them with the device's own, newest first, each Session once", () => {
+    addEndedSession(ended("mine", null, 2000));
+    addEndedSession(ended("hosted", "c1", 3000));
+    applyEndedSessionsReport({
+      sessions: [
+        ended("hosted", "c1", 3000),
+        ended("theirs", "c2", 1000),
+        ended("later", "c1", 4000),
+      ],
+      clubIds: ["c1", "c2"],
+    });
+
+    expect(getEndedSessions().map((e) => e.id)).toEqual(["later", "hosted", "mine", "theirs"]);
+  });
+
+  it("keeps the newest 50 per Club, and what it already had when a report is shorter", () => {
+    const many = Array.from({ length: 55 }, (_, i) => ended(`s${i}`, "c1", 1000 + i));
+    applyEndedSessionsReport({ sessions: many, clubIds: ["c1"] });
+    expect(getEndedSessions()).toHaveLength(50);
+    expect(getEndedSessions()[0]?.id).toBe("s54");
+
+    applyEndedSessionsReport({ sessions: [many[54]!], clubIds: ["c1"] });
+    expect(getEndedSessions()).toHaveLength(50);
+  });
+
+  it("drops a Club's sessions when the Account is no longer on it", () => {
+    applyEndedSessionsReport({
+      sessions: [ended("a", "c1", 1), ended("b", "c2", 2)],
+      clubIds: ["c1", "c2"],
+    });
+
+    applyEndedSessionsReport({ sessions: [ended("a", "c1", 1)], clubIds: ["c1"] });
+
+    expect(getEndedSessions().map((e) => e.id)).toEqual(["a"]);
+  });
+
+  it("hides a Club's sessions at once when it leaves the Shared clubs, and keeps them across a reload", () => {
+    applyEndedSessionsReport({ sessions: [ended("a", "c1", 1)], clubIds: ["c1", "c2"] });
+    resetStoreForTests();
+    setSharedClubs([{ id: "c1", name: "One", kind: "shared", players: [] }]);
+    expect(getEndedSessions().map((e) => e.id)).toEqual(["a"]);
+
+    setSharedClubs([]);
+    expect(getEndedSessions()).toEqual([]);
+  });
+
+  it("re-renders hooks when the Backend reports", () => {
+    const { result } = renderHook(() => useEndedSessions());
+    expect(result.current).toEqual([]);
+
+    act(() => applyEndedSessionsReport({ sessions: [ended("a", "c1", 1)], clubIds: ["c1"] }));
+
+    expect(result.current.map((e) => e.id)).toEqual(["a"]);
   });
 });

@@ -1,6 +1,6 @@
 rules_version = '2';
 
-// Security Rules (tickets 02, 04, 05, 06, 07 and 08). Tested on the Firebase emulator:
+// Security Rules (tickets 02, 04, 05, 06, 07, 08 and 09). Tested on the Firebase emulator:
 // src/backend/firestore.rules.emulator.test.ts (`pnpm test:firebase`).
 //
 // Data (see src/backend/firebaseBackend.ts and firebaseClubs.ts):
@@ -12,6 +12,8 @@ rules_version = '2';
 //                                     { sessionJson, hostUid, hostAccountId, hostName, updatedAt }
 //   clubs/{clubId}/activeSession/current/requests/{requestId}
 //                                     { uid, accountId, sessionId, sessionPlayerId, kind, createdAt }
+//   clubs/{clubId}/endedSessions/{sessionId}
+//                                     { hostUid, endedAt, endedJson, createdAt }
 //
 // The Active session of a Shared club is one fixed record, so a Club has at most one. It holds the
 // Session host's whole Session (as JSON text) and who the host is; see the rules at the end.
@@ -341,6 +343,34 @@ service cloud.firestore {
 
           allow delete: if signedIn() && isSessionHost();
         }
+      }
+
+      // Ended sessions of the Club (ticket 09, ADR-0005): `{ hostUid, endedAt, endedJson, createdAt }`,
+      // one record per Session, named by the Session's id. `endedJson` is the slimmed Ended session
+      // as JSON text.
+      //
+      // - Read: anyone on the Club.
+      // - Create: only the Session host, in the batch that ends the Session (the rules read the
+      //   Active session as it was before the batch, so the host is still the host), once: the id is
+      //   the Session's, and nobody can update a record.
+      // - Update and delete: nobody. The Club keeps what was published. Rules can't count, so "the 50
+      //   most recent" is what the app lists (newest 50 by `endedAt`); older ones stay unseen.
+      match /endedSessions/{sessionId} {
+        allow read: if signedIn() && request.auth.uid in before().memberUids;
+
+        allow create: if signedIn()
+          && exists(/databases/$(database)/documents/clubs/$(clubId)/activeSession/current)
+          && get(/databases/$(database)/documents/clubs/$(clubId)/activeSession/current).data.hostUid == request.auth.uid
+          && request.resource.data.keys().hasOnly(['hostUid', 'endedAt', 'endedJson', 'createdAt'])
+          && request.resource.data.keys().hasAll(['hostUid', 'endedAt', 'endedJson', 'createdAt'])
+          && request.resource.data.hostUid == request.auth.uid
+          && request.resource.data.endedAt is number
+          && request.resource.data.endedJson is string
+          && request.resource.data.endedJson.size() > 0
+          && request.resource.data.endedJson.size() <= 400000
+          && request.resource.data.createdAt == request.time;
+
+        allow update, delete: if false;
       }
     }
   }
