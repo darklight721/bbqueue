@@ -51,6 +51,23 @@ export function createFirebaseActiveSessions(
     return { account, uid };
   }
 
+  /** Fails with `not-found` for a Club that isn't there (or isn't mine) and `forbidden` for a Player. */
+  async function requireOrganizer(clubId: string, uid: string): Promise<void> {
+    // A Club you can't read is, as far as you can tell, not there.
+    let organizerUids: string[];
+    try {
+      const club = await getDoc(clubRef(clubId));
+      if (!club.exists()) throw new BackendError("not-found");
+      organizerUids = stringList(club.data().organizerUids);
+    } catch (error) {
+      const mapped = toBackendError(error);
+      throw mapped.code === "forbidden"
+        ? new BackendError("not-found", undefined, { cause: error })
+        : mapped;
+    }
+    if (!organizerUids.includes(uid)) throw new BackendError("forbidden");
+  }
+
   return {
     observeActiveSessions(listener) {
       let stopClubs: Unsubscribe = () => {};
@@ -181,19 +198,7 @@ export function createFirebaseActiveSessions(
       if (!deps.online.get()) throw new BackendError("offline");
       const { account, uid } = await requireViewer();
 
-      // A Club you can't read is, as far as you can tell, not there.
-      let organizerUids: string[];
-      try {
-        const club = await getDoc(clubRef(clubId));
-        if (!club.exists()) throw new BackendError("not-found");
-        organizerUids = stringList(club.data().organizerUids);
-      } catch (error) {
-        const mapped = toBackendError(error);
-        throw mapped.code === "forbidden"
-          ? new BackendError("not-found", undefined, { cause: error })
-          : mapped;
-      }
-      if (!organizerUids.includes(uid)) throw new BackendError("forbidden");
+      await requireOrganizer(clubId, uid);
 
       // A transaction, so two Organizers starting at once can't both win; it also needs the
       // connection, which is what we want.
@@ -220,6 +225,51 @@ export function createFirebaseActiveSessions(
         hostName: account.name,
         updatedAt: Date.now(),
       };
+    },
+
+    async takeOverSession(clubId) {
+      if (!deps.online.get()) throw new BackendError("offline");
+      const { account, uid } = await requireViewer();
+      await requireOrganizer(clubId, uid);
+
+      // A transaction, so two Organizers taking over at once can't both think they won: the
+      // second one retries, sees the first as the host and takes over from them. Only the host
+      // fields change; the Session text stays as the server has it. (Security Rules can't tell a
+      // transaction from a plain write; they only keep the write to the host fields.)
+      try {
+        const data = await runTransaction(db, async (transaction) => {
+          const snapshot = await transaction.get(sessionRef(clubId));
+          if (!snapshot.exists()) throw new BackendError("not-found");
+          const current = snapshot.data();
+          if (current.hostUid !== uid) {
+            transaction.update(sessionRef(clubId), {
+              hostUid: uid,
+              hostAccountId: account.accountId,
+              hostName: account.name,
+              updatedAt: serverTimestamp(),
+            });
+          }
+          return { ...current, hostAccountId: account.accountId, hostName: account.name };
+        });
+        const active = toActiveSession(clubId, { ...data, updatedAt: null });
+        if (!active) throw new BackendError("failed");
+        return { ...active, updatedAt: Date.now() };
+      } catch (error) {
+        throw toBackendError(error);
+      }
+    },
+
+    async getActiveSession(clubId) {
+      if (!deps.online.get()) throw new BackendError("offline");
+      try {
+        const snapshot = await getDocFromServer(sessionRef(clubId));
+        return snapshot.exists() ? toActiveSession(clubId, snapshot.data()) : null;
+      } catch (error) {
+        const mapped = toBackendError(error);
+        // Not on the Club (any more): nothing to see.
+        if (mapped.code === "forbidden") return null;
+        throw mapped;
+      }
     },
 
     async publishActiveSession(clubId, session) {

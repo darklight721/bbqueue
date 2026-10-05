@@ -16,7 +16,7 @@ import {
   type InMemoryBackend,
 } from "./inMemoryBackend.ts";
 import { setBackendForTests, startActiveSessionSync } from "./index.ts";
-import { endSharedSession, startSharedSession } from "./sessions.ts";
+import { endSharedSession, startSharedSession, takeOverSession } from "./sessions.ts";
 
 function makeSession(name = "Thursday"): Session {
   return createSession(
@@ -225,5 +225,61 @@ describe("Active session sync: the Session host's uploads", () => {
     expect(publish).not.toHaveBeenCalled();
     expect(getSharedSessions()[0]).toMatchObject({ hostName: "Ana" });
     expect(getSharedSessions()[0]?.session.name).toBe("Thursday");
+  });
+});
+
+describe("Active session sync: losing the host role (take over)", () => {
+  async function anaIsOrganizer() {
+    await host.setClubPlayerRole("c1", "p-ana", "organizer");
+  }
+
+  it("turns the old host read-only and drops their changes when the server refuses an upload", async () => {
+    await anaIsOrganizer();
+    stop();
+    // This device never hears from the observer, so only the refused upload can tell it.
+    stop = startActiveSessionSync({ ...host, observeActiveSessions: () => () => {} });
+    await startSharedSession("c1", makeSession("Roy's night"));
+    const base = getSharedSessions()[0]!.session;
+    vi.useFakeTimers();
+
+    await viewer.takeOverSession("c1");
+    setHostedSession("c1", { ...base, name: "Played after being replaced" });
+    await vi.advanceTimersByTimeAsync(1500);
+
+    const entry = getSharedSessions()[0]!;
+    expect(entry.hostName).toBe("Ana");
+    expect(entry.session.name).toBe("Roy's night");
+    expect(serverCopy()?.session.name).toBe("Roy's night");
+    expect(serverCopy()?.hostName).toBe("Ana");
+    // And it stays that way: the old host's device doesn't try again.
+    const publish = vi.spyOn(host, "publishActiveSession");
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("drops what was played offline when the host reconnects after somebody took over", async () => {
+    await anaIsOrganizer();
+    await startSharedSession("c1", makeSession("Roy's night"));
+    const base = getSharedSessions()[0]!.session;
+
+    host.setOnline(false);
+    setHostedSession("c1", { ...base, name: "Played offline" });
+    await viewer.takeOverSession("c1");
+    host.setOnline(true);
+    await Promise.resolve();
+
+    expect(getSharedSessions()[0]?.hostName).toBe("Ana");
+    expect(getSharedSessions()[0]?.session.name).toBe("Roy's night");
+    expect(serverCopy()?.session.name).toBe("Roy's night");
+  });
+
+  it("makes the new host's device the uploader, starting from the server's copy", async () => {
+    await anaIsOrganizer();
+    await startSharedSession("c1", makeSession("Roy's night"));
+
+    host.setOnline(true);
+    await takeOverSession("c1").catch(() => {});
+    // Roy is the host already: taking over is a no-op that leaves his copy alone.
+    expect(getSharedSessions()[0]?.hostName).toBe("Roy");
   });
 });

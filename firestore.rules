@@ -228,9 +228,10 @@ service cloud.firestore {
       // - Read: anyone on the Club (`memberUids`).
       // - Create: an Organizer, naming themselves as the host. Their Account ID must be the one
       //   reserved for their uid, so the host's name on screen can't be somebody else's.
-      // - Update: only the host (`hostUid`), and only the Session text and the time. `hostUid`,
-      //   `hostAccountId` and `hostName` can't change here. Taking over (ticket 07) will be a
-      //   second clause that an Organizer may use to make themselves the host.
+      // - Update: the host (`hostUid`) replaces the Session text and the time. `hostUid`,
+      //   `hostAccountId` and `hostName` can't change in that clause.
+      // - Take over: an Organizer of the Club may make themselves the host, changing only the host
+      //   fields and the time.
       // - Delete: only the host, or an Organizer while the whole Club is being deleted.
       //
       // Updates, the most frequent writes in the app, decide from the record alone, with no extra
@@ -258,10 +259,30 @@ service cloud.firestore {
           && request.resource.data.updatedAt == request.time;
 
         allow update: if signedIn()
-          && resource.data.hostUid == request.auth.uid
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['sessionJson', 'updatedAt'])
-          && validSessionJson(request.resource.data.sessionJson)
-          && request.resource.data.updatedAt == request.time;
+          && (
+            // The host uploads the latest copy.
+            (
+              resource.data.hostUid == request.auth.uid
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['sessionJson', 'updatedAt'])
+              && validSessionJson(request.resource.data.sessionJson)
+              && request.resource.data.updatedAt == request.time
+            )
+            // An Organizer of the Club takes over (ticket 07): they become the host, and nothing
+            // else changes, not even the Session text. This is also how a host who left the Club
+            // or lost the Role is replaced. The app does it in a transaction so two Organizers
+            // taking over at once can't both win; rules can't tell a transaction from a plain
+            // write, so they only keep the write to the host fields. Once it lands, the old
+            // host's uploads and delete fail the clause above and below.
+            || (
+              request.auth.uid in before().organizerUids
+              && resource.data.hostUid != request.auth.uid
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hostUid', 'hostAccountId', 'hostName', 'updatedAt'])
+              && request.resource.data.hostUid == request.auth.uid
+              && get(/databases/$(database)/documents/accountIds/$(request.resource.data.hostAccountId.lower())).data.uid == request.auth.uid
+              && validName(request.resource.data.hostName)
+              && request.resource.data.updatedAt == request.time
+            )
+          );
 
         allow delete: if signedIn()
           && (

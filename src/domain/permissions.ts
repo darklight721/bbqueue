@@ -34,6 +34,11 @@ export function canStartSession(club: Club, viewer: Viewer): boolean {
   return canEditClub(club, viewer);
 }
 
+/** Take over an Active session as its Session host: Organizers of a Shared club. */
+export function canTakeOver(club: Club, viewer: Viewer): boolean {
+  return isShared(club) && isOrganizer(club, viewer);
+}
+
 export function canDeleteClub(club: Club, viewer: Viewer): boolean {
   return canEditClub(club, viewer);
 }

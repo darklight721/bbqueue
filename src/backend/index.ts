@@ -2,6 +2,7 @@ import type { Session } from "../domain/types.ts";
 import { accountIdsEqual } from "../domain/accountId.ts";
 import { setFlash } from "../storage/flash.ts";
 import {
+  applyActiveSessionOf,
   applyActiveSessionsReport,
   getAccount,
   getSharedSessions,
@@ -114,8 +115,18 @@ export function startActiveSessionSync(maybeBackend: Backend | null = getBackend
             observeOnline: (listener) => backend.observeOnline(listener),
             onError(error) {
               const code = (error as { code?: unknown } | null)?.code;
-              // Somebody else hosts it now (the observer tells the store).
-              if (code === "forbidden") return "stop";
+              // Somebody else hosts it now. The refusal itself is the news: ask the server who, so
+              // this device turns read-only and drops its unsent changes at once, without
+              // waiting for the observer (which says the same).
+              if (code === "forbidden") {
+                void backend
+                  .getActiveSession(clubId)
+                  .then((active) => applyActiveSessionOf(clubId, active))
+                  .catch((fetchError: unknown) =>
+                    console.warn("Couldn't learn who hosts the session", fetchError),
+                  );
+                return "stop";
+              }
               // The Club's session is gone from the server (the Club was deleted, or this
               // Account was taken off it): nothing left to upload to.
               if (code === "not-found") {

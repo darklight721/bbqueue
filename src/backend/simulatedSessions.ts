@@ -19,7 +19,12 @@ export interface SimulatedSessionsState extends Pick<
 
 export type ActiveSessionsApi = Pick<
   Backend,
-  "observeActiveSessions" | "startSharedSession" | "publishActiveSession" | "endSharedSession"
+  | "observeActiveSessions"
+  | "startSharedSession"
+  | "publishActiveSession"
+  | "endSharedSession"
+  | "takeOverSession"
+  | "getActiveSession"
 >;
 
 /**
@@ -128,6 +133,43 @@ export function createSimulatedSessions(
         );
         serverChanged();
         return Promise.resolve();
+      } catch (error) {
+        return Promise.reject(error);
+      }
+    },
+
+    takeOverSession(clubId) {
+      try {
+        if (!online.get()) throw new BackendError("offline");
+        const account = getAccount();
+        if (!account) throw new BackendError("no-account");
+        const club = state.loadClubs().find((candidate) => candidate.id === clubId);
+        const role = club ? roleInClub(club, account.accountId) : null;
+        if (!club || role === null) throw new BackendError("not-found");
+        if (role !== "organizer") throw new BackendError("forbidden");
+        const current = record(clubId);
+        if (!current) throw new BackendError("not-found");
+        if (mine(account.accountId, current)) return Promise.resolve(current);
+        const taken: ActiveSession = {
+          ...current,
+          hostAccountId: account.accountId,
+          hostName: account.name,
+          updatedAt: Date.now(),
+        };
+        state.saveActiveSessions(
+          state.loadActiveSessions().map((s) => (s.clubId === clubId ? taken : s)),
+        );
+        serverChanged();
+        return Promise.resolve(taken);
+      } catch (error) {
+        return Promise.reject(error);
+      }
+    },
+
+    getActiveSession(clubId) {
+      try {
+        if (!online.get()) throw new BackendError("offline");
+        return Promise.resolve(view().find((s) => s.clubId === clubId) ?? null);
       } catch (error) {
         return Promise.reject(error);
       }

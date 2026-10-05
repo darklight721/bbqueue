@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useBackendOnline } from "../../backend/clubs.ts";
 import { EyeIcon, OfflineIcon } from "../../components/icons.tsx";
 import { useNow } from "./clock.ts";
@@ -9,7 +10,19 @@ import { copyNote } from "./copyAge.ts";
  * a while since the host's last upload), how old it is. Offline turns the whole strip amber so
  * it can't be mistaken for the calm "last update" line.
  */
-export function WatchingNote({ hostName, updatedAt }: { hostName: string; updatedAt: number }) {
+export function WatchingNote({
+  hostName,
+  updatedAt,
+  takenOverBy = null,
+  action,
+}: {
+  hostName: string;
+  updatedAt: number;
+  /** Set when this device was the host until that person took over: says what happened. */
+  takenOverBy?: string | null;
+  /** Something the person can do from here, such as Take over. */
+  action?: ReactNode;
+}) {
   const online = useBackendOnline();
   const now = useNow();
   const note = copyNote({ updatedAt, now, online });
@@ -37,9 +50,14 @@ export function WatchingNote({ hostName, updatedAt }: { hostName: string; update
           >
             {note.text}
           </p>
+        ) : takenOverBy ? (
+          <p className="text-sm text-base-content/60">
+            {takenOverBy} took over. Changes you hadn't uploaded were dropped.
+          </p>
         ) : (
           <p className="text-sm text-base-content/60">Only the host can change it.</p>
         )}
+        {action}
       </div>
     </div>
   );

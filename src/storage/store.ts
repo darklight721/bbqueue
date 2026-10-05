@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import type { ActiveSessionsReport } from "../backend/backend.ts";
+import { accountIdsEqual } from "../domain/accountId.ts";
 import type { Account, ActiveSession, Club, EndedSession, Session } from "../domain/types.ts";
 import {
   STORAGE_KEYS,
@@ -200,14 +201,62 @@ function setSharedSessions(sessions: ActiveSession[]): void {
 /** Called when the Backend reports what the server has; see `mergeActiveSessions`. */
 export function applyActiveSessionsReport(report: ActiveSessionsReport): void {
   for (const reported of report.sessions) publishedCopies.add(reported.session);
-  setSharedSessions(
-    mergeActiveSessions({
-      current: getSharedSessions(),
-      report,
-      me: getAccount()?.accountId,
-      ended: endedHere,
-    }),
-  );
+  const current = getSharedSessions();
+  const merged = mergeActiveSessions({
+    current,
+    report,
+    me: getAccount()?.accountId,
+    ended: endedHere,
+  });
+  noteLostHosts(current, merged);
+  setSharedSessions(merged);
+}
+
+/**
+ * What the server says about one Club's Active session right now (`null`: none), used when an
+ * upload was refused and the device must learn who the host is without waiting for the observer.
+ */
+export function applyActiveSessionOf(clubId: string, active: ActiveSession | null): void {
+  const others = getSharedSessions().filter((entry) => entry.clubId !== clubId);
+  const own = getSharedSessions().filter((entry) => entry.clubId === clubId);
+  if (active) publishedCopies.add(active.session);
+  const merged = mergeActiveSessions({
+    current: own,
+    report: { sessions: active ? [active] : [], unknown: [] },
+    me: getAccount()?.accountId,
+    ended: endedHere,
+  });
+  noteLostHosts(own, merged);
+  setSharedSessions([...others, ...merged].sort((a, b) => a.clubId.localeCompare(b.clubId)));
+}
+
+// --- Losing the host role (ticket 07) -------------------------------------------------------------
+
+const lostHostSlot = createSlot<Record<string, string>>({});
+lostHostSlot.loaded = true;
+const subscribeLostHost = subscribeTo(lostHostSlot);
+
+/** Remembers, for this run of the app, Sessions this Account was the host of until somebody took over. */
+function noteLostHosts(before: readonly ActiveSession[], after: readonly ActiveSession[]): void {
+  const me = getAccount()?.accountId;
+  if (!me) return;
+  let next = lostHostSlot.value;
+  for (const entry of before) {
+    if (!accountIdsEqual(entry.hostAccountId, me)) continue;
+    const now = after.find((candidate) => candidate.clubId === entry.clubId);
+    if (now && !accountIdsEqual(now.hostAccountId, me)) {
+      next = { ...next, [now.session.id]: now.hostName };
+    }
+  }
+  if (next !== lostHostSlot.value) {
+    lostHostSlot.value = next;
+    notify(lostHostSlot);
+  }
+}
+
+/** Who took over from this Account as the host of the Session, or null when nobody did (while the app ran). */
+export function useTakenOverBy(sessionId: string): string | null {
+  return useSyncExternalStore(subscribeLostHost, () => lostHostSlot.value[sessionId] ?? null);
 }
 
 /** Copies of a Session that the server is known to have: the host's uploader skips them. */
@@ -356,4 +405,5 @@ export function resetStoreForTests(): void {
     slot.loaded = false;
   }
   endedHere.clear();
+  lostHostSlot.value = {};
 }

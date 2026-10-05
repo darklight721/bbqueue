@@ -886,7 +886,14 @@ describe("Shared Active session", () => {
     it("lets a Club have only one: nobody else can start another while one exists", async () => {
       await seedRunning();
       await makeAnaOrganizer();
-      await assertFails(setDoc(sessionDoc(as(ANA.uid)), startRecord(ANA)));
+      // A different Session can't replace the running one (the same Session with a new host is a
+      // take-over, below).
+      await assertFails(
+        setDoc(
+          sessionDoc(as(ANA.uid)),
+          startRecord(ANA, { sessionJson: JSON.stringify({ id: "s2", name: "Another" }) }),
+        ),
+      );
       // Nor can the host swap in a different host or host name by starting again.
       await assertFails(setDoc(sessionDoc(as(ROY.uid)), startRecord(ROY, { hostName: "Roi" })));
     });
@@ -1020,6 +1027,75 @@ describe("Shared Active session", () => {
       await assertSucceeds(
         updateDoc(sessionDoc(as(ROY.uid)), upload("Still hosting, off the Club")),
       );
+    });
+  });
+
+  describe("taking over", () => {
+    const takeOver = (person: Person, extra: Record<string, unknown> = {}) => ({
+      hostUid: person.uid,
+      hostAccountId: person.accountId,
+      hostName: person.name,
+      updatedAt: serverTimestamp(),
+      ...extra,
+    });
+
+    it("lets another Organizer of the Club become the host, changing only the host fields", async () => {
+      await seedRunning();
+      await makeAnaOrganizer();
+      await assertSucceeds(updateDoc(sessionDoc(as(ANA.uid)), takeOver(ANA)));
+      // The new host is the host: they upload, and the old host no longer can.
+      await assertSucceeds(
+        updateDoc(sessionDoc(as(ANA.uid)), {
+          sessionJson: JSON.stringify({ id: "s1", name: "Ana's" }),
+          updatedAt: serverTimestamp(),
+        }),
+      );
+      await assertFails(
+        updateDoc(sessionDoc(as(ROY.uid)), {
+          sessionJson: JSON.stringify({ id: "s1", name: "Stale" }),
+          updatedAt: serverTimestamp(),
+        }),
+      );
+      await assertFails(deleteDoc(sessionDoc(as(ROY.uid))));
+      await assertSucceeds(deleteDoc(sessionDoc(as(ANA.uid))));
+    });
+
+    it("refuses a Player, somebody who isn't on the Club, and somebody not signed in", async () => {
+      await seedRunning();
+      await assertFails(updateDoc(sessionDoc(as(ANA.uid)), takeOver(ANA)));
+      await assertFails(updateDoc(sessionDoc(as(BEN.uid)), takeOver(BEN)));
+      await assertFails(updateDoc(sessionDoc(anonymous()), takeOver(ROY)));
+    });
+
+    it("refuses naming somebody else as the new host, or an Account ID that isn't theirs", async () => {
+      await seedRunning();
+      await makeAnaOrganizer();
+      const db = as(ANA.uid);
+      await assertFails(updateDoc(sessionDoc(db), takeOver(ROY)));
+      await assertFails(updateDoc(sessionDoc(db), takeOver(ANA, { hostAccountId: ROY.accountId })));
+      await assertFails(updateDoc(sessionDoc(db), takeOver(ANA, { hostAccountId: "nobody-0000" })));
+      await assertFails(updateDoc(sessionDoc(db), takeOver(ANA, { hostUid: BEN.uid })));
+      await assertFails(updateDoc(sessionDoc(db), takeOver(ANA, { hostName: "" })));
+    });
+
+    it("refuses anything but the host fields and the time: not the Session text, not other fields", async () => {
+      await seedRunning();
+      await makeAnaOrganizer();
+      const db = as(ANA.uid);
+      await assertFails(updateDoc(sessionDoc(db), takeOver(ANA, { sessionJson: "{}" })));
+      await assertFails(updateDoc(sessionDoc(db), takeOver(ANA, { isAdmin: true })));
+      await assertFails(updateDoc(sessionDoc(db), takeOver(ANA, { updatedAt: new Date(0) })));
+    });
+
+    it("replaces a host who lost the Organizer Role or left the Club", async () => {
+      await seedRunning();
+      await seed(async (db) => {
+        await updateDoc(doc(db, "clubs", "c1"), {
+          organizerUids: [ANA.uid],
+          memberUids: [ANA.uid],
+        });
+      });
+      await assertSucceeds(updateDoc(sessionDoc(as(ANA.uid)), takeOver(ANA)));
     });
   });
 

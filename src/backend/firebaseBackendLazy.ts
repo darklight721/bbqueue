@@ -78,5 +78,7 @@ export function createLazyFirebaseBackend(
     publishActiveSession: (clubId, session) =>
       loaded.then((backend) => backend.publishActiveSession(clubId, session)),
     endSharedSession: (clubId) => loaded.then((backend) => backend.endSharedSession(clubId)),
+    takeOverSession: (clubId) => loaded.then((backend) => backend.takeOverSession(clubId)),
+    getActiveSession: (clubId) => loaded.then((backend) => backend.getActiveSession(clubId)),
   };
 }

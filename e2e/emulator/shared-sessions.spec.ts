@@ -1,68 +1,8 @@
-import { expect, test, type Browser, type Page } from "@playwright/test";
-import type { Club } from "../../src/domain/types.ts";
-import { court, openScoreDialog } from "../session-helpers.ts";
-import { seedSharedClub, signUp, uniqueId } from "./emulator.ts";
+import { expect, test } from "@playwright/test";
+import { court } from "../session-helpers.ts";
+import { endMatchWithoutScore, startSession, twoPeople, watchFromHome } from "./sessions.ts";
 
 // Two people on the Firebase emulators: Roy (Organizer, and Session host) and Ana (a Player).
-
-/** Roy runs a new Shared club with Ana as a Player and three more on the roster. */
-async function twoPeople(page: Page, browser: Browser, baseURL: string | undefined) {
-  const roy = await signUp(page, "Roy Smith");
-  const anaPage = await (await browser.newContext({ baseURL })).newPage();
-  const ana = await signUp(anaPage, "Ana Bell");
-  const club: Club = {
-    id: uniqueId("shared"),
-    name: uniqueId("Riverside"),
-    kind: "shared",
-    players: [
-      {
-        id: "p-roy",
-        name: "Roy Smith",
-        skill: "intermediate",
-        link: { accountId: roy.accountId, role: "organizer" },
-      },
-      {
-        id: "p-ana",
-        name: "Ana Bell",
-        skill: "beginner",
-        link: { accountId: ana.accountId, role: "player" },
-      },
-      { id: "p-cat", name: "Cat", skill: "advanced" },
-      { id: "p-dan", name: "Dan", skill: "intermediate" },
-      { id: "p-eve", name: "Eve", skill: "beginner" },
-    ],
-  };
-  await seedSharedClub(club);
-  return { club, anaPage };
-}
-
-/** Roy starts a Session for the Club from its Club screen. */
-async function startSession(page: Page, club: Club) {
-  await page.goto("/clubs");
-  await page.getByRole("link", { name: new RegExp(club.name) }).click();
-  await page.getByRole("link", { name: "New session" }).click();
-  await page.getByRole("textbox", { name: "Session name" }).fill("Thursday night");
-  await page.getByRole("button", { name: "Select all" }).click();
-  await page.getByRole("button", { name: "Start session" }).click();
-  await expect(page).toHaveURL(/\/sessions\/(?!new)[^/]+$/);
-  await expect(page.getByRole("heading", { level: 1, name: "Thursday night" })).toBeVisible();
-}
-
-/** Ana opens the Session from Home. */
-async function watchFromHome(anaPage: Page) {
-  await anaPage.goto("/");
-  const view = anaPage.getByRole("link", { name: "View session" });
-  await expect(view).toBeVisible({ timeout: 20_000 });
-  await expect(view).toContainText("Host: Roy Smith");
-  await view.click();
-  await expect(anaPage.getByText("Watching. Roy Smith runs this session.")).toBeVisible();
-}
-
-async function endMatchWithoutScore(page: Page) {
-  const dialog = await openScoreDialog(page, 1);
-  await dialog.getByRole("button", { name: "End without score" }).click();
-  await expect(court(page, 1).getByText("Idle", { exact: true })).toBeVisible();
-}
 
 test.describe("Shared active session between two people", () => {
   test("the Player sees the host's Session on Home, opens it, and watches a Match start live, with nothing to change it", async ({

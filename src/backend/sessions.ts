@@ -16,6 +16,18 @@ export async function startSharedSession(clubId: string, session: Session): Prom
 }
 
 /**
+ * An Organizer takes over as the Session host of a Shared club's Active session (ADR-0007, ticket
+ * 07): the server's copy of the Session becomes theirs to run, and the old host's device turns
+ * read-only when it hears. Needs a connection. Rejects with a {@link BackendError} (`offline`,
+ * `forbidden`, `not-found`, ...); then nothing changed.
+ */
+export async function takeOverSession(clubId: string): Promise<void> {
+  const backend = getBackend();
+  if (!backend) throw new BackendError("failed");
+  addHostedSession(await backend.takeOverSession(clubId));
+}
+
+/**
  * The Session host ends a Shared club's Active session: it leaves the device's store at once, and
  * the record is deleted on the server (waiting for the connection when offline). Failures are
  * logged, never thrown: ending the night is not held up by the server.

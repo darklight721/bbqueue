@@ -154,6 +154,21 @@ export interface Backend {
    * Rejects with `forbidden` when this Account isn't the Session host.
    */
   endSharedSession(clubId: string): Promise<void>;
+  /**
+   * An Organizer who isn't the Session host makes themselves the host (ADR-0007), straight away
+   * and in a transaction, keeping the Session as the server has it (what the old host never
+   * uploaded is lost). Also how a host who left the Club or lost the Organizer Role is replaced.
+   * Resolves with the record as it is now; taking over as the host already is is a no-op. Needs a
+   * connection. Rejects with `offline`, `no-account`, `not-found` (no such Club or no Active
+   * session) or `forbidden` (not an Organizer).
+   */
+  takeOverSession(clubId: string): Promise<ActiveSession>;
+  /**
+   * The Active session of a Club as the server has it right now, or null when there is none.
+   * Needs a connection (`offline` otherwise). The old host's device uses it to learn who the host
+   * is when an upload was refused.
+   */
+  getActiveSession(clubId: string): Promise<ActiveSession | null>;
 }
 
 /** How many Account IDs to try before giving up. */

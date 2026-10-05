@@ -273,4 +273,44 @@ test.describe("Shared active session", () => {
     await page.goto(`/clubs/${riverside.id}`);
     await expect(page.getByRole("link", { name: "New session" })).toBeVisible();
   });
+
+  test("an Organizer who isn't the host can take over after confirming; a Player can't", async ({
+    page,
+  }) => {
+    const shared = runningAtRiverside({ hostAccountId: "other-9999", hostName: "Another Host" });
+    await seedStorage(page, {
+      account: roy,
+      sharedClubs: [riverside],
+      activeSessions: [shared],
+    });
+    await page.goto(`/sessions/${shared.session.id}`);
+    await expect(page.getByText("Watching. Another Host runs this session.")).toBeVisible();
+
+    await page.getByRole("button", { name: "Take over" }).click();
+    const dialog = page.getByRole("dialog", { name: "Take over as host?" });
+    await expect(dialog).toContainText("Changes Another Host made but never uploaded will be lost");
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(page.getByText(/Watching\./)).toBeVisible();
+
+    await page.getByRole("button", { name: "Take over" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Take over" }).click();
+
+    await expect(page.getByText(/Watching\./)).toHaveCount(0);
+    await expect(court(page, 2).getByRole("button", { name: "Start match" })).toBeVisible();
+    await expect.poll(async () => (await serverSession(page))?.hostAccountId).toBe(roy.accountId);
+    expect((await serverSession(page))?.hostName).toBe(roy.name);
+  });
+
+  test("a Player doesn't get Take over", async ({ page }) => {
+    const shared = runningAtRiverside();
+    await seedStorage(page, {
+      account: ana,
+      otherAccounts: [roy],
+      sharedClubs: [riverside],
+      activeSessions: [shared],
+    });
+    await page.goto(`/sessions/${shared.session.id}`);
+    await expect(page.getByText(/Watching\./)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Take over" })).toHaveCount(0);
+  });
 });

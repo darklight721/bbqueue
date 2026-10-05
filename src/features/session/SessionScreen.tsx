@@ -3,8 +3,8 @@ import { Redirect } from "wouter";
 import { ChevronDownIcon } from "../../components/icons.tsx";
 import { Screen } from "../../components/Screen.tsx";
 import { displayClubName } from "../../domain/clubName.ts";
-import { isSessionHost } from "../../domain/permissions.ts";
-import { useAccount, useActiveSessions, useClubs } from "../../storage/store.ts";
+import { canTakeOver, isSessionHost } from "../../domain/permissions.ts";
+import { useAccount, useActiveSessions, useClubs, useTakenOverBy } from "../../storage/store.ts";
 import { CourtsSection } from "./courts/CourtsSection.tsx";
 import { EndSessionSection } from "./end/EndSessionSection.tsx";
 import { HistorySection } from "./history/HistorySection.tsx";
@@ -18,6 +18,7 @@ import {
   type JumpTarget,
 } from "./SectionJumpBar.tsx";
 import { SessionProvider } from "./SessionProvider.tsx";
+import { TakeOver } from "./TakeOver.tsx";
 import { LivePill, WatchingNote } from "./WatchingNote.tsx";
 
 /** Sections shown in the jump bar, in screen order. */
@@ -47,6 +48,7 @@ export function SessionScreen({ sessionId }: { sessionId?: string } = {}) {
   const account = useAccount();
   const readOnly = !isSessionHost(shared, account?.accountId);
   const clubs = useClubs();
+  const takenOverBy = useTakenOverBy(session?.id ?? "");
   // Not saved: Players starts open and History closed on every visit.
   const [playersOpen, setPlayersOpen] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -96,7 +98,18 @@ export function SessionScreen({ sessionId }: { sessionId?: string } = {}) {
         }
       >
         {readOnly && shared ? (
-          <WatchingNote hostName={shared.hostName} updatedAt={shared.updatedAt} />
+          <WatchingNote
+            hostName={shared.hostName}
+            updatedAt={shared.updatedAt}
+            takenOverBy={takenOverBy}
+            action={
+              clubs.some(
+                (club) => club.id === shared.clubId && canTakeOver(club, account?.accountId),
+              ) ? (
+                <TakeOver clubId={shared.clubId} hostName={shared.hostName} />
+              ) : null
+            }
+          />
         ) : null}
         {readOnly ? null : (
           <PointSystemDialog open={pointsOpen} onClose={() => setPointsOpen(false)} />
