@@ -92,7 +92,7 @@ Using the app without an Account still does everything it does today, all on the
 
 54. As anyone in a Shared club, I want to see its Ended sessions in Past sessions and in the Club's sessions list, so that I can look back at results.
 55. As anyone in a Shared club, I want Session summaries of Ended sessions, so that I can view and share them as today.
-56. As a Club, I want the 50 most recent Ended sessions kept on the server, with nobody able to delete them, so that history is stable.
+56. As a Club, I want every Ended session kept on the server, with nobody able to delete them and the 50 most recent shown, so that history is stable.
 57. As someone using the app without an Account, I want everything to behave exactly as it does today.
 
 ## Implementation Decisions
@@ -114,7 +114,7 @@ Using the app without an Account still does everything it does today, all on the
   - Compared ignoring case.
   - Reserved in a Firestore transaction on an Account-ID record, so it's unique; the app tries again with new characters if one is taken.
   - Never changes.
-- **Records:** at minimum Accounts, Account-ID reservations, Shared clubs, roster rows (each Club player saved separately, so the most recent change to a row wins), the Active session of each Shared club (one record holding the host's copy of the Session plus who the host is), Player requests, and Ended sessions (the existing slimmed shape from ADR-0005, at most 50 per Shared club).
+- **Records:** at minimum Accounts, Account-ID reservations, Shared clubs, roster rows (each Club player saved separately, so the most recent change to a row wins), the Active session of each Shared club (one record holding the host's copy of the Session plus who the host is), Player requests, and Ended sessions (the existing slimmed shape from ADR-0005; all kept, the 50 most recent per Shared club shown).
 - **Domain changes:**
   - A Club gains whether it's Local or Shared.
   - A Club player gains an optional linked Account and, when linked, a Role.
@@ -199,7 +199,7 @@ Using the app without an Account still does everything it does today, all on the
 - Any Organizer being able to change the Active session (op-log replay with a seeded random source).
 - Turning a Shared club back into a Local club.
 - Telling people they were added to a Club; invite links or QR codes.
-- Deleting Ended sessions; more than 50 per Shared club.
+- Deleting Ended sessions; showing more than 50 per Shared club.
 - Syncing Sessions with no Club or Local clubs between devices.
 - Server code (Cloud Functions).
 - Avatar photos.

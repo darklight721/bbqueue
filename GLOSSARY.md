@@ -65,7 +65,7 @@ The one Organizer, on one device, who runs an Active session of a Shared club. O
 _Avoid_: Runner, controller, master device
 
 **Ended session**:
-A Session that has been ended and kept, with its Session players and Ended matches, for looking back on. A Session ended without any Ended match is not kept. Only the 50 most recently ended are kept; older ones are dropped. The app labels the list of Ended sessions "Past sessions"; that is UI copy only, not a separate term.
+A Session that has been ended and kept, with its Session players and Ended matches, for looking back on. A Session ended without any Ended match is not kept. On a device, only the 50 most recently ended are kept; older ones are dropped. A Shared club keeps every Ended session, and the 50 most recently ended are shown. The app labels the list of Ended sessions "Past sessions"; that is UI copy only, not a separate term.
 _Avoid_: Past session, archived session, old session
 
 **Session summary**:
