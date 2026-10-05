@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { Redirect } from "wouter";
 import { ChevronDownIcon } from "../../components/icons.tsx";
 import { Screen } from "../../components/Screen.tsx";
@@ -18,7 +18,7 @@ import {
   type JumpTarget,
 } from "./SectionJumpBar.tsx";
 import { SessionProvider } from "./SessionProvider.tsx";
-import { WatchingNote } from "./WatchingNote.tsx";
+import { LivePill, WatchingNote } from "./WatchingNote.tsx";
 
 /** Sections shown in the jump bar, in screen order. */
 const JUMP_TARGETS: readonly JumpTarget[] = [
@@ -51,10 +51,11 @@ export function SessionScreen({ sessionId }: { sessionId?: string } = {}) {
   const [playersOpen, setPlayersOpen] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [pointsOpen, setPointsOpen] = useState(false);
-  const openSection = useCallback((id: string) => {
+  // No useCallback: the React compiler memoizes it.
+  const openSection = (id: string) => {
     if (id === "players") setPlayersOpen(true);
     if (id === "history") setHistoryOpen(true);
-  }, []);
+  };
   // Safety net: the route only renders this for the Active session.
   if (!session) return <Redirect to="/" replace />;
 
@@ -73,9 +74,13 @@ export function SessionScreen({ sessionId }: { sessionId?: string } = {}) {
         wide
         right={
           readOnly ? (
-            <span className="inline-flex h-10 items-center rounded-full bg-primary/10 px-3 font-display text-lg font-bold whitespace-nowrap text-primary">
-              {session.pointSystem} pts
-            </span>
+            // Plain text, not a pill: it shouldn't look like a button that stopped working.
+            <>
+              <span className="px-1 font-display text-lg font-bold whitespace-nowrap text-base-content/60">
+                {session.pointSystem} pts
+              </span>
+              {shared ? <LivePill /> : null}
+            </>
           ) : (
             <button
               type="button"

@@ -142,6 +142,7 @@ describe("The Session screen for somebody who isn't the Session host", () => {
     expect(screen.queryByRole("textbox", { name: "Player name" })).not.toBeInTheDocument();
     // The Point system is shown, but can't be opened.
     expect(screen.getByText("21 pts")).toBeInTheDocument();
+    expect(screen.getByText("Live")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /pts/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "End session" })).not.toBeInTheDocument();
   });
@@ -189,7 +190,7 @@ describe("The Session screen for somebody who isn't the Session host", () => {
 
     renderAt(`/sessions/${session.id}`);
 
-    expect(screen.getByText("Updated 6 min ago.")).toBeInTheDocument();
+    expect(screen.getByText("Last update 6 min ago.")).toBeInTheDocument();
   });
 
   it("says it is the last copy, and how old, while the device is offline", () => {
@@ -205,6 +206,8 @@ describe("The Session screen for somebody who isn't the Session host", () => {
     expect(
       screen.getByText("You're offline. Showing the last copy, updated just now."),
     ).toBeInTheDocument();
+    expect(screen.getByText("Offline")).toBeInTheDocument();
+    expect(screen.queryByText("Live")).not.toBeInTheDocument();
   });
 
   it("sends the person Home with a notice when the host ends the session", () => {

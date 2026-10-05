@@ -171,6 +171,9 @@ describe("Club screens with Accounts", () => {
       renderAt("/clubs/c1");
 
       act(() => backend.setOnline(false));
+      expect(screen.getByRole("link", { name: "New session" })).toHaveAccessibleDescription(
+        "Needs a connection to start",
+      );
       expect(screen.getByRole("button", { name: "Add player" })).toBeDisabled();
       expect(
         screen.getByText("You're offline. Adding players needs a connection."),
@@ -223,7 +226,7 @@ describe("Club screens with Accounts", () => {
       expect(screen.queryByRole("link", { name: "New session" })).not.toBeInTheDocument();
       const link = screen.getByRole("link", { name: "Open active session" });
       expect(link).toHaveAttribute("href", "/sessions/shared-1");
-      expect(link).toHaveTextContent("Thursday");
+      expect(link).toHaveAccessibleDescription("Thursday · Host: Ana");
     });
 
     it("deletes the Club", async () => {

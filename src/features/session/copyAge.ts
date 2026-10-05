@@ -1,5 +1,9 @@
-/** A viewer's copy older than this gets an "Updated … ago" note even when the device is online. */
-export const STALE_AFTER_MS = 2 * 60_000;
+/**
+ * A viewer's copy older than this gets a quiet "Last update … ago" note even when the device is
+ * online. There is no heartbeat: the host only uploads on a change, so a few quiet minutes in a
+ * long Match are normal and say nothing.
+ */
+export const STALE_AFTER_MS = 5 * 60_000;
 
 /** "just now", "5 min ago", "1 h 5 min ago". Negative ages (clock skew) count as just now. */
 export function formatAge(ms: number): string {
@@ -28,6 +32,6 @@ export function copyNote(args: {
       text: `You're offline. Showing the last copy, updated ${formatAge(age)}.`,
     };
   }
-  if (age >= STALE_AFTER_MS) return { offline: false, text: `Updated ${formatAge(age)}.` };
+  if (age >= STALE_AFTER_MS) return { offline: false, text: `Last update ${formatAge(age)}.` };
   return null;
 }

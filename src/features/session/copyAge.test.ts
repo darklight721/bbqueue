@@ -29,7 +29,7 @@ describe("copyNote", () => {
     expect(copyNote({ updatedAt, now: updatedAt + STALE_AFTER_MS + 60_000, online: true })).toEqual(
       {
         offline: false,
-        text: "Updated 3 min ago.",
+        text: "Last update 6 min ago.",
       },
     );
   });

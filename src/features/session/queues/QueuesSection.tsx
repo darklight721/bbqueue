@@ -23,7 +23,7 @@ export function QueuesSection() {
 
       {count === 0 && readOnly ? (
         <p className="rounded-box border-[1.5px] border-dashed border-base-300 px-4 py-5 text-center text-base-content/70">
-          No queues.
+          No queues right now.
         </p>
       ) : count === 0 ? (
         <div className="flex flex-col items-center gap-4 rounded-box border-[1.5px] border-dashed border-base-300 px-6 py-6 text-center">

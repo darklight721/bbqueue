@@ -152,6 +152,7 @@ test.describe("Shared active session between two people", () => {
     await expect(
       anaPage.getByText(/You're offline\. Showing the last copy, updated/),
     ).toBeVisible();
+    await expect(anaPage.getByText("Offline", { exact: true })).toBeVisible();
 
     await court(page, 1).getByRole("button", { name: "Start match" }).click();
     await expect(court(page, 1).getByText("Playing", { exact: true })).toBeVisible();
@@ -163,6 +164,7 @@ test.describe("Shared active session between two people", () => {
       timeout: 45_000,
     });
     await expect(anaPage.getByText(/You're offline/)).toHaveCount(0);
+    await expect(anaPage.getByText("Live", { exact: true })).toBeVisible();
 
     await anaPage.context().close();
   });

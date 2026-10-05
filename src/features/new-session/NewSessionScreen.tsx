@@ -107,7 +107,7 @@ export function NewSessionScreen() {
       : sharedActive
         ? "This club already has an active session"
         : needsConnection
-          ? "You're offline. A shared club's session needs a connection to start"
+          ? "You're offline. Starting needs a connection"
           : nameMissing
             ? "Enter a session name"
             : playerCount < MIN_PLAYERS
@@ -224,11 +224,16 @@ export function NewSessionScreen() {
               {selectedLabel(playerCount)}
             </p>
             {startError ? (
-              <p role="alert" className="text-sm font-semibold text-error">
+              <p role="alert" className="text-sm leading-snug font-semibold text-error">
                 {startError}
               </p>
+            ) : needsConnection && !sharedActive ? (
+              // Wraps instead of being cut off next to the button.
+              <OfflineNote className="leading-snug">{blocker}</OfflineNote>
             ) : (
-              <p className="truncate text-sm text-base-content/65">
+              <p
+                className={`text-sm text-base-content/65 ${sharedActive ? "leading-snug" : "truncate"}`}
+              >
                 {blocker ??
                   `${courts} ${courts === 1 ? "court" : "courts"} · ${hours} ${hours === 1 ? "hour" : "hours"} · ${pointSystem} points`}
               </p>
@@ -418,7 +423,7 @@ export function NewSessionScreen() {
 function startErrorMessage(error: unknown): string {
   switch (error instanceof BackendError ? error.code : null) {
     case "offline":
-      return "You're offline. A shared club's session needs a connection to start.";
+      return "You're offline. Starting needs a connection.";
     case "session-exists":
       return "This club already has an active session.";
     case "forbidden":

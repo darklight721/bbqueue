@@ -117,9 +117,7 @@ describe("New session with a Shared club: starting", () => {
     act(() => backend.setOnline(false));
 
     expect(screen.getByRole("button", { name: "Start session" })).toBeDisabled();
-    expect(
-      screen.getByText(/You're offline\. A shared club's session needs a connection/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/You're offline\. Starting needs a connection/)).toBeInTheDocument();
   });
 
   it("offers Open active session instead of a second Start when the Club already has one", async () => {

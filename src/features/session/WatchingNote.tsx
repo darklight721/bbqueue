@@ -1,30 +1,71 @@
 import { useBackendOnline } from "../../backend/clubs.ts";
-import { OfflineNote } from "../../components/OfflineNote.tsx";
+import { EyeIcon, OfflineIcon } from "../../components/icons.tsx";
 import { useNow } from "./clock.ts";
 import { copyNote } from "./copyAge.ts";
 
 /**
- * Shown to everyone who isn't the Session host (ADR-0007): they watch, the host changes. Says who
- * the host is and, when the copy isn't live (offline, or a while since the host's last upload),
- * how old it is.
+ * Shown at the top of the Session screen to everyone who isn't the Session host (ADR-0007):
+ * they watch, the host changes. Says who the host is and, when the copy isn't live (offline, or
+ * a while since the host's last upload), how old it is. Offline turns the whole strip amber so
+ * it can't be mistaken for the calm "last update" line.
  */
 export function WatchingNote({ hostName, updatedAt }: { hostName: string; updatedAt: number }) {
   const online = useBackendOnline();
   const now = useNow();
   const note = copyNote({ updatedAt, now, online });
+  const offline = note?.offline === true;
   return (
-    <div className="flex flex-col gap-1 rounded-box bg-base-200 px-4 py-3">
-      <p className="text-sm font-semibold">Watching. {hostName} runs this session.</p>
-      <p className="text-sm text-base-content/70">Only the session host can change it.</p>
-      {note ? (
-        note.offline ? (
-          <OfflineNote role="status">{note.text}</OfflineNote>
-        ) : (
-          <p role="status" className="text-sm text-base-content/70">
+    <div
+      className={`flex items-center gap-3 rounded-box border-[1.5px] px-3 py-2.5 ${
+        offline ? "border-warning/70 bg-warning/12" : "border-base-300 bg-base-200/60"
+      }`}
+    >
+      <span
+        aria-hidden="true"
+        className={`grid size-10 shrink-0 place-items-center rounded-full ${
+          offline ? "bg-warning text-warning-content" : "bg-base-100 text-primary"
+        }`}
+      >
+        {offline ? <OfflineIcon className="size-5" /> : <EyeIcon className="size-5" />}
+      </span>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <p className="text-sm font-semibold">Watching. {hostName} runs this session.</p>
+        {note ? (
+          <p
+            role={offline ? "status" : undefined}
+            className={`text-sm ${offline ? "font-semibold text-base-content/85" : "text-base-content/60"}`}
+          >
             {note.text}
           </p>
-        )
-      ) : null}
+        ) : (
+          <p className="text-sm text-base-content/60">Only the host can change it.</p>
+        )}
+      </div>
     </div>
+  );
+}
+
+/**
+ * Compact, always-visible state in the top bar for someone watching: "Live" while connected
+ * (the Session updates by itself), "Offline" when this device has no connection.
+ */
+export function LivePill() {
+  const online = useBackendOnline();
+  if (online === false) {
+    return (
+      <span className="inline-flex h-8 items-center gap-1.5 rounded-full bg-warning/20 px-2.5 text-xs font-bold tracking-wider whitespace-nowrap text-base-content uppercase ring-1 ring-warning/60">
+        <OfflineIcon className="size-3.5" />
+        Offline
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex h-8 items-center gap-1.5 rounded-full bg-primary/10 px-2.5 text-xs font-bold tracking-wider whitespace-nowrap text-primary uppercase">
+      <span aria-hidden="true" className="relative flex size-2">
+        <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary opacity-60 motion-reduce:hidden" />
+        <span className="relative inline-flex size-2 rounded-full bg-primary" />
+      </span>
+      Live
+    </span>
   );
 }

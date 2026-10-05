@@ -17,7 +17,13 @@ import { OfflineNote } from "../../components/OfflineNote.tsx";
 import { PlayerRowEditor } from "../../components/PlayerRowEditor.tsx";
 import { Screen } from "../../components/Screen.tsx";
 import { normalizeAccountId, validateAccountId } from "../../domain/accountId.ts";
-import { canChangeRoles, canDeleteClub, canEditClub, ownRow } from "../../domain/permissions.ts";
+import {
+  canChangeRoles,
+  canDeleteClub,
+  canEditClub,
+  isSessionHost,
+  ownRow,
+} from "../../domain/permissions.ts";
 import { newId } from "../../domain/ids.ts";
 import { DEFAULT_SKILL, type Account, type Club, type Role } from "../../domain/types.ts";
 import { hasClubErrors, validateClub } from "../../domain/validation.ts";
@@ -64,9 +70,8 @@ function ClubEditor({ club }: { club: Club | null }) {
   const isNew = club === null;
   const sessionCount = club ? endedSessions.filter((ended) => ended.clubId === club.id).length : 0;
   // This Club's Active session: the device's own for a Local club, the Shared club's record otherwise.
-  const activeSession = club
-    ? (activeSessionOfClub(activeEntries, club.id)?.session ?? null)
-    : null;
+  const activeEntry = club ? activeSessionOfClub(activeEntries, club.id) : null;
+  const activeSession = activeEntry?.session ?? null;
   // Only the device's own Session is replaced by starting a new one; a Shared club's isn't touched.
   const replacesDeviceSession =
     club?.kind === "local" && activeEntries.some((entry) => !entry.shared);
@@ -463,7 +468,15 @@ function ClubEditor({ club }: { club: Club | null }) {
                 tone="active"
                 icon={<PlayIcon className="size-6 translate-x-0.5" />}
                 label="Open active session"
-                detail={activeSession.name}
+                detail={
+                  activeEntry?.shared
+                    ? `${activeSession.name} · ${
+                        isSessionHost(activeEntry.shared, viewer)
+                          ? "You're the host"
+                          : `Host: ${activeEntry.shared.hostName}`
+                      }`
+                    : activeSession.name
+                }
                 onClick={leaveVia(`/sessions/${encodeURIComponent(activeSession.id)}`)}
               />
             ) : (
@@ -473,7 +486,11 @@ function ClubEditor({ club }: { club: Club | null }) {
                 icon={<PlusIcon className="size-6" />}
                 label="New session"
                 detail={
-                  replacesDeviceSession ? "Replaces the current session" : "Pick players and courts"
+                  club.kind === "shared" && online === false
+                    ? "Needs a connection to start"
+                    : replacesDeviceSession
+                      ? "Replaces the current session"
+                      : "Pick players and courts"
                 }
                 onClick={leaveVia(newSessionForClubPath(club.id))}
               />

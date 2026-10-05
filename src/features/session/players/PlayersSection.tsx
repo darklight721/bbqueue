@@ -173,7 +173,9 @@ function PlayerRow({ player, onRemove }: { player: SessionPlayer; onRemove: () =
   const onCourt = status.tone === "on-court";
 
   return (
-    <li className="flex min-h-16 items-center gap-2 border-b border-base-300 py-2 pr-2 pl-4 last:border-b-0 md:odd:border-r">
+    <li
+      className={`flex min-h-16 items-center gap-2 border-b border-base-300 py-2 pl-4 last:border-b-0 md:odd:border-r ${readOnly ? "pr-4" : "pr-2"}`}
+    >
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className={player.sittingOut && !onCourt ? "opacity-55" : ""}>
           <SessionPlayerChip playerId={player.id} layout="inline" />

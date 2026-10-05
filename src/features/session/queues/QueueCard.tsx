@@ -47,9 +47,10 @@ export function QueueCard({ queue, number }: { queue: Queue; number: number }) {
   return (
     <section
       aria-labelledby={headingId}
-      className="flex flex-col overflow-hidden rounded-box border-2 border-dashed border-base-300 bg-base-100"
+      // Watching: no Move to court strip at the bottom, so the card needs its own bottom padding.
+      className={`flex flex-col overflow-hidden rounded-box border-2 border-dashed border-base-300 bg-base-100 ${readOnly ? "pb-4" : ""}`}
     >
-      <header className="flex items-center gap-3 py-2 pr-2 pl-4">
+      <header className={`flex items-center gap-3 py-2 pl-4 ${readOnly ? "pr-4" : "pr-2"}`}>
         <h3 id={headingId} className="font-display text-2xl uppercase">
           Queue {number}
         </h3>

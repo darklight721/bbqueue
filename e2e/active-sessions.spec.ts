@@ -196,9 +196,7 @@ test.describe("Shared active session", () => {
     await context.setOffline(true);
 
     await expect(page.getByRole("button", { name: "Start session" })).toBeDisabled();
-    await expect(
-      page.getByText(/You're offline\. A shared club's session needs a connection/),
-    ).toBeVisible();
+    await expect(page.getByText(/You're offline\. Starting needs a connection/)).toBeVisible();
 
     await context.setOffline(false);
     await expect(page.getByRole("button", { name: "Start session" })).toBeEnabled();

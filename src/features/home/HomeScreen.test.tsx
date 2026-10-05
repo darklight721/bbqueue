@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { Router } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
@@ -91,6 +91,29 @@ describe("Home: Active sessions", () => {
     const view = screen.getByRole("link", { name: "View session" });
     expect(view).toHaveAttribute("href", `/sessions/${theirs.id}`);
     expect(view).toHaveTextContent("Friday · Beacon · Host: Ana");
+  });
+
+  it("puts the sessions I run first, then the ones I watch, then New session", () => {
+    const theirs = makeSession("Friday", "c2", "Beacon");
+    const mine = makeSession("Thursday", "c1", "Riverside");
+    applyActiveSessionsReport({
+      sessions: [shared(theirs, "c2", "ana-2222", "Ana"), shared(mine, "c1", "roy-7k3f", "Roy")],
+      unknown: [],
+    });
+
+    renderHome();
+
+    const links = within(screen.getByRole("navigation", { name: "Main" }))
+      .getAllByRole("link")
+      .map((link) => link.getAttribute("href"));
+    expect(links.slice(0, 3)).toEqual([
+      `/sessions/${mine.id}`,
+      `/sessions/${theirs.id}`,
+      "/sessions/new",
+    ]);
+    expect(screen.getByRole("link", { name: "View session" })).toHaveAccessibleDescription(
+      "Friday · Beacon · Host: Ana",
+    );
   });
 
   it("only says New session replaces the current session when the device has its own Session", () => {

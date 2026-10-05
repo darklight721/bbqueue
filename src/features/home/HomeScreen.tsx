@@ -4,7 +4,9 @@ import { getBackend } from "../../backend/index.ts";
 import { Avatar } from "../../components/Avatar.tsx";
 import { BrandMark, Wordmark } from "../../components/BrandMark.tsx";
 import {
+  CheckIcon,
   ChevronRightIcon,
+  EyeIcon,
   HistoryIcon,
   PlayIcon,
   PlusIcon,
@@ -29,40 +31,55 @@ export function HomeScreen() {
 
   // The device's own Session (Local club or no Club): what New session would replace.
   const session = entries.find((entry) => !entry.shared)?.session ?? null;
-  const sharedEntries = entries.filter((entry) => entry.shared);
+  // Sessions this person runs come first and look like today's Resume card; ones somebody else
+  // hosts are quieter cards under them.
+  const hosted = entries.filter(
+    (entry) => entry.shared && isSessionHost(entry.shared, account?.accountId),
+  );
+  const watched = entries.filter(
+    (entry) => entry.shared && !isSessionHost(entry.shared, account?.accountId),
+  );
   const clubCount = clubs.length;
   const step = 2 + entries.length;
+  const clubOf = ({ clubId, clubName }: { clubId: string | null; clubName: string | null }) =>
+    displayClubName(clubId, clubName, clubs);
 
   return (
     <div className="flex min-h-dvh flex-col">
       <Hero />
 
       <main className="px-safe relative z-10 mx-auto -mt-8 flex w-full max-w-2xl flex-col pb-[max(1.5rem,env(safe-area-inset-bottom))]">
-        <nav aria-label="Main" className="flex flex-col gap-3">
-          <FlashNotice />
+        <FlashNotice />
 
+        <nav aria-label="Main" className="flex flex-col gap-3">
           {session ? (
             <ResumeLink
               sessionId={session.id}
-              label="Resume session"
-              detail={session.name}
+              name={session.name}
+              meta={session.clubId ? clubOf(session) : null}
               delay={1}
             />
           ) : null}
 
-          {sharedEntries.map(({ session: shared, shared: record }, index) => {
-            const hosting = isSessionHost(record, account?.accountId);
-            const clubName = displayClubName(shared.clubId, shared.clubName, clubs);
-            return (
-              <ResumeLink
-                key={shared.id}
-                sessionId={shared.id}
-                label={hosting ? "Resume session" : "View session"}
-                detail={`${shared.name} · ${clubName} · ${hosting ? "You're the host" : `Host: ${record!.hostName}`}`}
-                delay={(session ? 2 : 1) + index}
-              />
-            );
-          })}
+          {hosted.map((entry, index) => (
+            <ResumeLink
+              key={entry.session.id}
+              sessionId={entry.session.id}
+              name={entry.session.name}
+              meta={`${clubOf(entry.session)} · You're the host`}
+              delay={(session ? 2 : 1) + index}
+            />
+          ))}
+
+          {watched.map((entry, index) => (
+            <WatchLink
+              key={entry.session.id}
+              sessionId={entry.session.id}
+              name={entry.session.name}
+              meta={`${clubOf(entry.session)} · Host: ${entry.shared!.hostName}`}
+              delay={(session ? 2 : 1) + hosted.length + index}
+            />
+          ))}
 
           <ActionLink
             href="/sessions/new"
@@ -168,16 +185,20 @@ function AccountLink() {
   );
 }
 
-/** A "Resume session" or "View session" card: opens an Active session. */
+/**
+ * "Resume session": an Active session this device runs (its own, or a Shared club's it hosts).
+ * The dark card with the volt play button, the strongest thing on Home.
+ */
 function ResumeLink({
   sessionId,
-  label,
-  detail,
+  name,
+  meta,
   delay,
 }: {
   sessionId: string;
-  label: string;
-  detail: string;
+  name: string;
+  /** Second line: the Club and, for a Shared club, "You're the host". */
+  meta: string | null;
   delay: number;
 }) {
   const labelId = useId();
@@ -195,18 +216,108 @@ function ResumeLink({
       </span>
       <span className="flex min-w-0 flex-1 flex-col">
         <span id={labelId} className="font-display text-2xl leading-tight font-bold uppercase">
-          {label}
+          Resume session
         </span>
-        <span id={detailId} className="truncate text-base text-neutral-content/75">
-          {detail}
-        </span>
+        <SessionLines
+          id={detailId}
+          name={name}
+          meta={meta}
+          nameClass="text-base text-neutral-content/85"
+          metaClass="text-sm text-neutral-content/60"
+        />
       </span>
       <ChevronRightIcon className="size-6 shrink-0 opacity-60 transition-transform group-hover:translate-x-0.5" />
     </Link>
   );
 }
 
-/** A one-time message from another screen (a Session you had open ended). */
+/**
+ * "View session": a Shared club's Active session somebody else hosts. Quieter than Resume (a
+ * light card, smaller title), with a live dot on the eye so it still reads as happening now.
+ */
+function WatchLink({
+  sessionId,
+  name,
+  meta,
+  delay,
+}: {
+  sessionId: string;
+  name: string;
+  meta: string;
+  delay: number;
+}) {
+  const labelId = useId();
+  const detailId = useId();
+  return (
+    <Link
+      href={`/sessions/${sessionId}`}
+      aria-labelledby={labelId}
+      aria-describedby={detailId}
+      className="animate-rise group flex min-h-20 items-center gap-4 rounded-box border-[1.5px] border-primary/30 bg-base-100 p-4 pr-3 text-base-content shadow-sm transition-transform active:scale-[0.98]"
+      style={delayStyle(delay)}
+    >
+      <span className="relative grid size-12 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+        <EyeIcon className="size-6" />
+        <span aria-hidden="true" className="absolute top-0.5 right-0.5 flex size-3">
+          <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary opacity-50 motion-reduce:hidden" />
+          <span className="relative inline-flex size-3 rounded-full border-2 border-base-100 bg-primary" />
+        </span>
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span
+          id={labelId}
+          className="font-display text-xl leading-tight font-bold text-primary uppercase"
+        >
+          View session
+        </span>
+        <SessionLines
+          id={detailId}
+          name={name}
+          meta={meta}
+          nameClass="text-base font-semibold"
+          metaClass="text-sm text-base-content/65"
+        />
+      </span>
+      <ChevronRightIcon className="size-6 shrink-0 opacity-50 transition-transform group-hover:translate-x-0.5" />
+    </Link>
+  );
+}
+
+/**
+ * The Session's name, then the Club and host on a smaller line. The link's description is the
+ * same as one line ("Thursday · Riverside · Host: Ana") from a hidden copy, so it reads well
+ * aloud; the two visible lines are hidden from screen readers instead.
+ */
+function SessionLines({
+  id,
+  name,
+  meta,
+  nameClass,
+  metaClass,
+}: {
+  id: string;
+  name: string;
+  meta: string | null;
+  nameClass: string;
+  metaClass: string;
+}) {
+  return (
+    <>
+      <span id={id} hidden>
+        {meta ? `${name} · ${meta}` : name}
+      </span>
+      <span aria-hidden="true" className="flex min-w-0 flex-col">
+        <span className={`truncate leading-snug ${nameClass}`}>{name}</span>
+        {meta ? <span className={`truncate leading-snug ${metaClass}`}>{meta}</span> : null}
+      </span>
+    </>
+  );
+}
+
+/**
+ * A one-time message from another screen (a Session you had open ended). Outside the list so the
+ * empty live region doesn't add a gap above the first card.
+ */
 function FlashNotice() {
   const message = useFlash();
   useEffect(() => {
@@ -217,13 +328,15 @@ function FlashNotice() {
   return (
     <div role="status" aria-live="polite">
       {message ? (
-        <div className="flex items-center gap-2 rounded-box bg-neutral py-2 pr-2 pl-4 text-neutral-content shadow-lg">
-          <p className="min-w-0 flex-1 font-semibold">{message}</p>
-          <button
-            type="button"
-            className="btn btn-ghost text-neutral-content"
-            onClick={() => setFlash(null)}
+        <div className="animate-rise mb-3 flex items-center gap-3 rounded-box border-[1.5px] border-base-300 bg-base-100 py-2 pr-2 pl-3 shadow-lg">
+          <span
+            aria-hidden="true"
+            className="grid size-9 shrink-0 place-items-center rounded-full bg-base-200 text-base-content/70"
           >
+            <CheckIcon className="size-5" />
+          </span>
+          <p className="min-w-0 flex-1 font-semibold">{message}</p>
+          <button type="button" className="btn btn-ghost" onClick={() => setFlash(null)}>
             OK
           </button>
         </div>
