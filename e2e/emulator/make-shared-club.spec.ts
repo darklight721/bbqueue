@@ -67,9 +67,12 @@ test.describe("Making a Local club shared, between two people", () => {
     ]);
 
     // He links Ana's Account to her row; she sees the Club.
-    await page.getByRole("button", { name: "Link Account for Ana" }).click();
-    await page.getByRole("textbox", { name: /Account ID.* for Ana/ }).fill(ana.accountId);
-    await expect(page.getByText("✓ Ana Bell")).toBeVisible();
+    // Rows are sorted by name: Ana's comes first.
+    const anaField = page.getByRole("textbox", { name: "Player name" }).first();
+    await expect(anaField).toHaveValue("Ana");
+    await anaField.fill(`@${ana.accountId}`);
+    await expect(page.getByText(/Linked to/)).toHaveText(`Linked to ${ana.accountId}`);
+    await expect(page.getByRole("combobox", { name: "Role for Ana Bell" })).toHaveValue("player");
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page).toHaveURL(/\/clubs$/);
     await anaPage.goto("/clubs");
@@ -116,9 +119,12 @@ test.describe("Making a Local club shared, between two people", () => {
       .getByRole("button", { name: "Make shared club" })
       .click();
     await expect(page.getByText("This device only")).toHaveCount(0, { timeout: 30_000 });
-    await page.getByRole("button", { name: "Link Account for Ana" }).click();
-    await page.getByRole("textbox", { name: /Account ID.* for Ana/ }).fill(ana.accountId);
-    await expect(page.getByText("✓ Ana Bell")).toBeVisible();
+    // Rows are sorted by name: Ana's comes first.
+    const anaField = page.getByRole("textbox", { name: "Player name" }).first();
+    await expect(anaField).toHaveValue("Ana");
+    await anaField.fill(`@${ana.accountId}`);
+    await expect(page.getByText(/Linked to/)).toHaveText(`Linked to ${ana.accountId}`);
+    await expect(page.getByRole("combobox", { name: "Role for Ana Bell" })).toHaveValue("player");
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page).toHaveURL(/\/clubs$/);
 

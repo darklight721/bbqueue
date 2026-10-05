@@ -229,6 +229,19 @@ describe("ClubEditScreen", () => {
     expect(getClubs()).toEqual([riverside]);
   });
 
+  it("treats @ as an ordinary character in a Local club's names", async () => {
+    setLocalClubs([riverside]);
+    renderAt("/clubs/c1");
+    expect(nameInputs()[0]).toHaveAttribute("placeholder", "Name");
+
+    await userEvent.clear(nameInputs()[0]!);
+    await userEvent.type(nameInputs()[0]!, "@alice");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    await save();
+
+    expect(getClubs()[0]?.players.find((p) => p.id === "p2")?.name).toBe("@alice");
+  });
+
   it("treats undoing an edit as no change", async () => {
     renderAt("/clubs/new");
     const clubName = screen.getByRole("textbox", { name: "Club name" });
@@ -283,6 +296,24 @@ describe("ClubEditScreen sessions link", () => {
     await userEvent.click(link);
     expect(location.current()).toBe("/clubs/c1/sessions");
     expect(screen.getByRole("heading", { level: 1, name: "Riverside" })).toBeInTheDocument();
+  });
+
+  it("sits next to New session in one row; a card on its own takes the whole row", () => {
+    setLocalClubs([riverside]);
+    renderAt("/clubs/c1");
+    expect(screen.getByRole("link", { name: "New session" })).toHaveClass("col-span-2");
+    cleanup();
+
+    addEndedSession(endedFor("a", "c1"));
+    renderAt("/clubs/c1");
+    const nav = screen.getByRole("navigation", { name: "Club sessions" });
+    expect(nav).toHaveClass("grid-cols-2");
+    const links = within(nav).getAllByRole("link");
+    expect(links.map((link) => link.getAttribute("href"))).toEqual([
+      "/sessions/new?club=c1",
+      "/clubs/c1/sessions",
+    ]);
+    for (const link of links) expect(link).not.toHaveClass("col-span-2");
   });
 
   it("uses the singular for one session", () => {

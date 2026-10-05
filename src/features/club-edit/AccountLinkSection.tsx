@@ -1,47 +1,65 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useId } from "react";
 import { CloseIcon, LinkIcon, WarningIcon } from "../../components/icons.tsx";
+import { ROW_ACTION_COLUMN, ROW_SELECT_COLUMN } from "../../components/PlayerRowEditor.tsx";
 import type { Role } from "../../domain/types.ts";
-import type { LinkState } from "./linkState.ts";
+import { linkProblem, type LinkState } from "./linkState.ts";
 
-const PROBLEM_MESSAGE: Partial<Record<LinkState["kind"], string>> = {
-  invalid: "That doesn't look like an Account ID, such as roy-7k3f.",
-  duplicate: "That Account is already on this roster.",
-  unknown: "No Account has that Account ID.",
-  offline: "Linking an Account needs a connection.",
-};
+type Linked = Extract<LinkState, { kind: "linked" }>;
 
-export interface AccountLinkSectionProps {
+/** "Checking…" or the problem, under a name field holding an `@Account ID`. */
+export function LinkStatus({
+  id,
+  state,
+  complete,
+}: {
+  id: string;
+  state: LinkState;
+  complete: boolean;
+}) {
+  const problem = linkProblem(state, complete);
+  return (
+    // Always there (if empty), so screen readers hear what changes.
+    <p
+      id={id}
+      role="status"
+      className={`pl-1 text-sm ${problem ? "font-semibold text-error" : "text-base-content/70"} ${
+        state.kind === "checking" || problem ? "" : "sr-only"
+      }`}
+    >
+      {state.kind === "checking" ? (
+        <span className="flex items-center gap-2">
+          <span aria-hidden="true" className="loading loading-xs loading-spinner" />
+          Checking…
+        </span>
+      ) : (
+        problem
+      )}
+    </p>
+  );
+}
+
+export interface LinkedLineProps {
   /** The Club player's name, for labels. */
   playerName: string;
-  state: LinkState;
-  /** The text in the Account ID field (for a row with no link yet). */
-  idText: string;
+  state: Linked;
   online: boolean;
-  /** Link-less rows: show the problem (after a failed Save) rather than only while typing. */
-  showProblem: boolean;
   /** A Role change that was refused, to explain. */
   roleMessage: string | null;
   /** Another Organizer is needed before this one can step down or leave. */
   onlyOrganizer: boolean;
-  onIdText: (text: string) => void;
   onRole: (role: Role) => void;
+  /** A saved link to an Account that no longer exists. */
   onUnlink: () => void;
+  /** A link made here and not saved yet: take it back. */
+  onUndo: () => void;
 }
-
-const ROLE_LABEL: Record<Role, string> = { organizer: "Organizer", player: "Player" };
 
 /**
- * The line under a Club player row for Organizers of a Shared club. A linked row shows a small
- * chip (the Account ID, and the Account's name when it differs) and the Role. A row with no link
- * shows only "Link Account"; the Account ID field, with its live "✓ Name", opens from there.
- * Linking and Roles need a connection.
+ * The line under a linked Club player row, for Organizers: the Account ID (and the Account's
+ * name when it differs from the row's), You, and the Role, which sits under the Skill level so
+ * Roles line up down the roster. A link that isn't saved yet can be taken back with ✕.
  */
-export function AccountLinkSection(props: AccountLinkSectionProps) {
-  if (props.state.kind === "linked") return <LinkedLine {...props} state={props.state} />;
-  return <LinkEditor {...props} />;
-}
-
-function LinkedLine({
+export function LinkedLine({
   playerName,
   state,
   online,
@@ -49,7 +67,8 @@ function LinkedLine({
   onlyOrganizer,
   onRole,
   onUnlink,
-}: AccountLinkSectionProps & { state: Extract<LinkState, { kind: "linked" }> }) {
+  onUndo,
+}: LinkedLineProps) {
   const roleId = useId();
   const who = playerName.trim() || "this player";
   const gone = state.exists === false;
@@ -60,59 +79,74 @@ function LinkedLine({
       : null;
 
   return (
-    <div className="flex flex-col gap-1 pl-1">
-      <div className="flex min-h-10 items-center gap-2">
-        <span
-          className={`inline-flex h-8 min-w-0 items-center gap-1.5 rounded-full px-3 text-sm ${
-            gone ? "bg-error/10 text-error" : "bg-base-200 text-base-content/80"
-          }`}
-        >
-          {gone ? (
-            <WarningIcon className="size-4 shrink-0" />
-          ) : (
-            <LinkIcon className="size-4 shrink-0 text-primary" />
-          )}
-          {accountName ? <span className="truncate font-semibold">{accountName}</span> : null}
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 pl-1">
           <span
-            className={`truncate font-mono ${accountName ? "text-base-content/60" : "font-semibold"} ${gone ? "line-through" : ""}`}
+            className={`inline-flex min-w-0 items-start gap-1.5 rounded-field px-2.5 py-1.5 text-sm leading-5 ${
+              gone ? "bg-error/10 text-error" : "bg-base-200 text-base-content/80"
+            }`}
           >
-            {state.accountId}
+            {gone ? (
+              <WarningIcon className="mt-0.5 size-4 shrink-0" />
+            ) : (
+              <LinkIcon className="mt-0.5 size-4 shrink-0 text-primary" />
+            )}
+            <span className="min-w-0 [overflow-wrap:anywhere]">
+              {state.saved ? null : "Linked to "}
+              <span className={`font-mono font-semibold ${gone ? "line-through" : ""}`}>
+                {state.accountId}
+              </span>
+              {accountName ? <span className="text-base-content/60"> · {accountName}</span> : null}
+            </span>
           </span>
-        </span>
-        {state.isYou ? (
-          <span className="badge badge-sm shrink-0 badge-neutral font-semibold">You</span>
-        ) : null}
-        <span className="flex-1" />
-        {gone ? (
-          <button
-            type="button"
-            className="btn shrink-0 border-base-300 btn-outline btn-sm"
-            onClick={onUnlink}
-            disabled={!online}
-          >
-            Unlink <span className="sr-only">{who}</span>
-          </button>
-        ) : (
-          <RoleSelect
-            id={roleId}
-            who={who}
-            value={state.role}
-            disabled={!online}
-            order={["organizer", "player"]}
-            onChange={onRole}
-          />
-        )}
+          {state.isYou ? (
+            <span className="badge shrink-0 badge-sm font-semibold badge-neutral">You</span>
+          ) : null}
+          {!state.saved && !state.isYou ? (
+            <button
+              type="button"
+              className="btn -ml-1 size-10 shrink-0 btn-circle text-base-content/60 btn-ghost hover:text-error"
+              aria-label={`Remove link for ${who}`}
+              onClick={onUndo}
+            >
+              <CloseIcon className="size-4" />
+            </button>
+          ) : null}
+        </div>
+        <div className={ROW_SELECT_COLUMN}>
+          {gone ? (
+            <button
+              type="button"
+              className="btn w-full border-base-300 btn-outline"
+              onClick={onUnlink}
+              disabled={!online}
+            >
+              Unlink <span className="sr-only">{who}</span>
+            </button>
+          ) : (
+            <RoleSelect
+              id={roleId}
+              who={who}
+              value={state.role}
+              disabled={!online}
+              onChange={onRole}
+            />
+          )}
+        </div>
+        {/* Under Remove, so the Role sits right under the Skill level. */}
+        <span aria-hidden="true" className={ROW_ACTION_COLUMN} />
       </div>
       {gone ? (
-        <p role="alert" className="text-sm font-semibold text-error">
+        <p role="alert" className="pl-1 text-sm font-semibold text-error">
           This Account no longer exists.
         </p>
       ) : null}
       {onlyOrganizer && !roleMessage ? (
-        <p className="text-sm text-base-content/60">The only Organizer.</p>
+        <p className="pl-1 text-sm text-base-content/60">The only Organizer.</p>
       ) : null}
       {roleMessage ? (
-        <p role="alert" className="text-sm font-semibold text-error">
+        <p role="alert" className="pl-1 text-sm font-semibold text-error">
           {roleMessage}
         </p>
       ) : null}
@@ -120,158 +154,23 @@ function LinkedLine({
   );
 }
 
-function LinkEditor({
-  playerName,
-  state,
-  idText,
-  online,
-  showProblem,
-  onIdText,
-  onRole,
-}: AccountLinkSectionProps) {
-  const idInputId = useId();
-  const statusId = useId();
-  const roleId = useId();
-  const who = playerName.trim() || "this player";
-  const [open, setOpen] = useState(false);
-  const expanded = open || idText !== "";
-  const linkButton = useRef<HTMLButtonElement>(null);
-  const returnFocus = useRef(false);
+const ROLES: { value: Role; label: string }[] = [
+  { value: "player", label: "Player" },
+  { value: "organizer", label: "Organizer" },
+];
 
-  // After "Don't link", put focus back on "Link Account" rather than losing it.
-  useEffect(() => {
-    if (!expanded && returnFocus.current) {
-      returnFocus.current = false;
-      linkButton.current?.focus();
-    }
-  }, [expanded]);
-
-  if (!expanded) {
-    return (
-      <div className="pl-1">
-        <button
-          ref={linkButton}
-          type="button"
-          className="btn -ml-2 h-9 min-h-9 gap-1.5 px-2 text-sm font-semibold text-base-content/65 btn-ghost hover:text-primary"
-          disabled={!online}
-          onClick={() => setOpen(true)}
-        >
-          <LinkIcon className="size-4" />
-          Link Account <span className="sr-only">for {who}</span>
-        </button>
-      </div>
-    );
-  }
-
-  const problem = PROBLEM_MESSAGE[state.kind];
-  // Don't scold while someone is still typing a half-finished ID.
-  const showMessage =
-    problem && (showProblem || state.kind === "unknown" || state.kind === "duplicate");
-  const bad = !!showMessage && state.kind !== "found";
-  const hasStatus = state.kind === "found" || state.kind === "checking" || !!showMessage;
-
-  return (
-    // Indented under the row with a rule, so it reads as part of that Club player.
-    <div className="ml-3 flex flex-col gap-1.5 border-l-2 border-base-300 pt-1 pl-3">
-      <label htmlFor={idInputId} className="text-sm font-semibold text-base-content/70">
-        Account ID <span className="sr-only">for {who}</span>
-      </label>
-      <div className="flex items-center gap-2">
-        <input
-          id={idInputId}
-          type="text"
-          // 16px text: smaller makes iOS zoom in on focus.
-          className={`input h-10 min-w-0 flex-1 font-mono text-base ${bad ? "input-error" : ""}`}
-          value={idText}
-          placeholder="roy-7k3f"
-          autoComplete="off"
-          autoCapitalize="off"
-          autoCorrect="off"
-          spellCheck={false}
-          enterKeyHint="done"
-          // oxlint-disable-next-line jsx-a11y/no-autofocus -- opened on purpose with Link Account
-          autoFocus={open && idText === ""}
-          disabled={!online}
-          aria-invalid={bad ? true : undefined}
-          aria-describedby={hasStatus ? statusId : undefined}
-          onChange={(event) => onIdText(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.nativeEvent.isComposing) {
-              event.preventDefault();
-              event.currentTarget.blur();
-            }
-          }}
-        />
-        <button
-          type="button"
-          className="btn btn-square shrink-0 text-base-content/60 btn-ghost btn-sm"
-          aria-label={`Don't link ${who}`}
-          onClick={() => {
-            returnFocus.current = true;
-            onIdText("");
-            setOpen(false);
-          }}
-        >
-          <CloseIcon className="size-5" />
-        </button>
-      </div>
-      {/* Keeps a line for the result so the roster doesn't jump as it changes. */}
-      <div className="flex min-h-6 items-center gap-2">
-        {state.kind === "found" ? (
-          <>
-            <p
-              id={statusId}
-              role="status"
-              className="min-w-0 flex-1 truncate text-sm font-semibold text-success"
-            >
-              ✓ {state.name}
-            </p>
-            <RoleSelect
-              id={roleId}
-              who={who}
-              value={state.role}
-              disabled={false}
-              order={["player", "organizer"]}
-              onChange={onRole}
-            />
-          </>
-        ) : state.kind === "checking" ? (
-          <p
-            id={statusId}
-            role="status"
-            className="flex items-center gap-2 text-sm text-base-content/70"
-          >
-            <span aria-hidden="true" className="loading loading-xs loading-spinner" />
-            Checking…
-          </p>
-        ) : showMessage ? (
-          <p
-            id={statusId}
-            role="status"
-            className={`text-sm font-semibold ${bad ? "text-error" : "text-base-content/70"}`}
-          >
-            {problem}
-          </p>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-/** Organizer / Player as a small pill; Organizer is tinted so they stand out down the roster. */
+/** Player / Organizer, styled like the Skill level select above it. */
 function RoleSelect({
   id,
   who,
   value,
   disabled,
-  order,
   onChange,
 }: {
   id: string;
   who: string;
   value: Role;
   disabled: boolean;
-  order: Role[];
   onChange: (role: Role) => void;
 }) {
   return (
@@ -281,16 +180,14 @@ function RoleSelect({
       </label>
       <select
         id={id}
-        className={`select w-auto shrink-0 rounded-full pl-3.5 font-semibold select-sm ${
-          value === "organizer" ? "border-primary/40 bg-primary/10 text-primary" : ""
-        }`}
+        className="select w-full text-base"
         value={value}
         disabled={disabled}
         onChange={(event) => onChange(event.target.value as Role)}
       >
-        {order.map((role) => (
-          <option key={role} value={role}>
-            {ROLE_LABEL[role]}
+        {ROLES.map((role) => (
+          <option key={role.value} value={role.value}>
+            {role.label}
           </option>
         ))}
       </select>

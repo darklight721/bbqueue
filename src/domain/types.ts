@@ -216,6 +216,8 @@ export interface SessionSummary {
   sessionName: string;
   totalMatches: number;
   totalPlayers: number;
+  /** Distinct Courts with at least one Ended match. */
+  totalCourts: number;
   startedAt: number;
   endedAt: number;
   topWinners: TopWinner[];

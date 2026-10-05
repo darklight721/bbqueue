@@ -97,10 +97,9 @@ test.describe("Deleting an Account, between two people", () => {
     expect(await adminGetDoc(`accountIds/${roy.accountId.toLowerCase()}`)).not.toBeNull();
 
     // Ana sees Roy's row stay on the roster, no longer linked.
-    await expect(anaPage.getByRole("button", { name: "Link Account for Roy Smith" })).toBeVisible({
-      timeout: 30_000,
-    });
-    await expect(anaPage.getByText(roy.accountId)).toHaveCount(0);
+    await expect(anaPage.getByText(roy.accountId)).toHaveCount(0, { timeout: 30_000 });
+    await expect(anaPage.getByRole("textbox", { name: "Player name" })).toHaveCount(2);
+    await expect(anaPage.getByRole("combobox", { name: "Role for Roy Smith" })).toHaveCount(0);
 
     await anaPage.context().close();
   });

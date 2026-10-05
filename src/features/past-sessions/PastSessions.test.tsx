@@ -115,6 +115,7 @@ describe("past sessions routes", () => {
     expect(screen.getByText(sessionTimes(start, 1_000_000_000_000))).toBeInTheDocument();
     expect(stat("Matches")).toHaveTextContent("2");
     expect(stat("Players")).toHaveTextContent("5");
+    expect(stat("Courts")).toHaveTextContent("1");
     expect(stat("Duration")).toHaveTextContent("1 h");
 
     // Standings: open, every player who played, 0-win players included.

@@ -175,7 +175,10 @@ describe("Make shared club", () => {
     // The screen follows: no Make shared club, no "This device only", and rows can be linked now.
     expect(screen.queryByRole("button", { name: "Make shared club" })).not.toBeInTheDocument();
     expect(screen.queryByText("This device only")).not.toBeInTheDocument();
-    expect(await screen.findByRole("button", { name: "Link Account for Ana" })).toBeInTheDocument();
+    expect(await screen.findByDisplayValue("Ana")).toHaveAttribute(
+      "placeholder",
+      "Name or @Account ID",
+    );
   });
 
   it("Add me adds the Account as a new row, and is refused when the name is on the roster", async () => {

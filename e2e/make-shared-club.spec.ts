@@ -76,9 +76,12 @@ test.describe("Make shared club", () => {
     ]);
 
     // Account IDs link as for any Shared club.
-    await page.getByRole("button", { name: "Link Account for Ana" }).click();
-    await page.getByRole("textbox", { name: /Account ID.* for Ana/ }).fill(ana.accountId);
-    await expect(page.getByText("✓ Ana Bell")).toBeVisible();
+    // Rows are sorted by name: Ana's comes first.
+    const anaField = page.getByRole("textbox", { name: "Player name" }).first();
+    await expect(anaField).toHaveValue("Ana");
+    await anaField.fill(`@${ana.accountId}`);
+    await expect(page.getByText(/Linked to/)).toHaveText(`Linked to ${ana.accountId}`);
+    await expect(page.getByRole("combobox", { name: "Role for Ana Bell" })).toHaveValue("player");
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page).toHaveURL(/\/clubs$/);
     await expect

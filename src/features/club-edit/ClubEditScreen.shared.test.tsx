@@ -98,6 +98,7 @@ describe("Club screens with Accounts", () => {
     await startWith({ signedIn: false });
     const user = userEvent.setup();
     renderAt("/clubs/new");
+    expect(screen.queryByRole("textbox", { name: "Player name" })).not.toBeInTheDocument();
 
     await user.type(screen.getByRole("textbox", { name: "Club name" }), "Tuesday");
     await user.click(screen.getByRole("button", { name: "Save" }));

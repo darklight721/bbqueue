@@ -36,7 +36,8 @@ test.describe("Clubs", () => {
     for (const [index, [name, count]] of expected.entries()) {
       const row = rows.nth(index);
       await expect(row).toHaveAccessibleName(name);
-      await expect(row).toHaveAccessibleDescription(count);
+      // Seeded Clubs are Local, so with a Backend each row is also badged "This device only".
+      await expect(row).toHaveAccessibleDescription(`${count} This device only`);
     }
   });
 

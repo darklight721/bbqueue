@@ -1,5 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
-import { makeClub, makeClubPlayer, makeSession, readStored, seedStorage } from "./fixtures.ts";
+import {
+  makeClub,
+  makeClubPlayer,
+  makeEndedSession,
+  makeSession,
+  readStored,
+  seedStorage,
+} from "./fixtures.ts";
 
 const playerNames = (page: Page) => page.getByRole("textbox", { name: "Player name" });
 const clubNameField = (page: Page) => page.getByRole("textbox", { name: "Club name" });
@@ -55,7 +62,7 @@ test.describe("New club", () => {
 
     await expect(page).toHaveURL(/\/clubs$/);
     const row = page.getByRole("link", { name: "Tuesday Crew", exact: true });
-    await expect(row).toHaveAccessibleDescription("3 players");
+    await expect(row).toHaveAccessibleDescription("3 players This device only");
 
     // Reopen: sorted alphabetically, skills preserved.
     await row.click();
@@ -122,7 +129,7 @@ test.describe("New club", () => {
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page).toHaveURL(/\/clubs$/);
     await expect(page.getByRole("link", { name: "Solo", exact: true })).toHaveAccessibleDescription(
-      "No players",
+      "No players This device only",
     );
   });
 });
@@ -157,7 +164,7 @@ test.describe("Edit club", () => {
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page).toHaveURL(/\/clubs$/);
     const row = page.getByRole("link", { name: "Friday Club", exact: true });
-    await expect(row).toHaveAccessibleDescription("3 players");
+    await expect(row).toHaveAccessibleDescription("3 players This device only");
 
     await row.click();
     await expectRows(page, [
@@ -339,6 +346,44 @@ test.describe("Session link", () => {
     await link.click();
     await expect(page).toHaveURL(new RegExp(`/sessions/${session.id}$`));
     await expect(page.getByRole("heading", { level: 1, name: "Friday night" })).toBeVisible();
+  });
+
+  test("New session and Sessions sit side by side in one row, and each opens its screen", async ({
+    page,
+  }) => {
+    const club = seedClub();
+    const ended = makeEndedSession({ name: "Last week", clubId: club.id, clubName: club.name });
+    await seedStorage(page, { clubs: [club], endedSessions: [ended] });
+    await page.goto(`/clubs/${club.id}`);
+
+    const newSession = page.getByRole("link", { name: "New session" });
+    const sessions = page.getByRole("link", { name: "Sessions", exact: true });
+    await expect(newSession).toHaveAccessibleDescription("Pick players and courts");
+    await expect(sessions).toHaveAccessibleDescription("1 past session");
+    // One row of two equal columns.
+    const [left, right] = [(await newSession.boundingBox())!, (await sessions.boundingBox())!];
+    expect(Math.abs(left.y - right.y)).toBeLessThan(1);
+    expect(Math.abs(left.width - right.width)).toBeLessThan(1);
+    expect(right.x).toBeGreaterThan(left.x + left.width);
+
+    await newSession.click();
+    await expect(page).toHaveURL(new RegExp(`/sessions/new\\?club=${club.id}$`));
+    await expect(page.getByRole("heading", { level: 1, name: "New session" })).toBeVisible();
+    await page.goBack();
+
+    await sessions.click();
+    await expect(page).toHaveURL(new RegExp(`/clubs/${club.id}/sessions$`));
+    await expect(page.getByRole("heading", { level: 1, name: club.name })).toBeVisible();
+  });
+
+  test("a card on its own takes the whole row", async ({ page }) => {
+    const club = seedClub();
+    await seedStorage(page, { clubs: [club] });
+    await page.goto(`/clubs/${club.id}`);
+
+    const card = (await page.getByRole("link", { name: "New session" }).boundingBox())!;
+    const nameField = (await clubNameField(page).boundingBox())!;
+    expect(Math.abs(card.width - nameField.width)).toBeLessThan(1);
   });
 
   test("New club has no session link", async ({ page }) => {

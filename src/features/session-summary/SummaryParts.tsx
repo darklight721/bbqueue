@@ -14,7 +14,8 @@ const MEDAL: Record<number, { bg: string; ring: string }> = {
 };
 
 /**
- * Matches, Players and Duration as three number tiles on one row at every width.
+ * Matches, Players, Courts and Duration as number tiles in a 2×2 grid at every width
+ * (Matches · Players / Courts · Duration). Courts: distinct Courts with an Ended match.
  * The list is its own size container: numbers, labels and spacing scale with its width
  * (so a 320px phone and the phone-width shared image both fit "12.5 h" on one line).
  */
@@ -22,20 +23,21 @@ export function Totals({ summary }: { summary: SessionSummary }) {
   const tiles = [
     { label: "Matches", value: String(summary.totalMatches) },
     { label: "Players", value: String(summary.totalPlayers) },
+    { label: "Courts", value: String(summary.totalCourts) },
     { label: "Duration", value: formatSessionDuration(summary.endedAt - summary.startedAt) },
   ];
   return (
-    <dl className="@container grid grid-cols-3 gap-[clamp(0.5rem,2.5cqw,0.75rem)]">
+    <dl className="@container grid grid-cols-2 gap-[clamp(0.625rem,3cqw,1rem)]">
       {tiles.map((tile, index) => (
         <div
           key={tile.label}
-          className="animate-rise flex min-w-0 flex-col gap-1.5 rounded-box border-[1.5px] border-base-300 bg-base-100 px-[clamp(0.625rem,3.5cqw,1rem)] py-[clamp(0.75rem,4cqw,1rem)] shadow-md"
-          style={rise(2 + index * 0.5)}
+          className="animate-rise flex min-w-0 flex-col gap-[clamp(0.375rem,1.75cqw,0.625rem)] rounded-box border-[1.5px] border-base-300 bg-base-100 px-[clamp(0.875rem,4.5cqw,1.5rem)] py-[clamp(0.875rem,4.5cqw,1.25rem)] shadow-md"
+          style={rise(2 + index * 0.4)}
         >
-          <dt className="order-2 truncate text-[clamp(0.5625rem,3.3cqw,0.75rem)] leading-none font-bold tracking-[0.08em] text-base-content/60 uppercase">
+          <dt className="order-2 truncate text-[clamp(0.6875rem,3.6cqw,0.875rem)] leading-none font-bold tracking-[0.08em] text-base-content/60 uppercase">
             {tile.label}
           </dt>
-          <dd className="order-1 font-display text-[clamp(1.5rem,9.25cqw,3rem)] leading-none font-bold tracking-tight whitespace-nowrap tabular-nums">
+          <dd className="order-1 font-display text-[clamp(2.25rem,14cqw,4.25rem)] leading-none font-bold tracking-tight whitespace-nowrap tabular-nums">
             <TotalValue value={tile.value} />
           </dd>
         </div>

@@ -1,8 +1,10 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { Router } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
+import { setBackendForTests } from "../../backend/index.ts";
+import { createInMemoryBackend } from "../../backend/inMemoryBackend.ts";
 import type { Club } from "../../domain/types.ts";
 import { resetStoreForTests, setLocalClubs } from "../../storage/store.ts";
 import { ClubsScreen } from "./ClubsScreen.tsx";
@@ -25,6 +27,10 @@ describe("ClubsScreen", () => {
   beforeEach(() => {
     localStorage.clear();
     resetStoreForTests();
+  });
+
+  afterEach(() => {
+    setBackendForTests(null);
   });
 
   it("shows the empty state with Add club", async () => {
@@ -74,5 +80,15 @@ describe("ClubsScreen", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(location.history.at(-1)).toBe("/");
+  });
+
+  it("badges a Local club This device only when there is a Backend, next to the player count", () => {
+    setBackendForTests(createInMemoryBackend());
+    setLocalClubs([{ id: "c1", name: "Riverside", kind: "local", players: [player("a")] }]);
+    renderScreen();
+
+    const row = screen.getByRole("link", { name: "Riverside" });
+    expect(within(row).getByText("This device only")).toHaveClass("badge");
+    expect(row).toHaveAccessibleDescription("1 player This device only");
   });
 });

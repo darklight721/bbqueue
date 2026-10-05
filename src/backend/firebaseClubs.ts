@@ -22,10 +22,9 @@ import {
   type Firestore,
   type QuerySnapshot,
 } from "firebase/firestore";
-import { normalizeAccountId } from "../domain/accountId.ts";
-import { creatorPlayer, type ClubChange } from "../domain/clubChanges.ts";
+import { accountIdsEqual, normalizeAccountId } from "../domain/accountId.ts";
+import type { ClubChange } from "../domain/clubChanges.ts";
 import { clubChangeProblem, ownRow } from "../domain/permissions.ts";
-import { newId } from "../domain/ids.ts";
 import {
   SKILL_LEVELS,
   type Account,
@@ -52,6 +51,7 @@ import {
   withTimeout,
   type FirebaseDeps,
 } from "./firebaseShared.ts";
+import { planNewSharedClub } from "./newSharedClub.ts";
 
 /**
  * Shared clubs on Firestore:
@@ -419,19 +419,44 @@ export function createFirebaseClubs(
     async createSharedClub(input) {
       const { account, uid } = await requireViewer();
       const name = requireValidName(input.name);
-      const creator = creatorPlayer(account, newId());
-      const players = [creator, ...input.players];
+      const planned = planNewSharedClub(account, input.players);
+
+      // Resolve every Account the roster links to its uid first, so nothing is written when one
+      // is unknown. The creator's own row is theirs already.
+      const players: ClubPlayer[] = [];
+      const linkUids = new Map<string, string>();
+      for (const player of planned) {
+        if (!player.link) {
+          players.push(player);
+        } else if (accountIdsEqual(player.link.accountId, account.accountId)) {
+          players.push(player);
+          linkUids.set(player.id, uid);
+        } else {
+          const found = await knownAccount(player.link.accountId);
+          players.push({ ...player, link: { ...player.link, accountId: found.account.accountId } });
+          linkUids.set(player.id, found.uid);
+        }
+      }
+
+      const memberUids = new Set([uid]);
+      const organizerUids = new Set([uid]);
+      for (const player of players) {
+        const linkedUid = linkUids.get(player.id);
+        if (!player.link || !linkedUid) continue;
+        memberUids.add(linkedUid);
+        if (player.link.role === "organizer") organizerUids.add(linkedUid);
+      }
 
       const batch = writeBatch(db);
       batch.set(clubRef(input.id), {
         name,
-        memberUids: [uid],
-        organizerUids: [uid],
+        memberUids: [...memberUids],
+        organizerUids: [...organizerUids],
         createdAt: serverTimestamp(),
       });
-      batch.set(playerRef(input.id, creator.id), toRecord(creator, uid));
-      for (const player of input.players)
-        batch.set(playerRef(input.id, player.id), toRecord(player));
+      for (const player of players) {
+        batch.set(playerRef(input.id, player.id), toRecord(player, linkUids.get(player.id)));
+      }
       await settle(deps.online, batch.commit());
       return { id: input.id, name, kind: "shared", players };
     },

@@ -89,6 +89,52 @@ export function runSharedClubsContract(name: string, create: () => ClubsContract
       await eventually(() => expect(clubs().map(byId)).toEqual([byId(created)]));
     });
 
+    it("keeps the creator's own row as the client filled it in, instead of adding a default one", async () => {
+      const { backend, account, clubs } = await signedIn();
+      const mine: ClubPlayer = {
+        id: "p-me",
+        name: "Roy B.",
+        skill: "advanced",
+        link: { accountId: account.accountId.toUpperCase(), role: "organizer" },
+      };
+
+      const created = await backend.createSharedClub({
+        id: "c1",
+        name: "Tuesday",
+        players: [ana, mine],
+      });
+
+      expect(created.players).toHaveLength(2);
+      expect(row(created, "p-me")).toEqual({
+        ...mine,
+        link: { accountId: account.accountId, role: "organizer" },
+      });
+      await eventually(() => expect(clubs().map(byId)).toEqual([byId(created)]));
+    });
+
+    it("rejects a creator row that isn't an Organizer, and writes nothing", async () => {
+      const { backend, account, clubs } = await signedIn();
+
+      const error = await rejection(
+        backend.createSharedClub({
+          id: "c1",
+          name: "Tuesday",
+          players: [
+            {
+              id: "p-me",
+              name: "Roy",
+              skill: "beginner",
+              link: { accountId: account.accountId, role: "player" },
+            },
+          ],
+        }),
+      );
+
+      expect((error as BackendError).code).toBe("forbidden");
+      await backend.getCurrentAccount();
+      expect(clubs()).toEqual([]);
+    });
+
     it("rejects an empty Club name", async () => {
       const { backend } = await signedIn();
 

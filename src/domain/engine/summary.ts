@@ -65,8 +65,8 @@ export function rankStandings(ended: EndedSession): StandingsEntry[] {
 }
 
 /**
- * Summary derived from a stored Ended session. Top winners: Standings entries placed 3rd or
- * better with at least one win.
+ * Summary derived from a stored Ended session. Courts: distinct Courts with at least one Ended
+ * match. Top winners: Standings entries placed 3rd or better with at least one win.
  */
 export function buildSummary(ended: EndedSession): SessionSummary {
   const topWinners = rankStandings(ended).filter((entry) => entry.place <= 3 && entry.wins >= 1);
@@ -74,6 +74,7 @@ export function buildSummary(ended: EndedSession): SessionSummary {
     sessionName: ended.name,
     totalMatches: ended.matches.length,
     totalPlayers: ended.players.length,
+    totalCourts: new Set(ended.matches.map((match) => match.courtNumber)).size,
     startedAt: ended.startedAt,
     endedAt: ended.endedAt,
     topWinners,

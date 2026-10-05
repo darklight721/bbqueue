@@ -101,8 +101,8 @@ export function CreateAccountForm({
         Your name
       </label>
       <p id={whyId} className="mt-1 mb-3 leading-snug text-base-content/70">
-        Creates your Account, so your Club can add you by your Account ID and you'll see Sessions
-        live.
+        We'll use it to create your Account. Your Club can then add you by your Account ID, and
+        you'll see Sessions live.
       </p>
       <input
         ref={inputRef}

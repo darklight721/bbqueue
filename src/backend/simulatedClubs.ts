@@ -1,12 +1,6 @@
 import { accountIdsEqual } from "../domain/accountId.ts";
-import {
-  applyClubChange,
-  creatorPlayer,
-  roleInClub,
-  type ClubChange,
-} from "../domain/clubChanges.ts";
+import { applyClubChange, roleInClub, type ClubChange } from "../domain/clubChanges.ts";
 import { canDeleteClub, clubChangeProblem, ownRow } from "../domain/permissions.ts";
-import { newId } from "../domain/ids.ts";
 import type { Account, Club, ClubPlayer } from "../domain/types.ts";
 import {
   BackendError,
@@ -14,6 +8,7 @@ import {
   type OnlineSource,
   type SharedClubsApi,
 } from "./backend.ts";
+import { planNewSharedClub } from "./newSharedClub.ts";
 
 /** A Shared club change that is waiting for the connection. */
 export type ClubOp =
@@ -172,12 +167,20 @@ export function createSimulatedClubs(
       } catch (error) {
         return Promise.reject(error);
       }
-      const club: Club = {
-        id: input.id,
-        name,
-        kind: "shared",
-        players: [creatorPlayer(account, newId()), ...input.players],
-      };
+      let players: ClubPlayer[];
+      try {
+        // Links to other Accounts are looked up first, so nothing is written when one is unknown.
+        players = planNewSharedClub(account, input.players).map((player) => {
+          if (!player.link || accountIdsEqual(player.link.accountId, account.accountId)) {
+            return player;
+          }
+          requireOnline();
+          return withKnownAccount(player);
+        });
+      } catch (error) {
+        return Promise.reject(error);
+      }
+      const club: Club = { id: input.id, name, kind: "shared", players };
       send({ type: "create", club });
       return Promise.resolve(club);
     },

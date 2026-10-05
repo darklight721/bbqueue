@@ -33,6 +33,7 @@ export function ClubsScreen() {
 function ClubRow({ club, index }: { club: Club; index: number }) {
   const nameId = useId();
   const countId = useId();
+  const deviceOnlyId = useId();
   // Without a backend every Club is on this device, so there is nothing to tell apart.
   const deviceOnly = club.kind === "local" && getBackend() !== null;
   const initial = club.name.trim().charAt(0).toLocaleUpperCase() || "?";
@@ -40,7 +41,8 @@ function ClubRow({ club, index }: { club: Club; index: number }) {
     <Link
       href={`/clubs/${club.id}`}
       aria-labelledby={nameId}
-      aria-describedby={countId}
+      // The badge is part of the description: "8 players This device only".
+      aria-describedby={deviceOnly ? `${countId} ${deviceOnlyId}` : countId}
       className="animate-rise group flex min-h-20 items-center gap-4 rounded-box border-[1.5px] border-base-300 bg-base-100 p-4 pr-3 shadow-sm transition-transform active:scale-[0.98]"
       style={{ animationDelay: `${Math.min(index, 8) * 40}ms` }}
     >
@@ -54,12 +56,21 @@ function ClubRow({ club, index }: { club: Club; index: number }) {
         <span id={nameId} className="truncate font-display text-2xl leading-tight font-bold">
           {club.name}
         </span>
-        <span id={countId} className="text-sm text-base-content/65">
-          {playerCountLabel(club.players.length)}
+        {/* "8 players · [This device only]". On a narrow row the badge wraps under the count;
+            its "·" then sits left of the row's edge and is clipped away by overflow-hidden. */}
+        <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 overflow-hidden text-sm text-base-content/65">
+          <span id={countId}>{playerCountLabel(club.players.length)}</span>
+          {deviceOnly ? (
+            <span className="relative flex before:absolute before:top-1/2 before:-left-1.5 before:-translate-x-1/2 before:-translate-y-1/2 before:leading-none before:content-['·']">
+              <span
+                id={deviceOnlyId}
+                className="badge badge-outline badge-sm badge-neutral border-base-content/25 font-semibold whitespace-nowrap text-base-content/70"
+              >
+                This device only
+              </span>
+            </span>
+          ) : null}
         </span>
-        {deviceOnly ? (
-          <span className="text-xs font-semibold text-base-content/55">This device only</span>
-        ) : null}
       </span>
       <ChevronRightIcon className="size-6 shrink-0 opacity-50 transition-transform group-hover:translate-x-0.5" />
     </Link>

@@ -32,7 +32,8 @@ function endedSession(
 ): EndedSession {
   const matches: EndedSessionMatch[] = rows.map(([a, b, score], index) => ({
     number: index + 1,
-    courtNumber: 1,
+    // Two Courts, taking turns.
+    courtNumber: (index % 2) + 1,
     teams: [a, b],
     target: 21,
     startedAt: START + index * 10 * MIN,
@@ -143,12 +144,16 @@ describe("SessionSummaryScreen", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Session summary" })).toBeInTheDocument();
     expect(screen.getByText("Thursday Smash")).toBeInTheDocument();
 
-    const totals = Object.fromEntries(
-      screen
-        .getAllByRole("term")
-        .map((term) => [term.textContent, term.nextElementSibling?.textContent]),
-    );
-    expect(totals).toEqual({ Matches: "7", Players: "8", Duration: "2.5 h" });
+    // In reading order of the 2×2 grid: Matches · Players / Courts · Duration.
+    const totals = screen
+      .getAllByRole("term")
+      .map((term) => [term.textContent, term.nextElementSibling?.textContent]);
+    expect(totals).toEqual([
+      ["Matches", "7"],
+      ["Players", "8"],
+      ["Courts", "2"],
+      ["Duration", "2.5 h"],
+    ]);
   });
 
   it("lists top winners with shared places, showing everyone placed 3rd or better", () => {

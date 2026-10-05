@@ -276,7 +276,7 @@ test.describe("Full journey", () => {
     await expect(page).toHaveURL(/\/clubs$/);
     await expect(
       page.getByRole("link", { name: "Journey Club", exact: true }),
-    ).toHaveAccessibleDescription("8 players");
+    ).toHaveAccessibleDescription("8 players This device only");
     const clubs = await readStoredData<Club[]>(page, "clubs");
     expect(clubs![0]!.players).toHaveLength(8);
 
@@ -329,6 +329,7 @@ test.describe("Full journey", () => {
     await expect(page.getByText("Journey Club", { exact: true })).toBeVisible();
     await expect(stat(page, /^Matches$/)).toHaveText("2");
     await expect(stat(page, /^Players$/)).toHaveText("8");
+    await expect(stat(page, /^Courts$/)).toHaveText("2");
     await expect(stat(page, /^Duration$/)).toHaveText(/^\d+(\.5)? h$/);
 
     // The winning pair (Team A, 21–15) share 1st: one scored match each.

@@ -22,49 +22,79 @@ const club: Club = makeClub({
   ],
 });
 
-const idField = (page: Page, who: string) =>
-  page.getByRole("textbox", { name: new RegExp(`Account ID.* for ${who}`) });
-/** Opens the Account ID field with "Link Account", then returns it. */
-async function linkField(page: Page, who: string) {
-  await page.getByRole("button", { name: `Link Account for ${who}` }).click();
-  return idField(page, who);
-}
 const role = (page: Page, who: string) => page.getByRole("combobox", { name: `Role for ${who}` });
+const catField = (page: Page) => page.getByRole("textbox", { name: "Player name" }).nth(0);
 
 test.describe("Linking Accounts (one device)", () => {
   test.beforeEach(async ({ page }) => {
     await seedStorage(page, { account: roy, otherAccounts: [ana], sharedClubs: [club] });
     await page.goto("/clubs/shared-1");
     await expect(role(page, roy.name)).toHaveValue("organizer");
+    // Rows are sorted by name: Cat first.
+    await expect(catField(page)).toHaveValue("Cat");
   });
 
-  test("an Organizer links a Club player by Account ID in any capitalisation: ✓ Name, saved as Player", async ({
+  test("an Organizer types @Account ID in any capitalisation in a name: the Account's name replaces it, saved as Player", async ({
     page,
   }) => {
-    await (await linkField(page, "Cat")).fill("ANA-2222");
-    await expect(page.getByText("✓ Ana Bell")).toBeVisible();
+    await expect(catField(page)).toHaveAttribute("placeholder", "Name or @Account ID");
+    await catField(page).fill("@ANA-2222");
+    await expect(page.getByText(/Linked to/)).toHaveText("Linked to ana-2222");
+    await expect(catField(page)).toHaveValue("Ana Bell");
+    await expect(catField(page)).toBeFocused();
+    await expect(role(page, "Ana Bell")).toHaveValue("player");
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page).toHaveURL(/\/clubs$/);
 
     const [saved] = await readFakeClubs(page);
-    expect(saved?.players.find((p) => p.id === "p-cat")?.link).toEqual({
-      accountId: "ana-2222",
-      role: "player",
+    expect(saved?.players.find((p) => p.id === "p-cat")).toEqual({
+      id: "p-cat",
+      name: "Ana Bell",
+      skill: "beginner",
+      link: { accountId: "ana-2222", role: "player" },
     });
 
     await page.getByRole("link", { name: /Tuesday/ }).click();
-    await expect(role(page, "Cat")).toHaveValue("player");
+    await expect(role(page, "Ana Bell")).toHaveValue("player");
+    await expect(page.getByRole("button", { name: /Remove link/ })).toHaveCount(0);
   });
 
-  test("an unknown or already-linked Account ID is rejected", async ({ page }) => {
-    await (await linkField(page, "Cat")).fill("nobody-abcd");
+  test("an unknown or already-linked Account ID is rejected under the field", async ({ page }) => {
+    await catField(page).fill("@nobody-abcd");
     await expect(page.getByText("No Account has that Account ID.")).toBeVisible();
+    await expect(catField(page)).toHaveAttribute("aria-invalid", "true");
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page.getByText("Fix the highlighted fields to save.")).toBeVisible();
+    await expect(page.getByText("Enter a name")).toHaveCount(0);
     await expect(page).toHaveURL(/\/clubs\/shared-1$/);
 
-    await idField(page, "Cat").fill("Roy-7K3F");
+    await catField(page).fill("@Roy-7K3F");
     await expect(page.getByText("That Account is already on this roster.")).toBeVisible();
+  });
+
+  test("✕ takes back a link that isn't saved yet, and clears the name", async ({ page }) => {
+    await catField(page).fill("@ana-2222");
+    await expect(catField(page)).toHaveValue("Ana Bell");
+    await page.getByRole("button", { name: "Remove link for Ana Bell" }).click();
+
+    await expect(catField(page)).toHaveValue("");
+    await expect(catField(page)).toBeFocused();
+    await expect(page.getByText(/Linked to/)).toHaveCount(0);
+    await catField(page).fill("Cat");
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page).toHaveURL(/\/clubs$/);
+    const [saved] = await readFakeClubs(page);
+    expect(saved?.players.find((p) => p.id === "p-cat")?.link).toBeUndefined();
+  });
+
+  test("the Role sits right under the Skill level", async ({ page }) => {
+    const skill = (await page
+      .getByRole("combobox", { name: `Skill level for ${roy.name}` })
+      .boundingBox())!;
+    const roleBox = (await role(page, roy.name).boundingBox())!;
+    expect(Math.abs(roleBox.x - skill.x)).toBeLessThan(1);
+    expect(Math.abs(roleBox.width - skill.width)).toBeLessThan(1);
+    expect(roleBox.y).toBeGreaterThan(skill.y + skill.height);
   });
 
   test("the last Organizer can't demote themselves, and can't leave", async ({ page }) => {
@@ -77,17 +107,15 @@ test.describe("Linking Accounts (one device)", () => {
     await expect(page.getByText(/You're the only Organizer/)).toBeVisible();
   });
 
-  test("offline: Account IDs and Roles are turned off, with the reason", async ({
-    page,
-    context,
-  }) => {
+  test("offline: linking and Roles are turned off, with the reason", async ({ page, context }) => {
     await context.setOffline(true);
 
-    await expect(page.getByRole("button", { name: "Link Account for Cat" })).toBeDisabled();
     await expect(role(page, roy.name)).toBeDisabled();
     await expect(
       page.getByText("You're offline. Linking Accounts and changing Roles need a connection."),
     ).toBeVisible();
+    await catField(page).fill("@ana-2222");
+    await expect(page.getByText("Linking an Account needs a connection.")).toBeVisible();
   });
 });
 

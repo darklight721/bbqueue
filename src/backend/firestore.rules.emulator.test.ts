@@ -282,23 +282,25 @@ describe("Shared club rules", () => {
     await assertSucceeds(batch.commit());
   });
 
-  it("refuses a Club that makes somebody else a member or Organizer", async () => {
+  it("refuses a Club without its creator as member and Organizer, or with an Organizer who isn't a member", async () => {
     await seedAccounts(ROY, ANA);
     const db = as(ROY.uid);
-    await assertFails(
-      setDoc(doc(db, "clubs", "c1"), {
-        name: "Tuesday",
-        memberUids: [ROY.uid, ANA.uid],
-        organizerUids: [ROY.uid],
-      }),
-    );
-    await assertFails(
-      setDoc(doc(db, "clubs", "c2"), {
-        name: "Tuesday",
-        memberUids: [ANA.uid],
-        organizerUids: [ANA.uid],
-      }),
-    );
+    const record = (memberUids: string[], organizerUids: string[]) => ({
+      name: "Tuesday",
+      memberUids,
+      organizerUids,
+      createdAt: serverTimestamp(),
+    });
+    // Somebody else's Club.
+    await assertFails(setDoc(doc(db, "clubs", "c1"), record([ANA.uid], [ANA.uid])));
+    // The creator as member only, or as Organizer only.
+    await assertFails(setDoc(doc(db, "clubs", "c1"), record([ROY.uid, ANA.uid], [ANA.uid])));
+    await assertFails(setDoc(doc(db, "clubs", "c1"), record([ANA.uid], [ROY.uid, ANA.uid])));
+    // An Organizer who isn't a member.
+    await assertFails(setDoc(doc(db, "clubs", "c1"), record([ROY.uid], [ROY.uid, ANA.uid])));
+    // Lists that aren't lists.
+    await assertFails(setDoc(doc(db, "clubs", "c1"), record(ROY.uid as never, [ROY.uid])));
+    await assertSucceeds(setDoc(doc(db, "clubs", "c1"), record([ROY.uid, ANA.uid], [ROY.uid])));
   });
 
   it("refuses a Club whose creation time isn't the server's, or that leaves it out", async () => {
@@ -322,7 +324,7 @@ describe("Shared club rules", () => {
     await assertSucceeds(setDoc(doc(db, "clubs", "c1"), record()));
   });
 
-  it("refuses a Club creation batch with a row linked to somebody else", async () => {
+  it("refuses a Club creation batch with a row linked to somebody else when the lists or the Account ID don't agree", async () => {
     await seedAccounts(ROY, ANA);
     const db = as(ROY.uid);
     const newClub = (row: Record<string, unknown>) => {
@@ -1717,14 +1719,137 @@ describe("Making a Local club shared: the creator's import", () => {
     await assertSucceeds(setDoc(doc(db, "clubs", "c1", "activeSession", "current"), record(ROY)));
   });
 
-  it("refuses linking anybody but the creator in the new Club's first batch", async () => {
-    await seedAccounts(ROY, ANA);
-    const db = as(ROY.uid);
-    const batch = writeBatch(db);
-    batch.set(doc(db, "clubs", "c1"), clubRecord());
-    batch.set(doc(db, "clubs", "c1", "players", "p-roy"), row("roy", link(ROY, "organizer")));
-    batch.set(doc(db, "clubs", "c1", "players", "p-ana"), row("ana", link(ANA, "player")));
-    await assertFails(batch.commit());
+  describe("linking other Accounts in the new Club's first batch (ADR-0008)", () => {
+    const create = (
+      lists: { memberUids: string[]; organizerUids: string[] },
+      rows: Record<string, Record<string, unknown>>,
+      uid = ROY.uid,
+    ) => {
+      const db = as(uid);
+      const batch = writeBatch(db);
+      batch.set(doc(db, "clubs", "c1"), { name: "Garage", ...lists, createdAt: serverTimestamp() });
+      for (const [id, data] of Object.entries(rows)) {
+        batch.set(doc(db, "clubs", "c1", "players", id), data);
+      }
+      return batch.commit();
+    };
+    const royRow = { name: "Roy", skill: "intermediate", link: link(ROY, "organizer") };
+    const anaRow = (role: "organizer" | "player") => ({
+      name: "Ana",
+      skill: "beginner",
+      link: link(ANA, role),
+    });
+
+    it("allows linking another reserved Account when the lists agree, as Player or as Organizer", async () => {
+      await seedAccounts(ROY, ANA, BEN);
+      await assertSucceeds(
+        create(
+          { memberUids: [ROY.uid, ANA.uid], organizerUids: [ROY.uid] },
+          { "p-roy": royRow, "p-ana": anaRow("player") },
+        ),
+      );
+      await env.clearFirestore();
+      await seedAccounts(ROY, ANA, BEN);
+      await assertSucceeds(
+        create(
+          { memberUids: [ROY.uid, ANA.uid, BEN.uid], organizerUids: [ROY.uid, ANA.uid] },
+          {
+            "p-roy": royRow,
+            "p-ana": anaRow("organizer"),
+            "p-ben": { name: "Ben", skill: "beginner", link: link(BEN, "player") },
+            "p-cat": { name: "Cat", skill: "advanced" },
+          },
+        ),
+      );
+      // Ana, an Organizer now, may read and change the Club; Ben, a Player, may only read.
+      await assertSucceeds(getDoc(doc(as(BEN.uid), "clubs", "c1")));
+      await assertSucceeds(updateDoc(doc(as(ANA.uid), "clubs", "c1"), { name: "Friday" }));
+      await assertFails(updateDoc(doc(as(BEN.uid), "clubs", "c1"), { name: "Nope" }));
+    });
+
+    it("refuses a link whose uid doesn't own the Account ID", async () => {
+      await seedAccounts(ROY, ANA, BEN);
+      const lists = { memberUids: [ROY.uid, BEN.uid], organizerUids: [ROY.uid] };
+      await assertFails(
+        create(lists, {
+          "p-roy": royRow,
+          "p-ben": {
+            name: "Ana",
+            skill: "beginner",
+            link: { accountId: ANA.accountId, uid: BEN.uid, role: "player" },
+          },
+        }),
+      );
+      await assertFails(
+        create(lists, {
+          "p-roy": royRow,
+          "p-ben": {
+            name: "Ghost",
+            skill: "beginner",
+            link: { accountId: "ghost-9999", uid: BEN.uid, role: "player" },
+          },
+        }),
+      );
+    });
+
+    it("refuses lists that disagree with the links", async () => {
+      await seedAccounts(ROY, ANA);
+      // Linked, but not on the lists.
+      await assertFails(
+        create(
+          { memberUids: [ROY.uid], organizerUids: [ROY.uid] },
+          { "p-roy": royRow, "p-ana": anaRow("player") },
+        ),
+      );
+      // A Player who is listed as an Organizer.
+      await assertFails(
+        create(
+          { memberUids: [ROY.uid, ANA.uid], organizerUids: [ROY.uid, ANA.uid] },
+          { "p-roy": royRow, "p-ana": anaRow("player") },
+        ),
+      );
+      // An Organizer who is only listed as a member.
+      await assertFails(
+        create(
+          { memberUids: [ROY.uid, ANA.uid], organizerUids: [ROY.uid] },
+          { "p-roy": royRow, "p-ana": anaRow("organizer") },
+        ),
+      );
+    });
+
+    it("refuses a create without the creator as Organizer", async () => {
+      await seedAccounts(ROY, ANA);
+      // The creator's own row says Player, with the lists naming them as an Organizer.
+      await assertFails(
+        create(
+          { memberUids: [ROY.uid, ANA.uid], organizerUids: [ROY.uid] },
+          { "p-roy": { ...royRow, link: link(ROY, "player") }, "p-ana": anaRow("player") },
+        ),
+      );
+      // Roy lists Ana as the only Organizer, himself only as a member.
+      await assertFails(
+        create(
+          { memberUids: [ROY.uid, ANA.uid], organizerUids: [ANA.uid] },
+          { "p-ana": anaRow("organizer") },
+        ),
+      );
+    });
+
+    it("keeps the creator's import window closed to a Club that has other members", async () => {
+      await seedAccounts(ROY, ANA);
+      await create(
+        { memberUids: [ROY.uid, ANA.uid], organizerUids: [ROY.uid] },
+        { "p-roy": royRow, "p-ana": anaRow("player") },
+      );
+      await assertFails(
+        setDoc(doc(as(ROY.uid), "clubs", "c1", "endedSessions", "s1"), {
+          hostUid: ROY.uid,
+          endedAt: 1_700_000_000_000,
+          endedJson: "{}",
+          createdAt: serverTimestamp(),
+        }),
+      );
+    });
   });
 });
 

@@ -121,8 +121,17 @@ export interface Backend {
    */
   observeSharedClubs(listener: (clubs: Club[]) => void): Unsubscribe;
   /**
-   * Creates a Shared club. The creator's Club player row (the Account's name, Intermediate,
-   * linked as Organizer) is added first, before `players`. Needs an Account.
+   * Creates a Shared club in one atomic write. Needs an Account.
+   *
+   * `players` may contain the creator's own row, the one linked to this Account: it is used as
+   * given (its name and skill) and must be an Organizer (`forbidden` otherwise). Without one, the
+   * default creator row (the Account's name, Intermediate, linked as Organizer) is added first.
+   *
+   * Other rows may be linked to other Accounts (ADR-0008), as Organizer or Player: each Account ID
+   * is looked up (`unknown-account` if nobody has it, `offline` without a connection), and an
+   * Account linked twice rejects with `already-linked`. The Club's member and Organizer lists are
+   * the creator plus every linked Account (Organizers for the Organizer list). When any check
+   * fails nothing is written.
    */
   createSharedClub(input: { id: string; name: string; players: ClubPlayer[] }): Promise<Club>;
   renameSharedClub(clubId: string, name: string): Promise<void>;

@@ -32,6 +32,70 @@ test.describe("Shared clubs on the server", () => {
     await expect(page.getByRole("link", { name: new RegExp(clubName) })).toBeVisible();
   });
 
+  test("New club starts with the creator's own row; an @-linked second Account is saved with it in one go, and both see the Club", async ({
+    page,
+    browser,
+    baseURL,
+  }) => {
+    const roy = await signUp(page, "Roy Smith");
+    const anaPage = await (await browser.newContext({ baseURL })).newPage();
+    const ana = await signUp(anaPage, "Ana Bell");
+    const clubName = uniqueId("Wednesday");
+
+    await page.goto("/clubs/new");
+    // Roy's own row is there from the start: his name, Intermediate, linked to him as Organizer.
+    const names = page.getByRole("textbox", { name: "Player name" });
+    await expect(names).toHaveCount(1);
+    await expect(names.first()).toHaveValue("Roy Smith");
+    await expect(page.getByRole("combobox", { name: "Skill level for Roy Smith" })).toHaveValue(
+      "intermediate",
+    );
+    await expect(page.getByText(roy.accountId)).toBeVisible();
+    await expect(page.getByText("You", { exact: true })).toBeVisible();
+    await expect(page.getByRole("combobox", { name: "Role for Roy Smith" })).toHaveValue(
+      "organizer",
+    );
+    await expect(page.getByRole("button", { name: "Remove Roy Smith" })).toHaveCount(0);
+
+    await page.getByRole("textbox", { name: "Club name" }).fill(clubName);
+    await page.getByRole("button", { name: "Add player" }).click();
+    await expect(names.last()).toHaveAttribute("placeholder", "Name or @Account ID");
+    await names.last().fill(`@${ana.accountId}`);
+    await expect(names.last()).toHaveValue("Ana Bell");
+    await expect(page.getByText(/Linked to/)).toHaveText(`Linked to ${ana.accountId}`);
+    await page.getByRole("combobox", { name: "Role for Ana Bell" }).selectOption("organizer");
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page).toHaveURL(/\/clubs$/);
+
+    const row = page.getByRole("link", { name: new RegExp(clubName) });
+    await expect(row).toBeVisible();
+    const clubId = (await row.getAttribute("href"))!.split("/").at(-1)!;
+    await expect
+      .poll(async () =>
+        (await readServerClub(clubId))?.players
+          .map((p) => [p.name, p.link?.accountId ?? null, p.link?.role ?? null])
+          .sort(),
+      )
+      .toEqual([
+        ["Ana Bell", ana.accountId, "organizer"],
+        ["Roy Smith", roy.accountId, "organizer"],
+      ]);
+
+    // Ana sees the Club and, as an Organizer, can edit it.
+    await anaPage.goto("/clubs");
+    const anaRow = anaPage.getByRole("link", { name: new RegExp(clubName) });
+    await expect(anaRow).toBeVisible({ timeout: 30_000 });
+    await anaRow.click();
+    await expect(anaPage.getByRole("combobox", { name: "Role for Ana Bell" })).toHaveValue(
+      "organizer",
+    );
+    await expect(anaPage.getByRole("combobox", { name: "Role for Roy Smith" })).toHaveValue(
+      "organizer",
+    );
+
+    await anaPage.context().close();
+  });
+
   test("an offline Skill level edit reaches the server and the other person when the connection is back", async ({
     page,
     context,

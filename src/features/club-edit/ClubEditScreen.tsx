@@ -16,7 +16,7 @@ import { NAME_ERROR_MESSAGE } from "../../components/nameErrors.ts";
 import { OfflineNote } from "../../components/OfflineNote.tsx";
 import { PlayerRowEditor } from "../../components/PlayerRowEditor.tsx";
 import { Screen } from "../../components/Screen.tsx";
-import { normalizeAccountId, validateAccountId } from "../../domain/accountId.ts";
+import { normalizeAccountId } from "../../domain/accountId.ts";
 import {
   canChangeRoles,
   canDeleteClub,
@@ -26,7 +26,7 @@ import {
   ownRow,
 } from "../../domain/permissions.ts";
 import { newId } from "../../domain/ids.ts";
-import { DEFAULT_SKILL, type Account, type Club, type Role } from "../../domain/types.ts";
+import { DEFAULT_SKILL, type Club, type Role } from "../../domain/types.ts";
 import { hasClubErrors, validateClub } from "../../domain/validation.ts";
 import {
   activeSessionOfClub,
@@ -37,9 +37,17 @@ import {
 } from "../../storage/store.ts";
 import { newSessionForClubPath } from "../new-session/newSession.ts";
 import { countLabel } from "../session-summary/summaryFormat.ts";
-import { AccountLinkSection } from "./AccountLinkSection.tsx";
+import { LinkedLine, LinkStatus } from "./AccountLinkSection.tsx";
 import { ClubCardLink } from "./ClubCardLink.tsx";
-import { linkBlocksSave, type LinkState } from "./linkState.ts";
+import {
+  accountIdFromName,
+  accountIdsToLookUp,
+  applyFoundAccounts,
+  linkBlocksSave,
+  linkProblem,
+  linkStates as linkStatesOf,
+  type Lookups,
+} from "./linkState.ts";
 import { clubErrorMessage } from "./clubErrors.ts";
 import { ClubReadOnly } from "./ClubReadOnly.tsx";
 import { MakeShared } from "./MakeShared.tsx";
@@ -86,11 +94,14 @@ function ClubEditor({ club }: { club: Club | null }) {
   const viewer = account?.accountId;
   const canDelete = !club || canDeleteClub(club, viewer);
   const canLeave = club?.kind === "shared" && !!ownRow(club, viewer);
-  // Organizers of a Shared club link Accounts to rows and give them Roles.
-  const linking = !!club && canChangeRoles(club, viewer);
+  // Organizers of a Shared club link Accounts to rows and give them Roles; so does whoever
+  // creates a Club while signed in (it will be a Shared club).
+  const [createsShared] = useState(() => isNew && createsSharedClubs());
+  const linking = club ? canChangeRoles(club, viewer) : createsShared;
 
   const [initialClub, setInitialClub] = useState(club);
-  const [initial, setInitial] = useState(() => formFromClub(club));
+  // A new Shared club starts with the creator's own row, linked to them as Organizer.
+  const [initial, setInitial] = useState(() => formFromClub(club, createsShared ? account : null));
   const [form, setForm] = useState<ClubForm>(initial);
   const [attempted, setAttempted] = useState(false);
   const [focusRowId, setFocusRowId] = useState<string | null>(null);
@@ -102,7 +113,16 @@ function ClubEditor({ club }: { club: Club | null }) {
   const [roleMessage, setRoleMessage] = useState<{ rowId: string; text: string } | null>(null);
   const [confirmLeave, setConfirmLeave] = useState(false);
   /** Accounts found by Account ID (null: none has it), keyed by lowercase Account ID. */
-  const [lookups, setLookups] = useState<Record<string, Account | null>>({});
+  const [lookups, setLookups] = useState<Lookups>({});
+  /** Rows whose name field was left: a half-typed `@Account ID` there is now worth a message. */
+  const [leftRows, setLeftRows] = useState<ReadonlySet<string>>(() => new Set());
+
+  // A name field's `@Account ID` that matches an Account links the row to it straight away, and
+  // the Account's name replaces the text.
+  if (linking) {
+    const resolved = applyFoundAccounts(form.rows, lookups, online);
+    if (resolved !== form.rows) setForm({ ...form, rows: resolved });
+  }
 
   const formRef = useRef<HTMLDivElement>(null);
   const nameId = useId();
@@ -113,14 +133,20 @@ function ClubEditor({ club }: { club: Club | null }) {
     () => clubs.filter((other) => other.id !== club?.id).map((other) => other.name),
     [clubs, club],
   );
-  const errors = useMemo(
-    () =>
-      validateClub(
-        { name: form.name, players: form.rows.map((row) => ({ name: row.name })) },
-        otherClubNames,
-      ),
-    [form, otherClubNames],
-  );
+  /** Rows whose name field holds an `@Account ID` (it isn't a name, so it isn't checked as one). */
+  const typingId = (row: PlayerRow) => linking && !row.link && accountIdFromName(row.name) !== null;
+  const errors = useMemo(() => {
+    const checked = validateClub(
+      { name: form.name, players: form.rows.map((row) => ({ name: row.name })) },
+      otherClubNames,
+    );
+    return {
+      ...checked,
+      players: checked.players.map((error, index) => (typingId(form.rows[index]!) ? null : error)),
+    };
+    // `typingId` only reads `linking`.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, [form, otherClubNames, linking]);
   const invalid = hasClubErrors(errors);
   const shown = attempted ? errors : null;
   const dirty = formSignature(form) !== formSignature(initial);
@@ -140,20 +166,12 @@ function ClubEditor({ club }: { club: Club | null }) {
     }
   }
 
-  // --- Linking Accounts (Organizers of a Shared club) ---------------------------------------
+  // --- Linking Accounts ----------------------------------------------------------------------
 
-  /** Account IDs to look up: typed ones that look right, and the ones rows are linked to. */
-  const wantedLookups = useMemo(() => {
-    if (!linking) return [];
-    const wanted = new Set<string>();
-    for (const row of form.rows) {
-      if (row.link) wanted.add(normalizeAccountId(row.link.accountId));
-      else if (row.idText && validateAccountId(row.idText) === null) {
-        wanted.add(normalizeAccountId(row.idText));
-      }
-    }
-    return [...wanted];
-  }, [linking, form.rows]);
+  const wantedLookups = useMemo(
+    () => (linking ? accountIdsToLookUp(form.rows) : []),
+    [linking, form.rows],
+  );
 
   useEffect(() => {
     const backend = getBackend();
@@ -182,57 +200,24 @@ function ClubEditor({ club }: { club: Club | null }) {
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [wantedLookups, online]);
 
+  /** Saved links by row id, to tell them from links made on this screen. */
+  const savedLinks = useMemo(
+    () =>
+      new Map(
+        initial.rows.flatMap((row) =>
+          row.link ? [[row.id, normalizeAccountId(row.link.accountId)] as const] : [],
+        ),
+      ),
+    [initial],
+  );
+
   /** Where each row's Account link stands. */
-  const linkStates = useMemo(() => {
-    const states = new Map<string, LinkState>();
-    const claimed = new Set<string>();
-    for (const row of form.rows) if (row.link) claimed.add(normalizeAccountId(row.link.accountId));
-    for (const row of form.rows) {
-      if (row.link) {
-        const key = normalizeAccountId(row.link.accountId);
-        states.set(row.id, {
-          kind: "linked",
-          accountId: row.link.accountId,
-          role: row.link.role,
-          isYou: !!viewer && key === normalizeAccountId(viewer),
-          exists: key in lookups ? lookups[key] !== null : null,
-          name: lookups[key]?.name ?? null,
-        });
-        continue;
-      }
-      const text = row.idText ?? "";
-      const key = normalizeAccountId(text);
-      if (key === "") states.set(row.id, { kind: "empty" });
-      else if (validateAccountId(text) !== null) states.set(row.id, { kind: "invalid" });
-      else if (claimed.has(key)) states.set(row.id, { kind: "duplicate" });
-      else {
-        claimed.add(key);
-        if (online === false) states.set(row.id, { kind: "offline" });
-        else if (!(key in lookups)) states.set(row.id, { kind: "checking" });
-        else if (lookups[key] === null) states.set(row.id, { kind: "unknown" });
-        else {
-          states.set(row.id, {
-            kind: "found",
-            name: lookups[key]!.name,
-            role: row.draftRole ?? "player",
-          });
-        }
-      }
-    }
-    return states;
-  }, [form.rows, lookups, online, viewer]);
+  const linkStates = useMemo(
+    () => linkStatesOf(form.rows, { lookups, online, viewer, savedLinks }),
+    [form.rows, lookups, online, viewer, savedLinks],
+  );
 
-  const linkProblem = linking && [...linkStates.values()].some(linkBlocksSave);
-
-  /** The rows as they are to be saved: typed Account IDs that were found become links. */
-  function rowsToSave(): PlayerRow[] {
-    return form.rows.map((row) => {
-      const state = linkStates.get(row.id);
-      if (state?.kind !== "found") return row;
-      const found = lookups[normalizeAccountId(row.idText ?? "")];
-      return found ? { ...row, link: { accountId: found.accountId, role: state.role } } : row;
-    });
-  }
+  const linkProblemShown = linking && [...linkStates.values()].some(linkBlocksSave);
 
   // After a failed Save, bring the first problem into view.
   useEffect(() => {
@@ -270,18 +255,55 @@ function ClubEditor({ club }: { club: Club | null }) {
 
   function changeRole(row: PlayerRow, role: Role) {
     setRoleMessage(null);
-    if (!row.link) {
-      updateRow(row.id, { draftRole: role });
-      return;
-    }
-    const after = rowsToSave().map((other) =>
+    if (!row.link) return;
+    const after = form.rows.map((other) =>
       other.id === row.id && other.link ? { ...other, link: { ...other.link, role } } : other,
     );
     if (organizerCount({ players: after }) === 0) {
       setRoleMessage({ rowId: row.id, text: "A Club needs at least one Organizer." });
       return;
     }
+    // Whoever creates a Club is one of its Organizers.
+    if (isNew && role !== "organizer" && isViewer(row)) {
+      setRoleMessage({
+        rowId: row.id,
+        text: "You start as an Organizer. Change your Role after saving.",
+      });
+      return;
+    }
     updateRow(row.id, { link: { ...row.link, role } });
+  }
+
+  function isViewer(row: PlayerRow): boolean {
+    return (
+      !!viewer &&
+      !!row.link &&
+      normalizeAccountId(row.link.accountId) === normalizeAccountId(viewer)
+    );
+  }
+
+  /** ✕ on a link that isn't saved yet: drop the link, clear the name, and go back to typing. */
+  function undoLink(id: string) {
+    setRoleMessage((current) => (current?.rowId === id ? null : current));
+    updateRow(id, { name: "", link: undefined });
+    nameFieldOf(id)?.focus();
+  }
+
+  function nameFieldOf(id: string): HTMLInputElement | null {
+    const row = Array.from(
+      formRef.current?.querySelectorAll<HTMLElement>("[data-row-id]") ?? [],
+    ).find((element) => element.dataset.rowId === id);
+    return row?.querySelector<HTMLInputElement>('input[type="text"]') ?? null;
+  }
+
+  function markLeft(id: string, left: boolean) {
+    setLeftRows((current) => {
+      if (current.has(id) === left) return current;
+      const next = new Set(current);
+      if (left) next.add(id);
+      else next.delete(id);
+      return next;
+    });
   }
 
   function addRow() {
@@ -302,15 +324,12 @@ function ClubEditor({ club }: { club: Club | null }) {
       addRow();
       return;
     }
-    const nextRow = Array.from(
-      formRef.current?.querySelectorAll<HTMLElement>("[data-row-id]") ?? [],
-    ).find((element) => element.dataset.rowId === next.id);
-    nextRow?.querySelector<HTMLInputElement>('input[type="text"]')?.focus();
+    nameFieldOf(next.id)?.focus();
   }
 
   async function save() {
     if (saving) return;
-    if (invalid || linkProblem) {
+    if (invalid || linkProblemShown) {
       setProblem(null);
       setAttempted(true);
       setSaveTick((tick) => tick + 1);
@@ -319,11 +338,7 @@ function ClubEditor({ club }: { club: Club | null }) {
     setSaving(true);
     setProblem(null);
     try {
-      const rows = rowsToSave();
-      const saved = clubFromForm(initialClub?.id ?? newId(), initialClub?.kind ?? "local", {
-        ...form,
-        rows,
-      });
+      const saved = clubFromForm(initialClub?.id ?? newId(), initialClub?.kind ?? "local", form);
       if (initialClub) await saveClub(initialClub, saved);
       else await createClub({ ...saved, kind: createsSharedClubs() ? "shared" : "local" });
       navigate("/clubs", { replace: true });
@@ -388,7 +403,7 @@ function ClubEditor({ club }: { club: Club | null }) {
       footer={
         <div className="flex flex-col gap-2">
           {/* One line at a time, most pressing first, so the footer grows by a line at most. */}
-          {problem || (attempted && (invalid || linkProblem)) ? (
+          {problem || (attempted && (invalid || linkProblemShown)) ? (
             <p
               role="alert"
               className="flex items-start justify-center gap-1.5 text-center text-sm font-semibold text-error"
@@ -454,11 +469,14 @@ function ClubEditor({ club }: { club: Club | null }) {
         </div>
 
         {club ? (
-          <nav aria-label="Club sessions" className="flex flex-col gap-3">
+          // Side by side in two equal columns; a card on its own takes the whole row.
+          <nav aria-label="Club sessions" className="grid grid-cols-2 gap-3">
             {activeSession ? (
               <ClubCardLink
                 href={`/sessions/${encodeURIComponent(activeSession.id)}`}
                 tone="active"
+                tile={sessionCount > 0}
+                className={sessionCount > 0 ? "" : "col-span-2"}
                 icon={<PlayIcon className="size-6 translate-x-0.5" />}
                 label="Open active session"
                 detail={
@@ -476,6 +494,8 @@ function ClubEditor({ club }: { club: Club | null }) {
               <ClubCardLink
                 href={newSessionForClubPath(club.id)}
                 tone="plain"
+                tile={sessionCount > 0}
+                className={sessionCount > 0 ? "" : "col-span-2"}
                 icon={<PlusIcon className="size-6" />}
                 label="New session"
                 detail={
@@ -492,6 +512,7 @@ function ClubEditor({ club }: { club: Club | null }) {
               <ClubCardLink
                 href={`/clubs/${encodeURIComponent(club.id)}/sessions`}
                 tone="plain"
+                tile
                 icon={<HistoryIcon className="size-6" />}
                 label="Sessions"
                 detail={countLabel(sessionCount, "past session", "past sessions")}
@@ -524,9 +545,15 @@ function ClubEditor({ club }: { club: Club | null }) {
           ) : (
             <ul className={`flex flex-col ${linking ? "gap-4" : "gap-3"}`}>
               {form.rows.map((row, index) => {
-                const state = linkStates.get(row.id);
+                const state = linking ? linkStates.get(row.id) : undefined;
                 const onlyOrganizer =
                   row.link?.role === "organizer" && organizerCount({ players: form.rows }) <= 1;
+                // The only Organizer stays: a Shared club always has one. A new Club keeps its
+                // creator.
+                const keepRow = onlyOrganizer || (isNew && isViewer(row));
+                const typing = typingId(row);
+                const complete = attempted || leftRows.has(row.id);
+                const statusId = `${row.id}-link-status`;
                 return (
                   <li
                     key={row.id}
@@ -535,26 +562,33 @@ function ClubEditor({ club }: { club: Club | null }) {
                   >
                     <PlayerRowEditor
                       value={{ name: row.name, skill: row.skill }}
-                      onChange={(value) => updateRow(row.id, value)}
-                      // The only Organizer stays: a Shared club always has one.
-                      onRemove={onlyOrganizer ? undefined : () => removeRow(row.id)}
+                      onChange={(value) => {
+                        if (value.name !== row.name) markLeft(row.id, false);
+                        updateRow(row.id, value);
+                      }}
+                      onRemove={keepRow ? undefined : () => removeRow(row.id)}
                       keepRemoveSpace
+                      linkable={linking && !row.link && online !== false}
                       error={shown?.players[index] ?? null}
+                      invalid={typing && !!state && linkProblem(state, complete) !== null}
+                      describedBy={typing ? statusId : undefined}
                       autoFocus={row.id === focusRowId}
                       onEnter={() => enterFromRow(index)}
+                      onBlur={() => markLeft(row.id, true)}
                     />
-                    {linking && state ? (
-                      <AccountLinkSection
+                    {typing && state ? (
+                      <LinkStatus id={statusId} state={state} complete={complete} />
+                    ) : null}
+                    {state?.kind === "linked" ? (
+                      <LinkedLine
                         playerName={row.name}
                         state={state}
-                        idText={row.idText ?? ""}
                         online={online !== false}
-                        showProblem={attempted}
                         roleMessage={roleMessage?.rowId === row.id ? roleMessage.text : null}
                         onlyOrganizer={onlyOrganizer}
-                        onIdText={(text) => updateRow(row.id, { idText: text })}
                         onRole={(role) => changeRole(row, role)}
                         onUnlink={() => updateRow(row.id, { link: undefined })}
+                        onUndo={() => undoLink(row.id)}
                       />
                     ) : null}
                   </li>

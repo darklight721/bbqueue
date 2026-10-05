@@ -5,10 +5,10 @@ import { MIN, T0 } from "./test-utils.ts";
 
 type Row = [Team, Team, [number, number] | null];
 
-function ended(rows: Row[], playerCount = 8): EndedSession {
+function ended(rows: Row[], playerCount = 8, courts: number[] = []): EndedSession {
   const matches: EndedSessionMatch[] = rows.map(([a, b, score], index) => ({
     number: index + 1,
-    courtNumber: 1,
+    courtNumber: courts[index] ?? 1,
     teams: [a, b],
     target: 21,
     startedAt: T0 + index * 20 * MIN,
@@ -51,9 +51,38 @@ describe("buildSummary", () => {
       sessionName: "Test",
       totalMatches: 2,
       totalPlayers: 8,
+      totalCourts: 1,
       startedAt: T0,
       endedAt: T0 + 3 * 60 * MIN,
     });
+  });
+
+  it("counts each Court with at least one Ended match once", () => {
+    const rows: Row[] = [
+      [
+        ["p1", "p2"],
+        ["p3", "p4"],
+        [21, 10],
+      ],
+      [["p5", "p6"], ["p7", "p8"], null],
+      [
+        ["p1", "p3"],
+        ["p2", "p4"],
+        [21, 19],
+      ],
+      [
+        ["p5", "p7"],
+        ["p6", "p8"],
+        [15, 21],
+      ],
+    ];
+    // Courts 1 and 3 were used (twice and once); Court 2 never had an Ended match.
+    expect(buildSummary(ended(rows, 8, [1, 3, 1, 3])).totalCourts).toBe(2);
+    expect(buildSummary(ended(rows, 8, [4, 2, 1, 3])).totalCourts).toBe(4);
+  });
+
+  it("counts no Courts when no match ended", () => {
+    expect(buildSummary(ended([])).totalCourts).toBe(0);
   });
 
   it("ranks fewer losses before more matches played", () => {

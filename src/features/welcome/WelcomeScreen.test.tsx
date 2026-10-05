@@ -67,7 +67,7 @@ describe("Welcome screen", () => {
     expect(screen.getByText("Enter a name")).toBeInTheDocument();
     const input = screen.getByLabelText("Your name");
     expect(input).toHaveAttribute("aria-invalid", "true");
-    expect(input).toHaveAccessibleDescription(/^Enter a name Creates your Account/);
+    expect(input).toHaveAccessibleDescription(/^Enter a name We'll use it to create your Account/);
     expect(input).toHaveFocus();
     expect(getWelcomeDone()).toBe(false);
   });
@@ -186,7 +186,7 @@ describe("Welcome screen", () => {
     render(<App />);
     expect(screen.getByRole("heading", { level: 1, name: "Welcome to BBQueue" })).toBeVisible();
     expect(screen.getByLabelText("Your name")).toHaveAccessibleDescription(
-      "Creates your Account, so your Club can add you by your Account ID and you'll see Sessions live.",
+      "We'll use it to create your Account. Your Club can then add you by your Account ID, and you'll see Sessions live.",
     );
     expect(screen.getByRole("button", { name: "Skip for now" })).toHaveAccessibleDescription(
       "No Account needed. You can add your name later.",

@@ -313,5 +313,195 @@ export function runRolesContract(name: string, createWorld: () => RolesContractW
       await eventually(() => expect(ana.club("c1")?.name).toBe("Friday"));
       await eventually(() => expect(ana.row("c1", dan.id)?.skill).toBe("beginner"));
     });
+
+    describe("creating a Club with links (ADR-0008)", () => {
+      /** Roy and Ana, no Club yet; Ben is a third person. */
+      async function three() {
+        const world = createWorld();
+        const roy = await person(world, "Roy");
+        const ana = await person(world, "Ana");
+        const ben = await person(world, "Ben");
+        return { roy, ana, ben };
+      }
+      const royRow = (accountId: string, patch: Partial<ClubPlayer> = {}): ClubPlayer => ({
+        id: "p-roy",
+        name: "Roy B.",
+        skill: "advanced",
+        link: { accountId, role: "organizer" },
+        ...patch,
+      });
+
+      it("keeps the creator's own row as given, and links other Accounts as Player and as Organizer in one write", async () => {
+        const { roy, ana, ben } = await three();
+        const anaRow: ClubPlayer = {
+          id: "p-ana",
+          name: "Ana",
+          skill: "beginner",
+          link: { accountId: ana.account.accountId.toUpperCase(), role: "player" },
+        };
+        const benRow: ClubPlayer = {
+          id: "p-ben",
+          name: "Ben",
+          skill: "intermediate",
+          link: { accountId: ben.account.accountId, role: "organizer" },
+        };
+
+        const created = await roy.backend.createSharedClub({
+          id: "c1",
+          name: "Tuesday",
+          players: [royRow(roy.account.accountId.toUpperCase()), anaRow, benRow, cat],
+        });
+
+        expect(created.players.map((p) => p.id)).toEqual(["p-roy", "p-ana", "p-ben", "p-cat"]);
+        expect(created.players[0]).toEqual(royRow(roy.account.accountId));
+        expect(created.players[1]?.link).toEqual({
+          accountId: ana.account.accountId,
+          role: "player",
+        });
+        for (const person of [roy, ana, ben]) {
+          await eventually(() => expect(person.club("c1")?.players).toHaveLength(4));
+        }
+        expect(ana.row("c1", "p-ana")?.link?.role).toBe("player");
+        expect(ben.row("c1", "p-ben")?.link?.role).toBe("organizer");
+        expect(ana.row("c1", "p-roy")).toMatchObject({ name: "Roy B.", skill: "advanced" });
+
+        // The lists agree: the linked Organizer may change the Club, the linked Player may not.
+        await ben.backend.renameSharedClub("c1", "Friday");
+        await eventually(() => expect(roy.club("c1")?.name).toBe("Friday"));
+        expect((await rejection(ana.backend.renameSharedClub("c1", "Nope"))).code).toBe(
+          "forbidden",
+        );
+      });
+
+      it("adds the default creator row when none is given", async () => {
+        const { roy, ana } = await three();
+
+        const created = await roy.backend.createSharedClub({
+          id: "c1",
+          name: "Tuesday",
+          players: [
+            {
+              id: "p-ana",
+              name: "Ana",
+              skill: "beginner",
+              link: { accountId: ana.account.accountId, role: "player" },
+            },
+          ],
+        });
+
+        expect(created.players).toHaveLength(2);
+        expect(created.players[0]).toMatchObject({
+          name: "Roy",
+          skill: "intermediate",
+          link: { accountId: roy.account.accountId, role: "organizer" },
+        });
+        await eventually(() => expect(ana.club("c1")).toBeDefined());
+      });
+
+      it("rejects an Account ID nobody has, and writes nothing", async () => {
+        const { roy, ana } = await three();
+
+        const error = await rejection(
+          roy.backend.createSharedClub({
+            id: "c1",
+            name: "Tuesday",
+            players: [
+              royRow(roy.account.accountId),
+              {
+                id: "p-ana",
+                name: "Ana",
+                skill: "beginner",
+                link: { accountId: ana.account.accountId, role: "player" },
+              },
+              {
+                id: "p-ghost",
+                name: "Ghost",
+                skill: "beginner",
+                link: { accountId: "nobody-aaaa", role: "player" },
+              },
+            ],
+          }),
+        );
+
+        expect(error.code).toBe("unknown-account");
+        await roy.backend.getCurrentAccount();
+        expect(roy.club("c1")).toBeUndefined();
+        expect(ana.club("c1")).toBeUndefined();
+      });
+
+      it("rejects a creator row that isn't an Organizer, and writes nothing", async () => {
+        const { roy } = await three();
+
+        const error = await rejection(
+          roy.backend.createSharedClub({
+            id: "c1",
+            name: "Tuesday",
+            players: [
+              royRow(roy.account.accountId, {
+                link: { accountId: roy.account.accountId, role: "player" },
+              }),
+            ],
+          }),
+        );
+
+        expect(error.code).toBe("forbidden");
+        await roy.backend.getCurrentAccount();
+        expect(roy.club("c1")).toBeUndefined();
+      });
+
+      it("rejects an Account linked twice, also the creator's own", async () => {
+        const { roy, ana } = await three();
+        const anaRow = (id: string): ClubPlayer => ({
+          id,
+          name: id,
+          skill: "beginner",
+          link: { accountId: ana.account.accountId, role: "player" },
+        });
+
+        const twice = await rejection(
+          roy.backend.createSharedClub({
+            id: "c1",
+            name: "Tuesday",
+            players: [anaRow("a"), anaRow("b")],
+          }),
+        );
+        const self = await rejection(
+          roy.backend.createSharedClub({
+            id: "c2",
+            name: "Tuesday",
+            players: [
+              royRow(roy.account.accountId),
+              royRow(roy.account.accountId, { id: "p-roy2" }),
+            ],
+          }),
+        );
+
+        expect(twice.code).toBe("already-linked");
+        expect(self.code).toBe("already-linked");
+        expect(roy.clubs()).toEqual([]);
+      });
+
+      it("needs a connection only when it links another Account", async () => {
+        const { roy, ana } = await three();
+        roy.setOnline(false);
+
+        const error = await rejection(
+          roy.backend.createSharedClub({
+            id: "c1",
+            name: "Tuesday",
+            players: [
+              {
+                id: "p-ana",
+                name: "Ana",
+                skill: "beginner",
+                link: { accountId: ana.account.accountId, role: "player" },
+              },
+            ],
+          }),
+        );
+
+        expect(error.code).toBe("offline");
+      });
+    });
   });
 }

@@ -35,6 +35,10 @@ rules_version = '2';
 // Not enforced here (the app does): that an Account is linked to one row only, and that the
 // lists hold only uids that have a row. An Organizer can write any uid to the lists directly;
 // that only gives that uid read access, and it takes knowing the uid.
+//
+// A new Club's first batch (ADR-0008): the creator is a member and Organizer, and the batch may
+// also link other Accounts, with any Role. Each such row is checked like a later link: the Account
+// ID is reserved by that uid and the lists, as they will be after the batch, agree with it.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -107,16 +111,21 @@ service cloud.firestore {
       allow get: if signedIn() && (resource == null || request.auth.uid in resource.data.memberUids);
       allow list: if signedIn() && request.auth.uid in resource.data.memberUids;
 
-      // Anyone signed in with an Account can create a Club, as its only member and Organizer. The
-      // creation time is the server's: the creator's one-hour window to import history (see Ended
-      // sessions) can't be held open by choosing a date.
+      // Anyone signed in with an Account can create a Club, as a member and Organizer. The lists
+      // may already name other Accounts (ADR-0008); each one needs a row in the same batch that
+      // links it (see the players' create rule). Organizers are members. The creation time is the
+      // server's: the creator's one-hour window to import history (see Ended sessions) can't be
+      // held open by choosing a date.
       allow create: if signedIn()
         && exists(/databases/$(database)/documents/accounts/$(request.auth.uid))
         && request.resource.data.keys().hasOnly(['name', 'memberUids', 'organizerUids', 'createdAt'])
         && request.resource.data.keys().hasAll(['name', 'memberUids', 'organizerUids', 'createdAt'])
         && validName(request.resource.data.name)
-        && request.resource.data.memberUids == [request.auth.uid]
-        && request.resource.data.organizerUids == [request.auth.uid]
+        && request.resource.data.memberUids is list
+        && request.resource.data.organizerUids is list
+        && request.auth.uid in request.resource.data.memberUids
+        && request.auth.uid in request.resource.data.organizerUids
+        && request.resource.data.memberUids.toSet().hasAll(request.resource.data.organizerUids)
         && request.resource.data.createdAt == request.time;
 
       // An Organizer may rename the Club and change who is a member or Organizer (the rows say
@@ -177,17 +186,16 @@ service cloud.firestore {
 
         allow read: if signedIn() && request.auth.uid in before().memberUids;
 
-        // A new Club's first rows are written in the same batch as the Club, by its creator, who
-        // may only link themselves. Otherwise only an Organizer adds rows.
+        // A new Club's first rows are written in the same batch as the Club, by its creator (an
+        // Organizer after the batch), who may link any Account with any Role (ADR-0008), each link
+        // checked like a later one. Otherwise only an Organizer adds rows.
         allow create: if signedIn()
           && validRow(request.resource.data)
           && (
             (
               !exists(clubPath())
               && request.auth.uid in after().organizerUids
-              && (!('link' in request.resource.data)
-                  || (request.resource.data.link.uid == request.auth.uid
-                      && linkIsReserved(request.resource.data.link)))
+              && (!('link' in request.resource.data) || linkAgreesWithClub(request.resource.data.link))
             )
             || (
               exists(clubPath())
