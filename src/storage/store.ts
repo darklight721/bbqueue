@@ -261,6 +261,32 @@ export function applyActiveSessionOf(clubId: string, active: ActiveSession | nul
   setSharedSessions([...others, ...merged].sort((a, b) => a.clubId.localeCompare(b.clubId)));
 }
 
+/**
+ * This device no longer has an Account (ticket 11): everything of Shared clubs goes, the Clubs, their
+ * Active sessions, Ended sessions and requests. Local clubs, the device's own Session and its own
+ * Ended sessions stay. A Session this Account was hosting stays in the device's own Session slot when
+ * that is empty, so a night in progress isn't lost; another Organizer can take the Club's copy over.
+ */
+export function clearSharedData(
+  accountId: string | null | undefined = getAccount()?.accountId,
+): void {
+  const me = accountId;
+  const hosted = me
+    ? getSharedSessions().find((entry) => accountIdsEqual(entry.hostAccountId, me))
+    : undefined;
+  if (hosted && getSession() === null) setSession(hosted.session);
+  setSharedSessions([]);
+  setSharedClubs([]);
+  sharedEndedSlot.value = [];
+  sharedEndedSlot.loaded = true;
+  saveSharedEndedSessions([]);
+  notify(sharedEndedSlot);
+  requestsSlot.value = {};
+  lostHostSlot.value = {};
+  notify(requestsSlot);
+  notify(lostHostSlot);
+}
+
 // --- Player requests (ticket 08) -----------------------------------------------------------------
 //
 // What the Backend reports about requests, per Shared club: this Account's own while watching,

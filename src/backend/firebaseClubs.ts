@@ -61,7 +61,10 @@ export function createFirebaseClubs(
     currentUid(): string | null;
     observeAccount(listener: (account: Account | null) => void): Unsubscribe;
   },
-): SharedClubsApi {
+): SharedClubsApi & {
+  /** The Club steps of deleting an Account; see `Backend.deleteAccount`. */
+  deleteAccountClubs(input: { deleteClubIds: string[]; unlinkClubIds: string[] }): Promise<void>;
+} {
   const clubRef = (clubId: string) => doc(db, "clubs", clubId);
   const playersRef = (clubId: string) => collection(db, "clubs", clubId, "players");
   const playerRef = (clubId: string, playerId: string) =>
@@ -228,7 +231,7 @@ export function createFirebaseClubs(
     return found;
   }
 
-  return {
+  const api: SharedClubsApi = {
     observeSharedClubs(listener) {
       let stopClubs: Unsubscribe = () => {};
       let watching: string | null | undefined;
@@ -444,13 +447,8 @@ export function createFirebaseClubs(
 
     async deleteSharedClub(clubId) {
       await requireClub(clubId);
-      const batch = writeBatch(db);
-      for (const row of (await getDocs(playersRef(clubId))).docs) batch.delete(row.ref);
-      // The Club's Active session goes with it (the rules let an Organizer delete it then).
-      const active = doc(db, "clubs", clubId, "activeSession", "current");
-      if ((await readDoc(active))?.exists()) batch.delete(active);
-      batch.delete(clubRef(clubId));
-      await settle(deps.online, batch.commit());
+      const { uid } = await requireViewer();
+      await deleteWholeClub(clubId, uid);
     },
 
     async addClubPlayer(clubId, player) {
@@ -529,6 +527,92 @@ export function createFirebaseClubs(
       const batch = writeBatch(db);
       batch.update(clubRef(clubId), lists(uid, null));
       await settle(deps.online, batch.commit());
+    },
+  };
+
+  /** Removes `clubId` entirely; when `uid` is its only member, its history goes with it. */
+  async function deleteWholeClub(clubId: string, uid: string): Promise<void> {
+    const CHUNK = 400;
+    const club = await getDoc(clubRef(clubId));
+    if (!club.exists()) return;
+    const sole = (() => {
+      const members = stringList(club.data().memberUids);
+      return members.length === 1 && members[0] === uid;
+    })();
+
+    const removeInBatches = async (refs: DocumentReference[]) => {
+      for (let start = 0; start < refs.length; start += CHUNK) {
+        const batch = writeBatch(db);
+        for (const ref of refs.slice(start, start + CHUNK)) batch.delete(ref);
+        await settle(deps.online, batch.commit());
+      }
+    };
+
+    const rows = (await getDocs(playersRef(clubId))).docs;
+    if (sole) {
+      // Only this Account is on the Club, so the rules let it delete the Club's history. It goes
+      // first, in batches, while the Club is still there to be checked against.
+      await removeInBatches(
+        (await getDocs(collection(db, "clubs", clubId, "endedSessions"))).docs.map((d) => d.ref),
+      );
+      try {
+        await removeInBatches(
+          (
+            await getDocs(collection(db, "clubs", clubId, "activeSession", "current", "requests"))
+          ).docs.map((d) => d.ref),
+        );
+      } catch {
+        // Requests we can't list (nobody hosts a session any more) are inert once the Club is gone.
+      }
+    }
+    // Rows nobody is linked to can go while the Club stands; the linked ones go with the Club.
+    await removeInBatches(rows.filter((row) => !row.data().link).map((row) => row.ref));
+    const batch = writeBatch(db);
+    for (const row of rows.filter((row) => row.data().link)) batch.delete(row.ref);
+    // The Club's Active session goes with it (the rules let an Organizer delete it then).
+    const active = doc(db, "clubs", clubId, "activeSession", "current");
+    if ((await readDoc(active))?.exists()) batch.delete(active);
+    batch.delete(clubRef(clubId));
+    await settle(deps.online, batch.commit());
+  }
+
+  return {
+    ...api,
+
+    async deleteAccountClubs({ deleteClubIds, unlinkClubIds }) {
+      if (!deps.online.get()) throw new BackendError("offline");
+      const { uid } = await requireViewer();
+
+      // Check everything before changing anything. A Club that is gone already is nothing to do.
+      const gone = async (clubId: string) => {
+        try {
+          return await loadClub(clubId);
+        } catch (error) {
+          if (error instanceof BackendError && error.code === "not-found") return null;
+          throw error;
+        }
+      };
+      for (const clubId of unlinkClubIds) {
+        const loaded = await gone(clubId);
+        if (
+          loaded &&
+          loaded.organizerUids.includes(uid) &&
+          !loaded.organizerUids.some((other) => other !== uid)
+        ) {
+          throw new BackendError("last-organizer");
+        }
+      }
+      for (const clubId of deleteClubIds) {
+        const loaded = await gone(clubId);
+        if (loaded && loaded.memberUids.some((member) => member !== uid)) {
+          throw new BackendError("forbidden");
+        }
+      }
+
+      for (const clubId of deleteClubIds) await deleteWholeClub(clubId, uid);
+      for (const clubId of unlinkClubIds) {
+        if (await gone(clubId)) await api.leaveClub(clubId);
+      }
     },
   };
 }

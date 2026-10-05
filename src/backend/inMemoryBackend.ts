@@ -69,6 +69,9 @@ export function createInMemoryBackend(
       saveAccount: (next) => {
         account = next;
       },
+      clearAccount: () => {
+        account = null;
+      },
       loadReservedIds: () => server.reserved,
       saveReservedIds: (ids) => {
         server.reserved = ids;

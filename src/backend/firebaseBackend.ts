@@ -1,8 +1,16 @@
 import { initializeApp, type FirebaseOptions } from "firebase/app";
-import { connectAuthEmulator, getAuth, onAuthStateChanged, signInAnonymously } from "firebase/auth";
+import {
+  connectAuthEmulator,
+  deleteUser,
+  getAuth,
+  onAuthStateChanged,
+  signInAnonymously,
+  signOut,
+} from "firebase/auth";
 import {
   connectFirestoreEmulator,
   disableNetwork,
+  deleteDoc,
   doc,
   enableNetwork,
   getDoc,
@@ -94,7 +102,7 @@ export function createFirebaseBackend(
    */
   let justCreatedUntil = 0;
 
-  const backend: Omit<Backend, keyof SharedClubsApi | keyof ActiveSessionsApi> = {
+  const backend: Omit<Backend, keyof SharedClubsApi | keyof ActiveSessionsApi | "deleteAccount"> = {
     isOnline: () => online.get(),
     observeOnline: (listener) => online.subscribe(listener),
 
@@ -196,10 +204,35 @@ export function createFirebaseBackend(
     observeAccount: (listener: (account: Account | null) => void) =>
       backend.observeCurrentAccount(listener),
   };
+  const clubs = createFirebaseClubs(db, shared);
   return {
     ...backend,
-    ...createFirebaseClubs(db, shared),
+    ...clubs,
     ...createFirebaseActiveSessions(db, shared),
+
+    async deleteAccount(input) {
+      if (!online.get()) throw new BackendError("offline");
+      try {
+        await auth.authStateReady();
+        const user = auth.currentUser;
+        if (!user) throw new BackendError("no-account");
+        // The Clubs first (they check what this Account may do), then the Account record. The
+        // Account ID reservation is never touched: an Account ID is never given out twice.
+        await clubs.deleteAccountClubs(input);
+        await deleteDoc(doc(db, "accounts", user.uid));
+        lastKnown = null;
+        try {
+          await deleteUser(user);
+        } catch (error) {
+          // An old sign-in may need to be renewed to be deleted, and an anonymous one can't be.
+          // It holds no data (the Account record is gone), so it is just signed out.
+          console.warn("Couldn't delete the sign-in, signing out instead", error);
+          await signOut(auth);
+        }
+      } catch (error) {
+        throw toBackendError(error);
+      }
+    },
   };
 }
 

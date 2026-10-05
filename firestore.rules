@@ -1,6 +1,6 @@
 rules_version = '2';
 
-// Security Rules (tickets 02, 04, 05, 06, 07, 08 and 09). Tested on the Firebase emulator:
+// Security Rules (tickets 02 and 04 to 11). Tested on the Firebase emulator:
 // src/backend/firestore.rules.emulator.test.ts (`pnpm test:firebase`).
 //
 // Data (see src/backend/firebaseBackend.ts and firebaseClubs.ts):
@@ -341,7 +341,12 @@ service cloud.firestore {
             && request.resource.data.status in ['applied', 'skipped']
             && request.resource.data.resolvedAt == request.time;
 
-          allow delete: if signedIn() && isSessionHost();
+          // Also an Organizer when the whole Club is being deleted (a Club's history goes with it).
+          allow delete: if signedIn()
+            && (
+              isSessionHost()
+              || (!existsAfter(clubPath()) && request.auth.uid in before().organizerUids)
+            );
         }
       }
 
@@ -354,8 +359,10 @@ service cloud.firestore {
       //   session as it was before the batch, so the host is still the host), or a Club's creator
       //   importing its history when a Local club is made shared. Once: the id is the Session's, and
       //   nobody can update a record.
-      // - Update and delete: nobody. The Club keeps what was published. Rules can't count, so "the 50
-      //   most recent" is what the app lists (newest 50 by `endedAt`); older ones stay unseen.
+      // - Update: nobody. Delete: only the Club's only member (ticket 11, deleting their Account),
+      //   so a Club with anybody else on it keeps what was published.
+      // - Rules can't count, so "the 50 most recent" is what the app lists (newest 50 by `endedAt`);
+      //   older ones stay on the server unlisted.
       match /endedSessions/{sessionId} {
         allow read: if signedIn() && request.auth.uid in before().memberUids;
 
@@ -385,7 +392,14 @@ service cloud.firestore {
             )
           );
 
-        allow update, delete: if false;
+        allow update: if false;
+
+        // Deleting is for an Account that is going (ticket 11): only the Club's only member, who is
+        // its Organizer, and so the only person with a stake in what it kept. A Club with anybody
+        // else on it keeps every Ended session.
+        allow delete: if signedIn()
+          && request.auth.uid in before().organizerUids
+          && before().memberUids == [request.auth.uid];
       }
     }
   }

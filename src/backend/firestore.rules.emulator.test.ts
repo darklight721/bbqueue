@@ -1491,9 +1491,9 @@ describe("Making a Local club shared: the creator's import", () => {
     await assertFails(setDoc(endedDoc(db, "s1"), ended(ROY, { hostUid: BEN.uid })));
     await assertFails(setDoc(endedDoc(db, "s1"), ended(ROY, { createdAt: new Date(0) })));
     await assertSucceeds(setDoc(endedDoc(db, "s1"), ended(ROY)));
-    // Still never changed or deleted.
+    // Still never changed (it can only be deleted by the Club's only member, see "Deleting an
+    // Account"; this Club has just the one).
     await assertFails(setDoc(endedDoc(db, "s1"), ended(ROY, { endedJson: "{}" })));
-    await assertFails(deleteDoc(endedDoc(db, "s1")));
   });
 
   it("lets the creator start the Active session on the new Club, and nobody else", async () => {
@@ -1525,5 +1525,148 @@ describe("Making a Local club shared: the creator's import", () => {
     batch.set(doc(db, "clubs", "c1", "players", "p-roy"), row("roy", link(ROY, "organizer")));
     batch.set(doc(db, "clubs", "c1", "players", "p-ana"), row("ana", link(ANA, "player")));
     await assertFails(batch.commit());
+  });
+});
+
+describe("Deleting an Account", () => {
+  const endedDoc = (db: Firestore, id: string) => doc(db, "clubs", "c1", "endedSessions", id);
+  const requestDoc = (db: Firestore, id: string) =>
+    doc(db, "clubs", "c1", "activeSession", "current", "requests", id);
+
+  /** A Club only Roy is on (Cat is a plain row), with history and a request in its Active session. */
+  async function seedSolo(options: { others?: boolean } = {}) {
+    await seedAccounts(ROY, ANA);
+    await seed(async (db) => {
+      await setDoc(doc(db, "clubs", "c1"), {
+        name: "Solo",
+        memberUids: options.others ? [ROY.uid, ANA.uid] : [ROY.uid],
+        organizerUids: [ROY.uid],
+      });
+      await setDoc(doc(db, "clubs", "c1", "players", "p-roy"), {
+        name: "Roy",
+        skill: "intermediate",
+        link: link(ROY, "organizer"),
+      });
+      await setDoc(doc(db, "clubs", "c1", "players", "p-cat"), { name: "Cat", skill: "advanced" });
+      for (let i = 0; i < 3; i++) {
+        await setDoc(endedDoc(db, `s${i}`), {
+          hostUid: ROY.uid,
+          endedAt: 1000 + i,
+          endedJson: "{}",
+        });
+      }
+      await setDoc(doc(db, "clubs", "c1", "activeSession", "current"), {
+        sessionJson: "{}",
+        hostUid: ANA.uid,
+        hostAccountId: ANA.accountId,
+        hostName: ANA.name,
+      });
+      await setDoc(requestDoc(db, "r1"), {
+        uid: ROY.uid,
+        accountId: ROY.accountId,
+        sessionId: "s",
+        sessionPlayerId: "x",
+        kind: "leave",
+      });
+    });
+  }
+
+  it("lets the Club's only member delete its Ended sessions, and nobody else", async () => {
+    await seedSolo();
+    await assertFails(deleteDoc(endedDoc(as(ANA.uid), "s0")));
+    await assertFails(deleteDoc(endedDoc(anonymous(), "s0")));
+    await assertSucceeds(deleteDoc(endedDoc(as(ROY.uid), "s0")));
+  });
+
+  it("refuses it once the Club has anybody else on it, and still refuses any update", async () => {
+    await seedSolo({ others: true });
+    await assertFails(deleteDoc(endedDoc(as(ROY.uid), "s0")));
+    await assertFails(updateDoc(endedDoc(as(ROY.uid), "s1"), { endedJson: "x" }));
+  });
+
+  it("refuses a member who isn't an Organizer, even when they are the only one", async () => {
+    await seedSolo();
+    await seed(async (db) => {
+      await updateDoc(doc(db, "clubs", "c1"), { memberUids: [ANA.uid], organizerUids: [ANA.uid] });
+    });
+    await assertFails(deleteDoc(endedDoc(as(ROY.uid), "s0")));
+  });
+
+  it("lets the only member delete a whole Club: history in batches, then the rows, its Active session, its requests and the Club", async () => {
+    await seedSolo();
+    const db = as(ROY.uid);
+    const history = writeBatch(db);
+    for (let i = 0; i < 3; i++) history.delete(endedDoc(db, `s${i}`));
+    await assertSucceeds(history.commit());
+
+    const rest = writeBatch(db);
+    rest.delete(requestDoc(db, "r1"));
+    rest.delete(doc(db, "clubs", "c1", "activeSession", "current"));
+    rest.delete(doc(db, "clubs", "c1", "players", "p-cat"));
+    rest.delete(doc(db, "clubs", "c1", "players", "p-roy"));
+    rest.delete(doc(db, "clubs", "c1"));
+    await assertSucceeds(rest.commit());
+  });
+
+  it("lets an Organizer delete a Club's requests only together with the Club", async () => {
+    await seedSolo();
+    const db = as(ROY.uid);
+    // On its own, a request is the host's (Ana's) to delete.
+    await assertFails(deleteDoc(requestDoc(db, "r1")));
+    const batch = writeBatch(db);
+    batch.delete(requestDoc(db, "r1"));
+    batch.delete(doc(db, "clubs", "c1", "activeSession", "current"));
+    batch.delete(doc(db, "clubs", "c1", "players", "p-cat"));
+    batch.delete(doc(db, "clubs", "c1", "players", "p-roy"));
+    batch.delete(doc(db, "clubs", "c1"));
+    await assertSucceeds(batch.commit());
+  });
+
+  it("lets a person delete their own Account but never its Account ID record, so nobody can take the ID over", async () => {
+    await seedAccounts(ROY, BEN);
+    await assertSucceeds(deleteDoc(doc(as(ROY.uid), "accounts", ROY.uid)));
+
+    await assertFails(deleteDoc(doc(as(ROY.uid), "accountIds", ROY.accountId)));
+    // The record still says it's Roy's: it can't be reserved again, by Ben or by Roy.
+    const benDb = as(BEN.uid);
+    const takeOver = writeBatch(benDb);
+    takeOver.set(doc(benDb, "accountIds", ROY.accountId), { uid: BEN.uid });
+    await assertFails(takeOver.commit());
+    await assertFails(setDoc(doc(benDb, "accountIds", ROY.accountId), { uid: BEN.uid }));
+    await assertSucceeds(getDoc(doc(benDb, "accountIds", ROY.accountId)));
+  });
+
+  it("refuses deleting somebody else's Account", async () => {
+    await seedAccounts(ROY, BEN);
+    await assertFails(deleteDoc(doc(as(BEN.uid), "accounts", ROY.uid)));
+  });
+
+  it("lets a person unlink their own row, an Organizer too while another Organizer stays", async () => {
+    await seedAccounts(ROY, ANA);
+    await seed(async (db) => {
+      await setDoc(doc(db, "clubs", "c1"), {
+        name: "Duo",
+        memberUids: [ROY.uid, ANA.uid],
+        organizerUids: [ROY.uid, ANA.uid],
+      });
+      await setDoc(doc(db, "clubs", "c1", "players", "p-roy"), {
+        name: "Roy",
+        skill: "intermediate",
+        link: link(ROY, "organizer"),
+      });
+      await setDoc(doc(db, "clubs", "c1", "players", "p-ana"), {
+        name: "Ana",
+        skill: "beginner",
+        link: link(ANA, "organizer"),
+      });
+    });
+    const db = as(ROY.uid);
+    const batch = writeBatch(db);
+    batch.update(doc(db, "clubs", "c1", "players", "p-roy"), { link: deleteField() });
+    batch.update(doc(db, "clubs", "c1"), {
+      memberUids: arrayRemove(ROY.uid),
+      organizerUids: arrayRemove(ROY.uid),
+    });
+    await assertSucceeds(batch.commit());
   });
 });

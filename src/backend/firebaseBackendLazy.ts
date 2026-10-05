@@ -47,6 +47,7 @@ export function createLazyFirebaseBackend(
       observeWhenLoaded((backend) => backend.observeCurrentAccount(listener)),
     createAccount: (name) => loaded.then((backend) => backend.createAccount(name)),
     renameAccount: (name) => loaded.then((backend) => backend.renameAccount(name)),
+    deleteAccount: (input) => loaded.then((backend) => backend.deleteAccount(input)),
 
     // Shared clubs
     observeSharedClubs: (listener) =>

@@ -1,15 +1,18 @@
 import { useSyncExternalStore } from "react";
 import { diffClub, inSafeOrder } from "../domain/clubChanges.ts";
+import type { DeletionPlan } from "../domain/accountDeletion.ts";
 import { makeSharedClub, sessionForSharing, type ShareChoice } from "../domain/makeShared.ts";
 import { newId } from "../domain/ids.ts";
 import type { Club } from "../domain/types.ts";
 import {
   addHostedSession,
+  clearSharedData,
   getAccount,
   getEndedSessions,
   getLocalClubs,
   getSession,
   getSharedClubs,
+  setAccount,
   setLocalClubs,
   setSession,
   setSharedClubs,
@@ -160,4 +163,25 @@ export async function makeClubShared(club: Club, choice: ShareChoice): Promise<v
     setSession(null);
   }
   setLocalClubs(getLocalClubs().filter((other) => other.id !== club.id));
+}
+
+/**
+ * Delete this device's Account (ticket 11), carrying out `plan` (see `planAccountDeletion`): the
+ * Shared clubs it is the only Account of are deleted, its rows elsewhere are unlinked, the Account
+ * and its sign-in go (its Account ID stays reserved). Then the device is signed out: Shared club
+ * data is cleared, and Local clubs and the device's own Sessions stay. Needs a connection.
+ * Rejects with a BackendError and changes nothing on the device when the server refuses.
+ */
+export async function deleteMyAccount(plan: DeletionPlan): Promise<void> {
+  const backend = getBackend();
+  if (!backend) throw new BackendError("failed");
+  if (plan.blocked.length > 0) throw new BackendError("last-organizer");
+  // The Backend signs the device out as it goes, so remember whose Sessions were hosted here.
+  const me = getAccount()?.accountId;
+  await backend.deleteAccount({
+    deleteClubIds: plan.deleteClubs.map(({ club }) => club.id),
+    unlinkClubIds: plan.unlinkClubs.map((club) => club.id),
+  });
+  clearSharedData(me);
+  setAccount(null);
 }

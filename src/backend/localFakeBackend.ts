@@ -87,6 +87,7 @@ export function createLocalFakeBackend(
     {
       loadAccount: () => readJson(accountKey, isAccount),
       saveAccount: (account) => localStorage.setItem(accountKey, JSON.stringify(account)),
+      clearAccount: () => localStorage.removeItem(accountKey),
       loadAccounts: () => readJson(FAKE_BACKEND_KEYS.accounts, isAccountArray) ?? [],
       saveAccounts: (accounts) =>
         localStorage.setItem(FAKE_BACKEND_KEYS.accounts, JSON.stringify(accounts)),

@@ -31,6 +31,7 @@ import {
 } from "../../storage/store.ts";
 import { CourtLines } from "../home/CourtLines.tsx";
 import { CreateAccountForm } from "./CreateAccountForm.tsx";
+import { DeleteAccount } from "./DeleteAccount.tsx";
 import { currentBrowser, shouldOfferInstallHint } from "./installHint.ts";
 import { OfflineNotice } from "./OfflineNotice.tsx";
 import { useOnline } from "./useOnline.ts";
@@ -101,6 +102,8 @@ function AccountDetails({
       </p>
 
       {offerInstallHint && !installHintDismissed ? <InstallHint /> : null}
+
+      <DeleteAccount account={account} />
     </>
   );
 }

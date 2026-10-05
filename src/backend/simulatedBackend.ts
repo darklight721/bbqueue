@@ -1,7 +1,8 @@
 import { accountIdsEqual, generateAccountId, normalizeAccountId } from "../domain/accountId.ts";
 import { MAX_NAME_LENGTH, normalizeName } from "../domain/validation.ts";
-import type { Account } from "../domain/types.ts";
-import { createSimulatedClubs, type SimulatedClubsState } from "./simulatedClubs.ts";
+import type { Account, Club } from "../domain/types.ts";
+import { applyClubChange } from "../domain/clubChanges.ts";
+import { createSimulatedClubs, serverChanged, type SimulatedClubsState } from "./simulatedClubs.ts";
 import { createSimulatedSessions, type SimulatedSessionsState } from "./simulatedSessions.ts";
 import {
   BackendError,
@@ -16,6 +17,8 @@ import {
 export interface SimulatedState extends SimulatedClubsState, SimulatedSessionsState {
   loadAccount(): Account | null;
   saveAccount(account: Account): void;
+  /** The device no longer has an Account (it was deleted). */
+  clearAccount(): void;
   /** Normalised Account IDs that are reserved. */
   loadReservedIds(): string[];
   saveReservedIds(ids: string[]): void;
@@ -111,6 +114,68 @@ export function createSimulatedBackend(
         return Promise.resolve(account);
       }
       return Promise.reject(new BackendError("id-unavailable"));
+    },
+
+    deleteAccount({ deleteClubIds, unlinkClubIds }) {
+      try {
+        if (!online.get()) throw new BackendError("offline");
+        const account = state.loadAccount();
+        if (!account) throw new BackendError("no-account");
+        const clubs = state.loadClubs();
+        const mine = (club: Club) =>
+          club.players.find(
+            (row) => row.link && accountIdsEqual(row.link.accountId, account.accountId),
+          );
+        // Check everything first, so a refusal changes nothing.
+        for (const id of unlinkClubIds) {
+          const club = clubs.find((candidate) => candidate.id === id);
+          const row = club && mine(club);
+          if (!club || !row?.link) continue;
+          if (
+            row.link.role === "organizer" &&
+            !club.players.some((other) => other.id !== row.id && other.link?.role === "organizer")
+          ) {
+            throw new BackendError("last-organizer");
+          }
+        }
+        for (const id of deleteClubIds) {
+          const club = clubs.find((candidate) => candidate.id === id);
+          if (
+            club?.players.some(
+              (row) => row.link && !accountIdsEqual(row.link.accountId, account.accountId),
+            )
+          ) {
+            throw new BackendError("forbidden");
+          }
+        }
+
+        state.saveClubs(
+          clubs
+            .filter((club) => !deleteClubIds.includes(club.id))
+            .map((club) => {
+              const row = unlinkClubIds.includes(club.id) ? mine(club) : undefined;
+              return row ? applyClubChange(club, { type: "unlink", playerId: row.id }) : club;
+            }),
+        );
+        state.saveEndedSessions(
+          state.loadEndedSessions().filter((ended) => !deleteClubIds.includes(ended.clubId ?? "")),
+        );
+        state.saveActiveSessions(
+          state.loadActiveSessions().filter((s) => !deleteClubIds.includes(s.clubId)),
+        );
+        state.saveRequests(state.loadRequests().filter((r) => !deleteClubIds.includes(r.clubId)));
+        // The Account goes; its Account ID stays reserved for good.
+        state.saveAccounts(
+          state.loadAccounts().filter((a) => !accountIdsEqual(a.accountId, account.accountId)),
+        );
+        state.clearAccount();
+        emit();
+        refreshClubs();
+        serverChanged();
+        return Promise.resolve();
+      } catch (error) {
+        return Promise.reject(error);
+      }
     },
 
     renameAccount(name) {

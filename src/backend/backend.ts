@@ -91,6 +91,20 @@ export interface Backend {
    */
   createAccount(name: string): Promise<Account>;
   /**
+   * Deletes this device's Account (ticket 11), after the steps that go with it: the Shared clubs in
+   * `deleteClubIds` (where this is the only linked Account) are deleted with their rows, Active
+   * session, requests and Ended sessions, and this Account's row in each of `unlinkClubIds` is
+   * unlinked (the row stays on the roster). Then the Account record goes, and so does the sign-in.
+   * The Account ID reservation is never deleted, so the Account ID can't be used again.
+   *
+   * Checked before anything is changed: each Club to unlink keeps an Organizer, each Club to
+   * delete has no other linked Account. Needs a connection. Rejects with `offline`, `no-account`,
+   * `last-organizer` or `forbidden`; a failure part-way can be retried with the Clubs that are left.
+   * An Active session this Account hosts in a Club that stays is left for another Organizer to take
+   * over.
+   */
+  deleteAccount(input: { deleteClubIds: string[]; unlinkClubIds: string[] }): Promise<void>;
+  /**
    * Changes the name of this device's Account. The Account ID never changes. Needs a connection.
    * Resolves with the renamed Account; rejects with a {@link BackendError}.
    */
