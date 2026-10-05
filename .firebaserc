@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "demo-bbqueue"
-  }
+    "default": "demo-bbqueue",
+    "prod": "bbqueue-29997"
+  },
+  "targets": {},
+  "etags": {}
 }
