@@ -1,4 +1,4 @@
-import type { Session } from "../domain/types.ts";
+import type { Session, SessionRequestKind } from "../domain/types.ts";
 import { addHostedSession, removeSharedSession } from "../storage/store.ts";
 import { BackendError } from "./backend.ts";
 import { getBackend } from "./index.ts";
@@ -38,4 +38,18 @@ export function endSharedSession(clubId: string): void {
     ?.endSharedSession(clubId)
     .catch((error: unknown) => console.error("Failed to end the shared session", error));
   // Ticket 09 publishes the Ended session to the Club here.
+}
+
+/**
+ * A Player asks the Session host to switch their own Sitting out or to let them leave (ticket
+ * 08). The request waits for the host's device; the store shows it as pending until then. Needs a
+ * connection. Rejects with a {@link BackendError} (`offline`, `not-found`, `forbidden`, ...).
+ */
+export async function requestSessionChange(
+  clubId: string,
+  input: { sessionId: string; sessionPlayerId: string; kind: SessionRequestKind },
+): Promise<void> {
+  const backend = getBackend();
+  if (!backend) throw new BackendError("failed");
+  await backend.requestSessionChange(clubId, input);
 }

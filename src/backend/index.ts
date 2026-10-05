@@ -1,4 +1,4 @@
-import type { Session } from "../domain/types.ts";
+import type { ActiveSession, Session } from "../domain/types.ts";
 import { accountIdsEqual } from "../domain/accountId.ts";
 import { setFlash } from "../storage/flash.ts";
 import {
@@ -10,12 +10,15 @@ import {
   observeSharedSessions,
   removeSharedSession,
   setAccount,
+  setRequests,
   setSharedClubs,
+  setHostedSession,
 } from "../storage/store.ts";
 import type { Backend } from "./backend.ts";
 import { FIREBASE_EMULATOR_CONFIG } from "./firebaseEmulator.ts";
 import { createLazyFirebaseBackend, firebaseConfigFromEnv } from "./firebaseBackendLazy.ts";
 import { createLocalFakeBackend } from "./localFakeBackend.ts";
+import { createHostRequests, type HostRequests } from "./hostRequests.ts";
 import { createCoalescingUploader, type Uploader } from "./sessionUploader.ts";
 
 export type { Backend } from "./backend.ts";
@@ -77,90 +80,158 @@ export function startSharedClubSync(backend: Backend | null = getBackend()): () 
  * Keep the Active sessions of Shared clubs in step with the Backend, both ways (ADR-0007). What
  * the server reports lands in the store (and so on the device, for viewing offline). For every
  * Club this Account hosts, the store's copy is uploaded after each change: whole, coalesced, one
- * write at a time, and only while online. Call once at startup; uploads keep going whichever
- * screen is open.
+ * write at a time, and only while online; and Players' requests are applied to it (see
+ * `hostRequests.ts`). For every Club it only watches, this Account's own requests are followed, to
+ * show "Waiting for host". Call once at startup; it keeps going whichever screen is open.
  */
 export function startActiveSessionSync(maybeBackend: Backend | null = getBackend()): () => void {
   if (!maybeBackend) return () => {};
   const backend: Backend = maybeBackend;
-  const uploaders = new Map<
-    string,
-    { sessionId: string; uploader: Uploader<Session>; last: Session | null }
-  >();
+  interface Hosting {
+    sessionId: string;
+    uploader: Uploader<Session>;
+    requests: HostRequests;
+    last: Session | null;
+  }
+  const hosting = new Map<string, Hosting>();
+  /** Clubs watched as a Player: this Account's own requests. */
+  const watching = new Map<string, { sessionId: string; stop: () => void }>();
 
-  function stopUploader(clubId: string) {
-    uploaders.get(clubId)?.uploader.stop();
-    uploaders.delete(clubId);
+  function stopHosting(clubId: string) {
+    const host = hosting.get(clubId);
+    host?.uploader.stop();
+    host?.requests.stop();
+    hosting.delete(clubId);
   }
 
-  function syncUploads() {
+  function stopWatching(clubId: string) {
+    watching.get(clubId)?.stop();
+    watching.delete(clubId);
+  }
+
+  function startHosting(clubId: string, entry: ActiveSession): Hosting {
+    const requests = createHostRequests({
+      backend,
+      clubId,
+      getSession: () => getSharedSessions().find((s) => s.clubId === clubId)?.session ?? null,
+      setSession: (session) => setHostedSession(clubId, session),
+      onRequests: (all) => setRequests(clubId, all),
+    });
+    const uploader = createCoalescingUploader<Session>({
+      send: (session) =>
+        backend.publishActiveSession(clubId, session).then(() => requests.uploaded(session)),
+      isOnline: () => backend.isOnline(),
+      observeOnline: (listener) => backend.observeOnline(listener),
+      onError(error) {
+        const code = (error as { code?: unknown } | null)?.code;
+        // Somebody else hosts it now. The refusal itself is the news: ask the server who, so
+        // this device turns read-only and drops its unsent changes at once, without
+        // waiting for the observer (which says the same).
+        if (code === "forbidden") {
+          void backend
+            .getActiveSession(clubId)
+            .then((active) => applyActiveSessionOf(clubId, active))
+            .catch((fetchError: unknown) =>
+              console.warn("Couldn't learn who hosts the session", fetchError),
+            );
+          return "stop";
+        }
+        // The Club's session is gone from the server (the Club was deleted, or this
+        // Account was taken off it): nothing left to upload to.
+        if (code === "not-found") {
+          removeSharedSession(clubId);
+          setFlash(
+            `The active session of ${entry.session.clubName ?? "the club"} is no longer shared.`,
+          );
+          return "stop";
+        }
+        console.warn("Uploading the session failed, trying again", error);
+        return "retry";
+      },
+    });
+    return { sessionId: entry.session.id, uploader, requests, last: null };
+  }
+
+  let syncing = false;
+  let again = false;
+  function syncAll() {
+    // Applying requests saves the Session, which calls back in here: finish this pass, then go again.
+    if (syncing) {
+      again = true;
+      return;
+    }
+    syncing = true;
+    try {
+      do {
+        again = false;
+        syncOnce();
+      } while (again);
+    } finally {
+      syncing = false;
+    }
+  }
+
+  function syncOnce() {
     const me = getAccount()?.accountId;
-    const hosted = me
-      ? getSharedSessions().filter((entry) => accountIdsEqual(entry.hostAccountId, me))
-      : [];
-    for (const clubId of [...uploaders.keys()]) {
-      if (!hosted.some((entry) => entry.clubId === clubId)) stopUploader(clubId);
+    const all = getSharedSessions();
+    const hosted = me ? all.filter((entry) => accountIdsEqual(entry.hostAccountId, me)) : [];
+    for (const clubId of [...hosting.keys()]) {
+      if (!hosted.some((entry) => entry.clubId === clubId)) stopHosting(clubId);
     }
     for (const entry of hosted) {
       const { clubId } = entry;
-      if (uploaders.get(clubId)?.sessionId !== entry.session.id) stopUploader(clubId);
-      let host = uploaders.get(clubId);
+      stopWatching(clubId);
+      if (hosting.get(clubId)?.sessionId !== entry.session.id) stopHosting(clubId);
+      let host = hosting.get(clubId);
       if (!host) {
-        host = {
-          sessionId: entry.session.id,
-          last: null,
-          uploader: createCoalescingUploader<Session>({
-            send: (session) => backend.publishActiveSession(clubId, session),
-            isOnline: () => backend.isOnline(),
-            observeOnline: (listener) => backend.observeOnline(listener),
-            onError(error) {
-              const code = (error as { code?: unknown } | null)?.code;
-              // Somebody else hosts it now. The refusal itself is the news: ask the server who, so
-              // this device turns read-only and drops its unsent changes at once, without
-              // waiting for the observer (which says the same).
-              if (code === "forbidden") {
-                void backend
-                  .getActiveSession(clubId)
-                  .then((active) => applyActiveSessionOf(clubId, active))
-                  .catch((fetchError: unknown) =>
-                    console.warn("Couldn't learn who hosts the session", fetchError),
-                  );
-                return "stop";
-              }
-              // The Club's session is gone from the server (the Club was deleted, or this
-              // Account was taken off it): nothing left to upload to.
-              if (code === "not-found") {
-                removeSharedSession(clubId);
-                setFlash(
-                  `The active session of ${entry.session.clubName ?? "the club"} is no longer shared.`,
-                );
-                return "stop";
-              }
-              console.warn("Uploading the session failed, trying again", error);
-              return "retry";
-            },
-          }),
-        };
-        uploaders.set(clubId, host);
+        host = startHosting(clubId, entry);
+        hosting.set(clubId, host);
       }
       if (host.last !== entry.session) {
         host.last = entry.session;
         // Copies the server is known to have don't need sending.
         if (!isPublishedCopy(entry.session)) host.uploader.push(entry.session);
       }
+      host.requests.process();
+    }
+
+    // Everything else is watched: follow this Account's own requests, if it has a Session player here.
+    const watched = me
+      ? all.filter(
+          (entry) =>
+            !accountIdsEqual(entry.hostAccountId, me) &&
+            entry.session.players.some(
+              (player) => player.accountId && accountIdsEqual(player.accountId, me),
+            ),
+        )
+      : [];
+    for (const clubId of [...watching.keys()]) {
+      if (!watched.some((entry) => entry.clubId === clubId)) stopWatching(clubId);
+    }
+    for (const entry of watched) {
+      const { clubId } = entry;
+      if (watching.get(clubId)?.sessionId === entry.session.id) continue;
+      stopWatching(clubId);
+      watching.set(clubId, {
+        sessionId: entry.session.id,
+        stop: backend.observeSessionRequests(clubId, "own", (requests) =>
+          setRequests(clubId, requests),
+        ),
+      });
     }
   }
 
   const stopObserving = backend.observeActiveSessions((report) => {
     applyActiveSessionsReport(report);
-    syncUploads();
+    syncAll();
   });
-  const stopStore = observeSharedSessions(syncUploads);
-  syncUploads();
+  const stopStore = observeSharedSessions(syncAll);
+  syncAll();
 
   return () => {
     stopObserving();
     stopStore();
-    for (const clubId of [...uploaders.keys()]) stopUploader(clubId);
+    for (const clubId of [...hosting.keys()]) stopHosting(clubId);
+    for (const clubId of [...watching.keys()]) stopWatching(clubId);
   };
 }

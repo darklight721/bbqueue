@@ -1,6 +1,7 @@
 import { accountIdsEqual } from "../domain/accountId.ts";
 import { roleInClub } from "../domain/clubChanges.ts";
-import type { Account, ActiveSession } from "../domain/types.ts";
+import { newId } from "../domain/ids.ts";
+import type { Account, ActiveSession, SessionRequest } from "../domain/types.ts";
 import { BackendError, type Backend, type OnlineSource } from "./backend.ts";
 import { listenToServer, serverChanged, type SimulatedClubsState } from "./simulatedClubs.ts";
 
@@ -12,6 +13,9 @@ export interface SimulatedSessionsState extends Pick<
   /** One record per Shared club that has an Active session. */
   loadActiveSessions(): ActiveSession[];
   saveActiveSessions(sessions: ActiveSession[]): void;
+  /** Player requests on the "server", oldest first, across all Clubs. */
+  loadRequests(): SessionRequest[];
+  saveRequests(requests: SessionRequest[]): void;
   /** Clubs whose Active session this device ended while offline; the delete is still queued. */
   loadPendingSessionEnds(): string[];
   savePendingSessionEnds(clubIds: string[]): void;
@@ -25,6 +29,9 @@ export type ActiveSessionsApi = Pick<
   | "endSharedSession"
   | "takeOverSession"
   | "getActiveSession"
+  | "requestSessionChange"
+  | "observeSessionRequests"
+  | "resolveSessionRequests"
 >;
 
 /**
@@ -45,11 +52,15 @@ export function createSimulatedSessions(
     const pending = state.loadPendingSessionEnds();
     if (pending.length === 0 || !online.get()) return;
     const account = getAccount();
+    const ending = pending.filter((clubId) =>
+      state.loadActiveSessions().some((s) => s.clubId === clubId && mine(account?.accountId, s)),
+    );
     state.saveActiveSessions(
       state
         .loadActiveSessions()
         .filter((s) => !(pending.includes(s.clubId) && mine(account?.accountId, s))),
     );
+    state.saveRequests(state.loadRequests().filter((r) => !ending.includes(r.clubId)));
     state.savePendingSessionEnds([]);
     serverChanged();
   }
@@ -166,6 +177,82 @@ export function createSimulatedSessions(
       }
     },
 
+    requestSessionChange(clubId, input) {
+      try {
+        if (!online.get()) throw new BackendError("offline");
+        const account = getAccount();
+        if (!account) throw new BackendError("no-account");
+        const club = state.loadClubs().find((candidate) => candidate.id === clubId);
+        if (!club || roleInClub(club, account.accountId) === null) {
+          throw new BackendError("forbidden");
+        }
+        if (!record(clubId)) throw new BackendError("not-found");
+        const existing = state.loadRequests();
+        const request: SessionRequest = {
+          id: newId(),
+          clubId,
+          sessionId: input.sessionId,
+          sessionPlayerId: input.sessionPlayerId,
+          accountId: account.accountId,
+          kind: input.kind,
+          status: "pending",
+          // Strictly increasing, so two quick requests keep their order.
+          createdAt: Math.max(Date.now(), (existing.at(-1)?.createdAt ?? 0) + 1),
+        };
+        state.saveRequests([...existing, request]);
+        serverChanged();
+        return Promise.resolve(request);
+      } catch (error) {
+        return Promise.reject(error);
+      }
+    },
+
+    observeSessionRequests(clubId, scope, listener) {
+      const report = () => {
+        const account = getAccount();
+        const active = view().find((s) => s.clubId === clubId);
+        const visible = state.loadRequests().filter((r) => {
+          if (r.clubId !== clubId || !account) return false;
+          if (scope === "own") return accountIdsEqual(r.accountId, account.accountId);
+          // Everybody's requests are the Session host's to see.
+          return !!active && mine(account.accountId, active);
+        });
+        listener(visible);
+      };
+      report();
+      const stopServer = listenToServer(report);
+      const stopExternal = state.observeExternalChanges?.(report);
+      return () => {
+        stopServer();
+        stopExternal?.();
+      };
+    },
+
+    resolveSessionRequests(clubId, results) {
+      try {
+        if (!online.get()) throw new BackendError("offline");
+        const account = getAccount();
+        const current = record(clubId);
+        if (!account || !current || !mine(account.accountId, current)) {
+          throw new BackendError("forbidden");
+        }
+        const byId = new Map(results.map((result) => [result.id, result.status]));
+        state.saveRequests(
+          state
+            .loadRequests()
+            .map((r) =>
+              r.clubId === clubId && r.status === "pending" && byId.has(r.id)
+                ? { ...r, status: byId.get(r.id)! }
+                : r,
+            ),
+        );
+        serverChanged();
+        return Promise.resolve();
+      } catch (error) {
+        return Promise.reject(error);
+      }
+    },
+
     getActiveSession(clubId) {
       try {
         if (!online.get()) throw new BackendError("offline");
@@ -184,6 +271,7 @@ export function createSimulatedSessions(
         if (!mine(account.accountId, current)) throw new BackendError("forbidden");
         if (online.get()) {
           state.saveActiveSessions(state.loadActiveSessions().filter((s) => s.clubId !== clubId));
+          state.saveRequests(state.loadRequests().filter((r) => r.clubId !== clubId));
         } else {
           state.savePendingSessionEnds([...new Set([...state.loadPendingSessionEnds(), clubId])]);
         }

@@ -16,6 +16,8 @@ export interface SessionView {
    * would change the Session is hidden or turned off.
    */
   readOnly: boolean;
+  /** The Shared club this Session belongs to (watching or hosting); null for the device's own Session. */
+  sharedClubId: string | null;
 }
 
 export type EngineOperation = (session: Session, ctx: EngineContext) => Result<string>;

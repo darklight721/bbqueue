@@ -8,9 +8,11 @@ import { addPlayer, removePlayer, setSittingOut } from "../../../domain/engine/i
 import { newId } from "../../../domain/ids.ts";
 import type { ClubPlayer, SessionPlayer } from "../../../domain/types.ts";
 import { namesEqual, normalizeName } from "../../../domain/validation.ts";
-import { getClubs } from "../../../storage/store.ts";
+import { accountIdsEqual } from "../../../domain/accountId.ts";
+import { getClubs, useAccount } from "../../../storage/store.ts";
 import { useSessionActions, useSessionView } from "../context.ts";
 import { SessionPlayerChip } from "../PlayerViews.tsx";
+import { OwnRequestControls } from "./OwnRequestControls.tsx";
 import { messageForReason } from "../reasons.ts";
 import { SectionHeader } from "../SectionHeader.tsx";
 import {
@@ -78,6 +80,7 @@ export function PlayersSection({
       {open ? (
         <div id={bodyId} className="flex flex-col gap-4">
           {readOnly ? null : <AddSessionPlayer />}
+          <LeftNotice />
 
           {players.length > 0 ? (
             <div className="flex flex-col gap-2">
@@ -119,6 +122,22 @@ export function PlayersSection({
         onCancel={() => setRemoving(null)}
       />
     </section>
+  );
+}
+
+/** Shown to a Player who left: nothing to tap, an Organizer has to add them back. */
+function LeftNotice() {
+  const { session, readOnly, sharedClubId } = useSessionView();
+  const account = useAccount();
+  if (!readOnly || sharedClubId === null || !account) return null;
+  const mine = session.players.filter(
+    (player) => player.accountId && accountIdsEqual(player.accountId, account.accountId),
+  );
+  if (mine.length === 0 || mine.some((player) => !player.removed)) return null;
+  return (
+    <p className="rounded-box border-[1.5px] border-dashed border-base-300 px-4 py-3 text-sm font-semibold text-base-content/75">
+      You left this session. An Organizer can add you back.
+    </p>
   );
 }
 
@@ -167,8 +186,16 @@ function SortControl({
 }
 
 function PlayerRow({ player, onRemove }: { player: SessionPlayer; onRemove: () => void }) {
-  const { stats, readOnly } = useSessionView();
+  const { stats, readOnly, sharedClubId } = useSessionView();
   const actions = useSessionActions();
+  const account = useAccount();
+  // Watching a Shared club's Session: the Player's own Session player gets requests, not actions.
+  const isMine =
+    readOnly &&
+    sharedClubId !== null &&
+    !!player.accountId &&
+    !!account &&
+    accountIdsEqual(player.accountId, account.accountId);
   const status = playerStatus(player, stats.get(player.id));
   const onCourt = status.tone === "on-court";
 
@@ -194,6 +221,7 @@ function PlayerRow({ player, onRemove }: { player: SessionPlayer; onRemove: () =
         </div>
       </div>
 
+      {isMine ? <OwnRequestControls player={player} /> : null}
       {readOnly ? null : (
         <>
           <button

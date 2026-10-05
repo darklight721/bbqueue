@@ -1,6 +1,6 @@
 rules_version = '2';
 
-// Security Rules (tickets 02, 04, 05 and 06). Tested on the Firebase emulator:
+// Security Rules (tickets 02, 04, 05, 06, 07 and 08). Tested on the Firebase emulator:
 // src/backend/firestore.rules.emulator.test.ts (`pnpm test:firebase`).
 //
 // Data (see src/backend/firebaseBackend.ts and firebaseClubs.ts):
@@ -10,6 +10,8 @@ rules_version = '2';
 //   clubs/{clubId}/players/{playerId} { name, skill, link?: { accountId, uid, role } }
 //   clubs/{clubId}/activeSession/current
 //                                     { sessionJson, hostUid, hostAccountId, hostName, updatedAt }
+//   clubs/{clubId}/activeSession/current/requests/{requestId}
+//                                     { uid, accountId, sessionId, sessionPlayerId, kind, createdAt }
 //
 // The Active session of a Shared club is one fixed record, so a Club has at most one. It holds the
 // Session host's whole Session (as JSON text) and who the host is; see the rules at the end.
@@ -289,6 +291,56 @@ service cloud.firestore {
             resource.data.hostUid == request.auth.uid
             || (!existsAfter(clubPath()) && request.auth.uid in before().organizerUids)
           );
+
+        // Players' requests (ticket 08): `clubs/{clubId}/activeSession/current/requests/{id}`, each
+        // one `{ uid, accountId, sessionId, sessionPlayerId, kind, createdAt }`, later marked
+        // `{ status: 'applied' | 'skipped', resolvedAt }` by the host.
+        //
+        // - Create: anyone on the Club (`memberUids`), only for themselves (their own uid and the
+        //   Account ID reserved for it), only while the Club has an Active session, with the
+        //   server's time. The rules can't look inside the Session, so they can't tell whether
+        //   `sessionPlayerId` is the requester's own Session player: the host's device checks that
+        //   against the Account copied onto the Session player at Start, and skips a request that
+        //   isn't theirs.
+        // - Read: the requester (so a query for one's own requests passes), and the host.
+        // - Update: only the Session host, once, to mark it applied or skipped. Because a request
+        //   belongs to the record, not to a host, a new host (take over) finds the pending ones.
+        // - Delete: only the host (when it ends the Session, together with the record).
+        match /requests/{requestId} {
+          function sessionPath() {
+            return /databases/$(database)/documents/clubs/$(clubId)/activeSession/$(docId);
+          }
+          function isSessionHost() {
+            return get(sessionPath()).data.hostUid == request.auth.uid;
+          }
+
+          allow read: if signedIn() && (resource.data.get('uid', null) == request.auth.uid || isSessionHost());
+
+          allow create: if signedIn()
+            && docId == 'current'
+            && exists(sessionPath())
+            && request.auth.uid in before().memberUids
+            && request.resource.data.keys().hasOnly(['uid', 'accountId', 'sessionId', 'sessionPlayerId', 'kind', 'createdAt'])
+            && request.resource.data.keys().hasAll(['uid', 'accountId', 'sessionId', 'sessionPlayerId', 'kind', 'createdAt'])
+            && request.resource.data.uid == request.auth.uid
+            && request.resource.data.accountId is string
+            && get(/databases/$(database)/documents/accountIds/$(request.resource.data.accountId.lower())).data.uid == request.auth.uid
+            && request.resource.data.sessionId is string
+            && request.resource.data.sessionId.size() <= 100
+            && request.resource.data.sessionPlayerId is string
+            && request.resource.data.sessionPlayerId.size() <= 100
+            && request.resource.data.kind in ['sit-out', 'back-in', 'leave']
+            && request.resource.data.createdAt == request.time;
+
+          allow update: if signedIn()
+            && isSessionHost()
+            && !('status' in resource.data)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'resolvedAt'])
+            && request.resource.data.status in ['applied', 'skipped']
+            && request.resource.data.resolvedAt == request.time;
+
+          allow delete: if signedIn() && isSessionHost();
+        }
       }
     }
   }

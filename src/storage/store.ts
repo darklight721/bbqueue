@@ -1,7 +1,14 @@
 import { useSyncExternalStore } from "react";
 import type { ActiveSessionsReport } from "../backend/backend.ts";
 import { accountIdsEqual } from "../domain/accountId.ts";
-import type { Account, ActiveSession, Club, EndedSession, Session } from "../domain/types.ts";
+import type {
+  Account,
+  ActiveSession,
+  Club,
+  EndedSession,
+  Session,
+  SessionRequest,
+} from "../domain/types.ts";
 import {
   STORAGE_KEYS,
   clearAccount,
@@ -230,6 +237,32 @@ export function applyActiveSessionOf(clubId: string, active: ActiveSession | nul
   setSharedSessions([...others, ...merged].sort((a, b) => a.clubId.localeCompare(b.clubId)));
 }
 
+// --- Player requests (ticket 08) -----------------------------------------------------------------
+//
+// What the Backend reports about requests, per Shared club: this Account's own while watching,
+// everybody's while hosting. Not kept on the device: Firestore's cache answers after a reload.
+
+const requestsSlot = createSlot<Record<string, SessionRequest[]>>({});
+requestsSlot.loaded = true;
+const subscribeRequests = subscribeTo(requestsSlot);
+const NO_REQUESTS: SessionRequest[] = [];
+
+export function getRequests(clubId: string): SessionRequest[] {
+  return requestsSlot.value[clubId] ?? NO_REQUESTS;
+}
+
+export function setRequests(clubId: string, requests: SessionRequest[]): void {
+  if (JSON.stringify(requests) === JSON.stringify(getRequests(clubId))) return;
+  requestsSlot.value = { ...requestsSlot.value, [clubId]: requests };
+  notify(requestsSlot);
+}
+
+export function useRequests(clubId: string | null): SessionRequest[] {
+  return useSyncExternalStore(subscribeRequests, () =>
+    clubId ? getRequests(clubId) : NO_REQUESTS,
+  );
+}
+
 // --- Losing the host role (ticket 07) -------------------------------------------------------------
 
 const lostHostSlot = createSlot<Record<string, string>>({});
@@ -406,4 +439,5 @@ export function resetStoreForTests(): void {
   }
   endedHere.clear();
   lostHostSlot.value = {};
+  requestsSlot.value = {};
 }

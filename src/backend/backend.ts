@@ -1,4 +1,13 @@
-import type { Account, ActiveSession, Club, ClubPlayer, Role, Session } from "../domain/types.ts";
+import type {
+  Account,
+  ActiveSession,
+  Club,
+  ClubPlayer,
+  Role,
+  Session,
+  SessionRequest,
+  SessionRequestKind,
+} from "../domain/types.ts";
 import type { ClubPlayerPatch } from "../domain/clubChanges.ts";
 
 export type BackendErrorCode =
@@ -169,6 +178,41 @@ export interface Backend {
    * is when an upload was refused.
    */
   getActiveSession(clubId: string): Promise<ActiveSession | null>;
+
+  // --- Player requests (ticket 08, ADR-0007) ---------------------------------------------------
+  //
+  // A Player (or non-host Organizer) on the Club asks, for their own Session player, to switch
+  // Sitting out on or off or to leave. The request is a record of its own that waits for the
+  // Session host's device, which applies requests in the order they were made and marks each
+  // `applied` or `skipped`. Requests belong to the Club's Active session, not to the host, so a
+  // new host (take over) finds the pending ones.
+
+  /**
+   * Makes a request in the Club's Active session. Needs a connection. Rejects with `offline`,
+   * `no-account`, `not-found` (no Active session) or `forbidden` (not on the Club).
+   */
+  requestSessionChange(
+    clubId: string,
+    input: { sessionId: string; sessionPlayerId: string; kind: SessionRequestKind },
+  ): Promise<SessionRequest>;
+  /**
+   * Calls `listener` right away and then on every change with the Club's requests, oldest first:
+   * `own` is this Account's (what a Player watches to show "Waiting for host"), `all` is everybody's
+   * (what the Session host applies; anyone else is refused).
+   */
+  observeSessionRequests(
+    clubId: string,
+    scope: "own" | "all",
+    listener: (requests: SessionRequest[]) => void,
+  ): Unsubscribe;
+  /**
+   * The Session host marks pending requests as applied or skipped. Needs a connection. Rejects with
+   * `offline` or `forbidden` (not the Session host any more). Requests already resolved are left alone.
+   */
+  resolveSessionRequests(
+    clubId: string,
+    results: { id: string; status: "applied" | "skipped" }[],
+  ): Promise<void>;
 }
 
 /** How many Account IDs to try before giving up. */

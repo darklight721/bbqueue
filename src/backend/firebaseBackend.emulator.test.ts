@@ -48,9 +48,10 @@ function afterReady(backend: Backend, ready: Promise<void>): Backend {
   for (const [key, value] of Object.entries(backend)) {
     if (key === "isOnline" || key === "observeOnline") delayed[key] = value;
     else if (key.startsWith("observe")) {
-      delayed[key] = (listener: unknown) => {
+      // The listener is the last argument (some observers take a Club and a scope first).
+      delayed[key] = (...args: unknown[]) => {
         const stop = ready.then(() =>
-          (value as (listener: unknown) => () => void).call(backend, listener),
+          (value as (...args: unknown[]) => () => void).apply(backend, args),
         );
         return () => void stop.then((unsubscribe) => unsubscribe());
       };

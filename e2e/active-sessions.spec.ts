@@ -313,4 +313,60 @@ test.describe("Shared active session", () => {
     await expect(page.getByText(/Watching\./)).toBeVisible();
     await expect(page.getByRole("button", { name: "Take over" })).toHaveCount(0);
   });
+
+  test("a Player's own Session player has request controls, and a request waits for the host", async ({
+    page,
+  }) => {
+    const base = runningAtRiverside();
+    // Ana is the first Session player, linked to her Account since Start.
+    const session = {
+      ...base.session,
+      players: base.session.players.map((p, i) =>
+        i === 0 ? { ...p, accountId: ana.accountId } : p,
+      ),
+    };
+    const shared = { ...base, session };
+    await seedStorage(page, {
+      account: ana,
+      otherAccounts: [roy],
+      sharedClubs: [riverside],
+      activeSessions: [shared],
+    });
+    await page.goto(`/sessions/${session.id}`);
+
+    await expect(page.getByRole("button", { name: "Ask to sit out" })).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Leave this session" })).toHaveCount(1);
+    await page.getByRole("button", { name: "Ask to sit out" }).click();
+
+    await expect(page.getByText("Waiting for host")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Ask to sit out" })).toHaveCount(0);
+    // It waits on the "server" for the host's device.
+    await expect
+      .poll(async () =>
+        page.evaluate(() => JSON.parse(localStorage.getItem("bq:fake:requests") ?? "[]").length),
+      )
+      .toBe(1);
+  });
+
+  test("a request can't be made offline", async ({ page, context }) => {
+    const base = runningAtRiverside();
+    const session = {
+      ...base.session,
+      players: base.session.players.map((p, i) =>
+        i === 0 ? { ...p, accountId: ana.accountId } : p,
+      ),
+    };
+    await seedStorage(page, {
+      account: ana,
+      otherAccounts: [roy],
+      sharedClubs: [riverside],
+      activeSessions: [{ ...base, session }],
+    });
+    await page.goto(`/sessions/${session.id}`);
+
+    await context.setOffline(true);
+
+    await expect(page.getByRole("button", { name: "Ask to sit out" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Leave this session" })).toBeDisabled();
+  });
 });

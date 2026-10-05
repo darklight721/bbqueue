@@ -1,4 +1,4 @@
-import type { Account, ActiveSession, Club } from "../domain/types.ts";
+import type { Account, ActiveSession, Club, SessionRequest } from "../domain/types.ts";
 import type { Backend, SimulatedBackendOptions } from "./backend.ts";
 import type { ClubOp } from "./simulatedClubs.ts";
 import { createSimulatedBackend } from "./simulatedBackend.ts";
@@ -15,6 +15,8 @@ export const FAKE_BACKEND_KEYS = {
   pendingClubOps: "bq:fake:pending-club-ops",
   /** Active sessions of Shared clubs on the "server": an array of ActiveSession. */
   activeSessions: "bq:fake:active-sessions",
+  /** Player requests on the "server": an array of SessionRequest, oldest first. */
+  requests: "bq:fake:requests",
   /** Clubs whose Active session this device ended while offline (the delete is still waiting). */
   pendingSessionEnds: "bq:fake:pending-session-ends",
 } as const;
@@ -89,6 +91,10 @@ export function createLocalFakeBackend(
           []) as unknown as ActiveSession[],
       saveActiveSessions: (sessions) =>
         localStorage.setItem(FAKE_BACKEND_KEYS.activeSessions, JSON.stringify(sessions)),
+      loadRequests: () =>
+        (readJson(FAKE_BACKEND_KEYS.requests, isRecordArray) ?? []) as unknown as SessionRequest[],
+      saveRequests: (requests) =>
+        localStorage.setItem(FAKE_BACKEND_KEYS.requests, JSON.stringify(requests)),
       loadPendingSessionEnds: () => readJson(pendingEndsKey, isStringArray) ?? [],
       savePendingSessionEnds: (ids) => localStorage.setItem(pendingEndsKey, JSON.stringify(ids)),
       loadPendingOps: () => (readJson(pendingKey, isRecordArray) ?? []) as ClubOp[],

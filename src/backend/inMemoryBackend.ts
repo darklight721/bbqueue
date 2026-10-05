@@ -1,4 +1,4 @@
-import type { Account, ActiveSession, Club } from "../domain/types.ts";
+import type { Account, ActiveSession, Club, SessionRequest } from "../domain/types.ts";
 import type { Backend, OnlineSource, SimulatedBackendOptions } from "./backend.ts";
 import type { ClubOp } from "./simulatedClubs.ts";
 import { createSimulatedBackend } from "./simulatedBackend.ts";
@@ -12,10 +12,11 @@ export interface InMemoryServer {
   accounts: Account[];
   clubs: Club[];
   activeSessions: ActiveSession[];
+  requests: SessionRequest[];
 }
 
 export function createInMemoryServer(): InMemoryServer {
-  return { reserved: [], accounts: [], clubs: [], activeSessions: [] };
+  return { reserved: [], accounts: [], clubs: [], activeSessions: [], requests: [] };
 }
 
 export interface InMemoryBackend extends Backend {
@@ -68,6 +69,10 @@ export function createInMemoryBackend(
       loadActiveSessions: () => server.activeSessions,
       saveActiveSessions: (next) => {
         server.activeSessions = next;
+      },
+      loadRequests: () => server.requests,
+      saveRequests: (next) => {
+        server.requests = next;
       },
       loadPendingSessionEnds: () => pendingEnds,
       savePendingSessionEnds: (ids) => {

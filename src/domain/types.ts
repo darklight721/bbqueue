@@ -133,6 +133,30 @@ export interface ActiveSession {
   updatedAt: number;
 }
 
+/** What a Player may ask the Session host for, for their own Session player (ticket 08). */
+export type SessionRequestKind = "sit-out" | "back-in" | "leave";
+
+export type SessionRequestStatus = "pending" | "applied" | "skipped";
+
+/**
+ * A Player's request to the Session host (ADR-0007): to switch their own Sitting out on or off,
+ * or to leave. It waits ("Waiting for host") until the host's device applies it or skips it.
+ */
+export interface SessionRequest {
+  id: string;
+  clubId: string;
+  /** The Session the request was made in; a request for another Session is skipped. */
+  sessionId: string;
+  /** The requester's own Session player. */
+  sessionPlayerId: string;
+  /** The requester's Account ID: the host checks it against the Account copied onto the Session player. */
+  accountId: string;
+  kind: SessionRequestKind;
+  status: SessionRequestStatus;
+  /** Epoch ms by the server's clock; requests are applied in this order. */
+  createdAt: number;
+}
+
 /** One row of an Ended session's Standings: a player who played at least one match, with their place. */
 export interface StandingsEntry {
   place: number;

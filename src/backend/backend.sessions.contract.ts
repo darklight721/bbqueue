@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { createRng, createSession } from "../domain/engine/index.ts";
-import type { Account, ActiveSession, Session } from "../domain/types.ts";
+import type { Account, ActiveSession, Session, SessionRequest } from "../domain/types.ts";
 import { eventually } from "../test/eventually.ts";
-import { BackendError } from "./backend.ts";
+import { BackendError, type Backend } from "./backend.ts";
 import type { RolesContractWorld } from "./backend.roles.contract.ts";
 
 /** A small Session for a Shared club; `name` tells copies apart. */
@@ -346,6 +346,188 @@ export function runSessionsContract(name: string, createWorld: () => RolesContra
         await roy.backend.endSharedSession("c1");
         await eventually(async () => expect(await ana.backend.getActiveSession("c1")).toBeNull());
         expect((await rejection(ana.backend.takeOverSession("c1"))).code).toBe("not-found");
+      });
+    });
+
+    describe("Players' requests", () => {
+      const watch = (
+        who: { backend: { observeSessionRequests: Backend["observeSessionRequests"] } },
+        scope: "own" | "all",
+      ) => {
+        let latest: SessionRequest[] | null = null;
+        stops.push(
+          who.backend.observeSessionRequests("c1", scope, (requests) => {
+            latest = requests;
+          }),
+        );
+        return () => latest ?? [];
+      };
+      const ask = (
+        who: { backend: Backend },
+        kind: "sit-out" | "back-in" | "leave" = "sit-out",
+        sessionPlayerId = "sp-1",
+      ) => who.backend.requestSessionChange("c1", { sessionId: "s-1", sessionPlayerId, kind });
+
+      /** Roy hosts; Ana (a Player) and Ben (a Player, added later) are on the Club. */
+      async function running() {
+        const people = await setup();
+        await people.roy.backend.addClubPlayer("c1", {
+          id: "p-ben",
+          name: "Ben",
+          skill: "beginner",
+        });
+        await people.roy.backend.linkClubPlayer(
+          "c1",
+          "p-ben",
+          people.ben.account.accountId,
+          "player",
+        );
+        await people.roy.backend.startSharedSession("c1", makeClubSession());
+        await eventually(() => expect(people.ana.session("c1")).toBeDefined());
+        await eventually(() => expect(people.ben.session("c1")).toBeDefined());
+        return people;
+      }
+
+      it("lets a Player make a request, which they and the host see, pending", async () => {
+        const { roy, ana } = await running();
+        const mine = watch(ana, "own");
+        const hosts = watch(roy, "all");
+
+        const made = await ask(ana, "sit-out", "sp-ana");
+
+        expect(made).toMatchObject({
+          clubId: "c1",
+          sessionId: "s-1",
+          sessionPlayerId: "sp-ana",
+          accountId: ana.account.accountId,
+          kind: "sit-out",
+          status: "pending",
+        });
+        await eventually(() => expect(mine().map((r) => r.id)).toEqual([made.id]));
+        await eventually(() => expect(hosts().map((r) => r.id)).toEqual([made.id]));
+        expect(hosts()[0]?.createdAt).toBeGreaterThan(0);
+      });
+
+      it("keeps requests in the order they were made, and keeps one Player's from another's", async () => {
+        const { roy, ana, ben } = await running();
+        const hosts = watch(roy, "all");
+        const anas = watch(ana, "own");
+        const bens = watch(ben, "own");
+
+        const first = await ask(ana, "sit-out", "sp-ana");
+        const second = await ask(ben, "leave", "sp-ben");
+        const third = await ask(ana, "back-in", "sp-ana");
+
+        await eventually(() =>
+          expect(hosts().map((r) => r.id)).toEqual([first.id, second.id, third.id]),
+        );
+        await eventually(() => expect(anas().map((r) => r.id)).toEqual([first.id, third.id]));
+        await eventually(() => expect(bens().map((r) => r.id)).toEqual([second.id]));
+      });
+
+      it("shows everybody's requests to the Session host only", async () => {
+        const { roy, ana, ben } = await running();
+        const benAll = watch(ben, "all");
+        const anaAll = watch(ana, "all");
+        const hosts = watch(roy, "all");
+
+        await ask(ana, "sit-out", "sp-ana");
+        await ask(ben, "sit-out", "sp-ben");
+
+        await eventually(() => expect(hosts()).toHaveLength(2));
+        // Somebody else's "all" is refused: nothing of other people's is ever reported to them (the
+        // server version may show their own, still waiting in the device's cache, until it refuses).
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        expect(benAll().filter((r) => r.accountId !== ben.account.accountId)).toEqual([]);
+        expect(anaAll().filter((r) => r.accountId !== ana.account.accountId)).toEqual([]);
+      });
+
+      it("only takes requests from people on the Club, and only while the Club has a session", async () => {
+        const { roy, ben } = await setup();
+        expect((await rejection(ask(roy))).code).toBe("not-found");
+
+        await roy.backend.startSharedSession("c1", makeClubSession());
+        expect((await rejection(ask(ben))).code).toBe("forbidden");
+      });
+
+      it("needs a connection", async () => {
+        const { ana } = await running();
+        ana.setOnline(false);
+        expect((await rejection(ask(ana))).code).toBe("offline");
+      });
+
+      it("lets only the Session host mark requests, and the Player sees how it went", async () => {
+        const { roy, ana } = await running();
+        const mine = watch(ana, "own");
+        const applied = await ask(ana, "sit-out", "sp-ana");
+        const skipped = await ask(ana, "sit-out", "sp-ana");
+        await eventually(() => expect(mine()).toHaveLength(2));
+
+        expect(
+          (
+            await rejection(
+              ana.backend.resolveSessionRequests("c1", [{ id: applied.id, status: "applied" }]),
+            )
+          ).code,
+        ).toBe("forbidden");
+        await roy.backend.resolveSessionRequests("c1", [
+          { id: applied.id, status: "applied" },
+          { id: skipped.id, status: "skipped" },
+        ]);
+
+        await eventually(() =>
+          expect(mine().map((r) => [r.id, r.status])).toEqual([
+            [applied.id, "applied"],
+            [skipped.id, "skipped"],
+          ]),
+        );
+      });
+
+      it("needs a connection to mark requests", async () => {
+        const { roy, ana } = await running();
+        const made = await ask(ana, "leave", "sp-ana");
+        roy.setOnline(false);
+
+        const error = await rejection(
+          roy.backend.resolveSessionRequests("c1", [{ id: made.id, status: "applied" }]),
+        );
+
+        expect(error.code).toBe("offline");
+      });
+
+      it("keeps pending requests for a new host when somebody takes over", async () => {
+        const { roy, ana, ben } = await running();
+        await roy.backend.setClubPlayerRole("c1", "p-ana", "organizer");
+        const made = await ask(ben, "sit-out", "sp-ben");
+
+        await ana.backend.takeOverSession("c1");
+
+        const newHosts = watch(ana, "all");
+        await eventually(() =>
+          expect(newHosts().map((r) => [r.id, r.status])).toEqual([[made.id, "pending"]]),
+        );
+        // And the old host can no longer mark them.
+        expect(
+          (
+            await rejection(
+              roy.backend.resolveSessionRequests("c1", [{ id: made.id, status: "applied" }]),
+            )
+          ).code,
+        ).toBe("forbidden");
+        await ana.backend.resolveSessionRequests("c1", [{ id: made.id, status: "applied" }]);
+        const bens = watch(ben, "own");
+        await eventually(() => expect(bens()[0]?.status).toBe("applied"));
+      });
+
+      it("clears the requests when the host ends the session", async () => {
+        const { roy, ana } = await running();
+        const mine = watch(ana, "own");
+        await ask(ana, "sit-out", "sp-ana");
+        await eventually(() => expect(mine()).toHaveLength(1));
+
+        await roy.backend.endSharedSession("c1");
+
+        await eventually(() => expect(mine()).toEqual([]));
       });
     });
   });

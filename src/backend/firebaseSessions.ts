@@ -1,10 +1,13 @@
 import {
   collection,
-  deleteDoc,
   doc,
   getDoc,
   getDocFromCache,
   getDocFromServer,
+  getDocs,
+  getDocsFromCache,
+  setDoc,
+  writeBatch,
   onSnapshot,
   query,
   runTransaction,
@@ -15,7 +18,14 @@ import {
   type Firestore,
   type QuerySnapshot,
 } from "firebase/firestore";
-import type { Account, ActiveSession, Session } from "../domain/types.ts";
+import { newId } from "../domain/ids.ts";
+import type {
+  Account,
+  ActiveSession,
+  Session,
+  SessionRequest,
+  SessionRequestKind,
+} from "../domain/types.ts";
 import { BackendError, type OnlineSource, type Unsubscribe } from "./backend.ts";
 import { retryDelay, settle, stringList, toBackendError } from "./firebaseClubs.ts";
 import type { ActiveSessionsApi } from "./simulatedSessions.ts";
@@ -43,6 +53,8 @@ export function createFirebaseActiveSessions(
 ): ActiveSessionsApi {
   const clubRef = (clubId: string) => doc(db, "clubs", clubId);
   const sessionRef = (clubId: string) => doc(db, "clubs", clubId, "activeSession", "current");
+  const requestsRef = (clubId: string) =>
+    collection(db, "clubs", clubId, "activeSession", "current", "requests");
 
   async function requireViewer(): Promise<{ account: Account; uid: string }> {
     const account = await deps.getAccount();
@@ -315,8 +327,157 @@ export function createFirebaseActiveSessions(
         if (deps.online.get()) throw toBackendError(error);
       }
       if (record && record.hostUid !== uid) throw new BackendError("forbidden");
-      await settle(deps.online, deleteDoc(sessionRef(clubId)));
+      // The record goes with the requests made in it, in one batch (so also when it waits offline).
+      const batch = writeBatch(db);
+      batch.delete(sessionRef(clubId));
+      try {
+        const requests = deps.online.get()
+          ? await getDocs(requestsRef(clubId))
+          : await getDocsFromCache(requestsRef(clubId));
+        for (const request of requests.docs) batch.delete(request.ref);
+      } catch {
+        // Requests we can't list stay behind; they are for this Session only and are ignored later.
+      }
+      await settle(deps.online, batch.commit());
     },
+
+    async requestSessionChange(clubId, input) {
+      if (!deps.online.get()) throw new BackendError("offline");
+      const { account, uid } = await requireViewer();
+      try {
+        if (!(await getDoc(sessionRef(clubId))).exists()) throw new BackendError("not-found");
+      } catch (error) {
+        throw toBackendError(error);
+      }
+      const request: SessionRequest = {
+        id: newId(),
+        clubId,
+        sessionId: input.sessionId,
+        sessionPlayerId: input.sessionPlayerId,
+        accountId: account.accountId,
+        kind: input.kind,
+        status: "pending",
+        createdAt: Date.now(),
+      };
+      await settle(
+        deps.online,
+        setDoc(doc(requestsRef(clubId), request.id), {
+          uid,
+          accountId: account.accountId,
+          sessionId: input.sessionId,
+          sessionPlayerId: input.sessionPlayerId,
+          kind: input.kind satisfies SessionRequestKind,
+          createdAt: serverTimestamp(),
+        }),
+      );
+      return request;
+    },
+
+    observeSessionRequests(clubId, scope, listener) {
+      let stopQuery: Unsubscribe = () => {};
+      let watching: string | null | undefined;
+      const stopAccount = deps.observeAccount((account) => {
+        const uid = account ? deps.currentUid() : null;
+        if (uid === watching) return;
+        watching = uid;
+        stopQuery();
+        stopQuery = uid ? watch(uid) : () => {};
+        if (!uid) listener([]);
+      });
+
+      function watch(uid: string): Unsubscribe {
+        let attempt = 0;
+        let retry: ReturnType<typeof setTimeout> | undefined;
+        let stopSnapshot: Unsubscribe = () => {};
+        let stopped = false;
+        // A Player only ever asks for their own; the rules refuse anyone but the host the rest.
+        const source =
+          scope === "own"
+            ? query(requestsRef(clubId), where("uid", "==", uid))
+            : requestsRef(clubId);
+        const listen = () => {
+          stopSnapshot = onSnapshot(
+            source,
+            (snapshot) => {
+              attempt = 0;
+              const requests = snapshot.docs.flatMap((row) => {
+                const request = toRequest(
+                  clubId,
+                  row.id,
+                  row.data({ serverTimestamps: "estimate" }),
+                );
+                return request ? [request] : [];
+              });
+              listener(
+                requests.sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id)),
+              );
+            },
+            (error) => {
+              if (stopped) return;
+              console.warn("Requests listener failed, trying again", error);
+              retry = setTimeout(listen, retryDelay(attempt++));
+            },
+          );
+        };
+        listen();
+        return () => {
+          stopped = true;
+          clearTimeout(retry);
+          stopSnapshot();
+        };
+      }
+
+      return () => {
+        stopAccount();
+        stopQuery();
+      };
+    },
+
+    async resolveSessionRequests(clubId, results) {
+      if (!deps.online.get()) throw new BackendError("offline");
+      if (results.length === 0) return;
+      // One at a time, so a request that was already resolved (the rules refuse a second answer)
+      // doesn't hold the others back.
+      const settled = await Promise.allSettled(
+        results.map((result) =>
+          updateDoc(doc(requestsRef(clubId), result.id), {
+            status: result.status,
+            resolvedAt: serverTimestamp(),
+          }),
+        ),
+      );
+      const failures = settled.flatMap((outcome) =>
+        outcome.status === "rejected" ? [toBackendError(outcome.reason)] : [],
+      );
+      const other = failures.find((failure) => failure.code !== "forbidden");
+      if (other) throw other;
+      // Every one refused: this Account isn't the host any more.
+      if (failures.length === results.length) throw new BackendError("forbidden");
+    },
+  };
+}
+
+/** The request in a record, or null when it can't be read as one. */
+function toRequest(clubId: string, id: string, data: DocumentData): SessionRequest | null {
+  const kind = data.kind;
+  if (
+    typeof data.accountId !== "string" ||
+    typeof data.sessionId !== "string" ||
+    typeof data.sessionPlayerId !== "string" ||
+    (kind !== "sit-out" && kind !== "back-in" && kind !== "leave")
+  ) {
+    return null;
+  }
+  const createdAt = (data.createdAt as { toMillis?: () => number } | null)?.toMillis?.();
+  return {
+    id,
+    clubId,
+    sessionId: data.sessionId,
+    sessionPlayerId: data.sessionPlayerId,
+    accountId: data.accountId,
+    kind,
+    status: data.status === "applied" || data.status === "skipped" ? data.status : "pending",
+    createdAt: typeof createdAt === "number" ? createdAt : Date.now(),
   };
 }
 

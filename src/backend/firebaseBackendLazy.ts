@@ -80,5 +80,11 @@ export function createLazyFirebaseBackend(
     endSharedSession: (clubId) => loaded.then((backend) => backend.endSharedSession(clubId)),
     takeOverSession: (clubId) => loaded.then((backend) => backend.takeOverSession(clubId)),
     getActiveSession: (clubId) => loaded.then((backend) => backend.getActiveSession(clubId)),
+    requestSessionChange: (clubId, input) =>
+      loaded.then((backend) => backend.requestSessionChange(clubId, input)),
+    observeSessionRequests: (clubId, scope, listener) =>
+      observeWhenLoaded((backend) => backend.observeSessionRequests(clubId, scope, listener)),
+    resolveSessionRequests: (clubId, results) =>
+      loaded.then((backend) => backend.resolveSessionRequests(clubId, results)),
   };
 }

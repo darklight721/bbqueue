@@ -46,11 +46,13 @@ export function SessionProvider({
   session,
   hostedClubId = null,
   readOnly = false,
+  sharedClubId = null,
   children,
 }: {
   session: Session;
   hostedClubId?: string | null;
   readOnly?: boolean;
+  sharedClubId?: string | null;
   children: ReactNode;
 }) {
   const view = useMemo<SessionView>(() => {
@@ -63,8 +65,9 @@ export function SessionProvider({
       stats: allPlayerStats(session, asOf),
       playerById: new Map(session.players.map((player) => [player.id, player])),
       readOnly,
+      sharedClubId,
     };
-  }, [session, readOnly]);
+  }, [session, readOnly, sharedClubId]);
 
   const [notice, setNotice] = useState<{ id: number; text: string } | null>(null);
   const counter = useRef(0);

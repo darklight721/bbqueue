@@ -1120,3 +1120,165 @@ describe("Shared Active session", () => {
     });
   });
 });
+
+describe("Players' requests", () => {
+  const requestDoc = (db: Firestore, id = "r1") =>
+    doc(db, "clubs", "c1", "activeSession", "current", "requests", id);
+  const requestsOf = (db: Firestore) =>
+    collection(db, "clubs", "c1", "activeSession", "current", "requests");
+
+  /** A request as the app writes it. */
+  const ask = (person: Person, extra: Record<string, unknown> = {}) => ({
+    uid: person.uid,
+    accountId: person.accountId,
+    sessionId: "s1",
+    sessionPlayerId: "sp-1",
+    kind: "sit-out",
+    createdAt: serverTimestamp(),
+    ...extra,
+  });
+
+  /** Roy hosts a running session; Ana (Player) is on the Club; Ben isn't. */
+  async function seedRunning() {
+    await seedClub();
+    await seed(async (db) => {
+      await setDoc(doc(db, "clubs", "c1", "activeSession", "current"), {
+        sessionJson: JSON.stringify({ id: "s1" }),
+        hostUid: ROY.uid,
+        hostAccountId: ROY.accountId,
+        hostName: ROY.name,
+      });
+    });
+  }
+
+  async function seedRequest(person: Person = ANA, id = "r1", extra: Record<string, unknown> = {}) {
+    await seed(async (db) => {
+      await setDoc(requestDoc(db, id), { ...ask(person, { createdAt: new Date(1000) }), ...extra });
+    });
+  }
+
+  describe("creating", () => {
+    it("lets anyone on the Club ask for themselves, a Player or an Organizer", async () => {
+      await seedRunning();
+      await assertSucceeds(setDoc(requestDoc(as(ANA.uid)), ask(ANA)));
+      await assertSucceeds(setDoc(requestDoc(as(ROY.uid), "r2"), ask(ROY, { kind: "leave" })));
+      await assertSucceeds(setDoc(requestDoc(as(ANA.uid), "r3"), ask(ANA, { kind: "back-in" })));
+    });
+
+    it("refuses somebody who isn't on the Club, and somebody not signed in", async () => {
+      await seedRunning();
+      await assertFails(setDoc(requestDoc(as(BEN.uid)), ask(BEN)));
+      await assertFails(setDoc(requestDoc(anonymous()), ask(ANA)));
+    });
+
+    it("refuses a request for somebody else: another uid, or somebody else's Account ID", async () => {
+      await seedRunning();
+      const db = as(ANA.uid);
+      await assertFails(setDoc(requestDoc(db), ask(ROY)));
+      await assertFails(setDoc(requestDoc(db), ask(ANA, { uid: ROY.uid })));
+      await assertFails(setDoc(requestDoc(db), ask(ANA, { accountId: ROY.accountId })));
+      await assertFails(setDoc(requestDoc(db), ask(ANA, { accountId: "nobody-0000" })));
+    });
+
+    it("refuses a request when the Club has no Active session", async () => {
+      await seedClub();
+      await assertFails(setDoc(requestDoc(as(ANA.uid)), ask(ANA)));
+    });
+
+    it("refuses other kinds, other fields, a missing field and a time of the Player's choosing", async () => {
+      await seedRunning();
+      const db = as(ANA.uid);
+      await assertFails(setDoc(requestDoc(db), ask(ANA, { kind: "end-session" })));
+      await assertFails(setDoc(requestDoc(db), ask(ANA, { status: "applied" })));
+      await assertFails(setDoc(requestDoc(db), ask(ANA, { isAdmin: true })));
+      await assertFails(setDoc(requestDoc(db), ask(ANA, { createdAt: new Date(0) })));
+      await assertFails(setDoc(requestDoc(db), ask(ANA, { sessionPlayerId: 7 })));
+      await assertFails(setDoc(requestDoc(db), ask(ANA, { sessionId: "x".repeat(101) })));
+      const { sessionId: _sessionId, ...withoutSession } = ask(ANA);
+      await assertFails(setDoc(requestDoc(db), withoutSession));
+    });
+  });
+
+  describe("reading", () => {
+    it("lets a Player read their own requests, and the host everybody's", async () => {
+      await seedRunning();
+      await seedRequest(ANA, "r1");
+      await seedRequest(ROY, "r2");
+      await assertSucceeds(getDoc(requestDoc(as(ANA.uid), "r1")));
+      await assertSucceeds(getDocs(query(requestsOf(as(ANA.uid)), where("uid", "==", ANA.uid))));
+      await assertSucceeds(getDocs(requestsOf(as(ROY.uid))));
+    });
+
+    it("refuses a Player somebody else's requests, and everybody else", async () => {
+      await seedRunning();
+      await seedRequest(ROY, "r2");
+      await assertFails(getDoc(requestDoc(as(ANA.uid), "r2")));
+      await assertFails(getDocs(requestsOf(as(ANA.uid))));
+      await assertFails(getDoc(requestDoc(as(BEN.uid), "r2")));
+      await assertFails(getDoc(requestDoc(anonymous(), "r2")));
+    });
+  });
+
+  describe("marking", () => {
+    const resolve = (status: string, extra: Record<string, unknown> = {}) => ({
+      status,
+      resolvedAt: serverTimestamp(),
+      ...extra,
+    });
+
+    it("lets only the Session host mark a request, once, as applied or skipped", async () => {
+      await seedRunning();
+      await seedRequest();
+      await assertFails(updateDoc(requestDoc(as(ANA.uid)), resolve("applied")));
+      await assertFails(updateDoc(requestDoc(as(BEN.uid)), resolve("applied")));
+      await assertSucceeds(updateDoc(requestDoc(as(ROY.uid)), resolve("applied")));
+      // No second answer.
+      await assertFails(updateDoc(requestDoc(as(ROY.uid)), resolve("skipped")));
+    });
+
+    it("refuses any other change: another status, other fields, the requester's fields, the time", async () => {
+      await seedRunning();
+      await seedRequest();
+      const db = as(ROY.uid);
+      await assertFails(updateDoc(requestDoc(db), resolve("pending")));
+      await assertFails(updateDoc(requestDoc(db), resolve("applied", { kind: "leave" })));
+      await assertFails(
+        updateDoc(requestDoc(db), resolve("applied", { sessionPlayerId: "other" })),
+      );
+      await assertFails(updateDoc(requestDoc(db), resolve("applied", { resolvedAt: new Date(0) })));
+      await assertFails(updateDoc(requestDoc(db), { kind: "leave" }));
+    });
+
+    it("hands pending requests to a new host: the old host can't mark them, the new one can", async () => {
+      await seedRunning();
+      await seedRequest();
+      await seed(async (db) => {
+        await updateDoc(doc(db, "clubs", "c1"), { organizerUids: [ROY.uid, ANA.uid] });
+      });
+      await assertSucceeds(
+        updateDoc(doc(as(ANA.uid), "clubs", "c1", "activeSession", "current"), {
+          hostUid: ANA.uid,
+          hostAccountId: ANA.accountId,
+          hostName: ANA.name,
+          updatedAt: serverTimestamp(),
+        }),
+      );
+      await assertFails(updateDoc(requestDoc(as(ROY.uid)), resolve("applied")));
+      await assertSucceeds(updateDoc(requestDoc(as(ANA.uid)), resolve("applied")));
+    });
+  });
+
+  describe("deleting", () => {
+    it("lets only the Session host delete requests, with the Session when it ends", async () => {
+      await seedRunning();
+      await seedRequest();
+      await assertFails(deleteDoc(requestDoc(as(ANA.uid))));
+      await assertFails(deleteDoc(requestDoc(as(BEN.uid))));
+      const db = as(ROY.uid);
+      const batch = writeBatch(db);
+      batch.delete(requestDoc(db));
+      batch.delete(doc(db, "clubs", "c1", "activeSession", "current"));
+      await assertSucceeds(batch.commit());
+    });
+  });
+});

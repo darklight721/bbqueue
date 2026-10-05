@@ -68,6 +68,7 @@ export function SessionScreen({ sessionId }: { sessionId?: string } = {}) {
       session={session}
       hostedClubId={shared && !readOnly ? shared.clubId : null}
       readOnly={readOnly}
+      sharedClubId={shared?.clubId ?? null}
     >
       <Screen
         title={session.name}
