@@ -9,6 +9,7 @@ import { runDeleteAccountContract } from "./backend.deleteAccount.contract.ts";
 import { runMakeSharedContract } from "./backend.makeShared.contract.ts";
 import { runSessionsContract } from "./backend.sessions.contract.ts";
 import { runBackendContract, type ContractOptions } from "./backend.contract.ts";
+import { makeClubEnded, makeClubSession } from "./backend.sessions.contract.ts";
 import type { Backend, BackendError, OnlineSource } from "./backend.ts";
 import { createFirebaseBackend } from "./firebaseBackend.ts";
 import { FIREBASE_EMULATOR_CONFIG } from "./firebaseEmulator.ts";
@@ -38,6 +39,10 @@ function controllableOnline(initial: boolean) {
     set: (next: boolean) => {
       online = next;
       for (const listener of [...listeners]) listener(next);
+    },
+    /** The network stops answering while the device still believes it is online. */
+    cut: (reachable: boolean) => {
+      for (const listener of [...listeners]) listener(reachable);
     },
   };
 }
@@ -96,7 +101,11 @@ function createDevice(options: Partial<ContractOptions> = {}) {
     if (!online) connection.set(false);
   })();
 
-  return { backend: afterReady(backend, ready), setOnline: connection.set };
+  return {
+    backend: afterReady(backend, ready),
+    setOnline: connection.set,
+    setReachable: connection.cut,
+  };
 }
 
 runBackendContract("Firebase emulator", (options) => createDevice(options).backend);
@@ -442,6 +451,47 @@ describe("Firebase emulator: what reaches the server", () => {
     });
     stop();
   });
+
+  it("records the Session's id on the Active session when it starts", async () => {
+    const roy = createDevice();
+    await roy.backend.createAccount("Roy");
+    await roy.backend.createSharedClub({ id: "c1", name: "Tuesday", players: [] });
+    const session = makeClubSession();
+
+    await roy.backend.startSharedSession("c1", session);
+
+    expect(await adminGetDoc("clubs/c1/activeSession/current")).toMatchObject({
+      sessionId: session.id,
+    });
+  });
+
+  it("ends a Session on a network that says it is online but doesn't answer: the end and the Ended session wait in the device's queue, and land when it answers", async () => {
+    const roy = createDevice();
+    await roy.backend.createAccount("Roy");
+    await roy.backend.createSharedClub({ id: "c1", name: "Tuesday", players: [] });
+    const session = makeClubSession();
+    await roy.backend.startSharedSession("c1", session);
+    // The host's listener keeps the Session in the device's cache.
+    let heard = false;
+    const stop = roy.backend.observeActiveSessions((report) => {
+      heard = report.sessions.length === 1;
+    });
+    await eventually(() => expect(heard).toBe(true));
+
+    roy.setReachable(false);
+    const started = Date.now();
+    await roy.backend.endSharedSession("c1", makeClubEnded(session, 1_700_000_000_000));
+    // It didn't wait for the network to be asked anything.
+    expect(Date.now() - started).toBeLessThan(15_000);
+    expect(await adminGetDoc("clubs/c1/activeSession/current")).not.toBeNull();
+
+    roy.setReachable(true);
+    await eventually(async () => {
+      expect(await adminGetDoc("clubs/c1/activeSession/current")).toBeNull();
+      expect(await adminGetDoc(`clubs/c1/endedSessions/${session.id}`)).not.toBeNull();
+    }, 20_000);
+    stop();
+  }, 40_000);
 
   it("deleting the Account keeps its Account ID reserved for good, and takes a Club it was alone on, with its history, off the server", async () => {
     const roy = createDevice();

@@ -32,7 +32,15 @@ import type {
   SessionRequestKind,
 } from "../domain/types.ts";
 import { BackendError, type OnlineSource, type Unsubscribe } from "./backend.ts";
-import { retryDelay, settle, stringList, toBackendError, toRecord } from "./firebaseClubs.ts";
+import {
+  CACHE_TIMEOUT_MS,
+  retryDelay,
+  settle,
+  stringList,
+  toBackendError,
+  toRecord,
+  withTimeout,
+} from "./firebaseClubs.ts";
 import type { ActiveSessionsApi } from "./simulatedSessions.ts";
 
 /**
@@ -430,24 +438,43 @@ export function createFirebaseActiveSessions(
     async endSharedSession(clubId, ended = null) {
       const uid = deps.currentUid();
       if (!uid) throw new BackendError("no-account");
+      // Everything is read from the device's cache, never from the server: ending the night must
+      // not wait for a network that reports itself online and doesn't answer. The host's own
+      // listeners keep the Session and its requests in the cache. Not in the cache: the delete is
+      // sent anyway and the server decides (a record that isn't mine is refused there).
       let record: DocumentData | undefined;
+      let cachedAbsent = false;
       try {
-        const snapshot = deps.online.get()
-          ? await getDoc(sessionRef(clubId))
-          : await getDocFromCache(sessionRef(clubId));
-        if (!snapshot.exists()) return;
-        record = snapshot.data();
-      } catch (error) {
-        // Offline with nothing cached: send the delete anyway and let the server decide. A
-        // record I can't read online isn't mine to end.
-        if (deps.online.get()) throw toBackendError(error);
+        const snapshot = await withTimeout(getDocFromCache(sessionRef(clubId)), CACHE_TIMEOUT_MS);
+        if (snapshot.exists()) record = snapshot.data();
+        else cachedAbsent = true;
+      } catch {
+        // Not in the cache.
+      }
+      if (!record && deps.online.get()) {
+        // Nothing (or "none") in the cache, which may be behind (a Session only just started):
+        // ask the server, but only for a moment. A network that doesn't answer must not hold up
+        // the end; then the delete is sent anyway and the server decides.
+        try {
+          const snapshot = await withTimeout(
+            getDocFromServer(sessionRef(clubId)),
+            SERVER_PEEK_TIMEOUT_MS,
+          );
+          if (!snapshot.exists()) return;
+          record = snapshot.data();
+        } catch {
+          // No answer.
+        }
+      } else if (!record && cachedAbsent) {
+        return;
       }
       if (record && record.hostUid !== uid) throw new BackendError("forbidden");
       // The record goes with the requests made in it, in one batch (so also when it waits offline).
       const batch = writeBatch(db);
       batch.delete(sessionRef(clubId));
       // The Ended session is created in the same batch, so it lands with the delete (and waits
-      // with it offline). The rules let only the host create it, and nobody change it after.
+      // with it offline). The rules let only the host create it, only in the batch that ends the
+      // Session it belongs to, and nobody change it after.
       if (ended) {
         batch.set(doc(endedRef(clubId), ended.id), {
           hostUid: uid,
@@ -457,13 +484,12 @@ export function createFirebaseActiveSessions(
         });
       }
       try {
-        const requests = deps.online.get()
-          ? await getDocs(requestsRef(clubId))
-          : await getDocsFromCache(requestsRef(clubId));
+        const requests = await withTimeout(getDocsFromCache(requestsRef(clubId)), CACHE_TIMEOUT_MS);
         for (const request of requests.docs) batch.delete(request.ref);
       } catch {
         // Requests we can't list stay behind; they are for this Session only and are ignored later.
       }
+      // Committed now, before waiting for anything: the write is in the device's queue from here.
       await settle(deps.online, batch.commit());
     },
 
@@ -696,6 +722,9 @@ export function createFirebaseActiveSessions(
     },
   };
 }
+
+/** How long ending a Session waits for the server to say what it holds, when the cache can't. */
+const SERVER_PEEK_TIMEOUT_MS = 3_000;
 
 /** How long a write may take to reach the server before it counts as not having. */
 const CONFIRM_TIMEOUT_MS = 30_000;

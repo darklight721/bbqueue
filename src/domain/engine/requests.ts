@@ -13,6 +13,9 @@ export type SkipReason =
   | "already-sitting-out"
   | "not-sitting-out";
 
+/** How many applied request ids a Session remembers (the oldest are forgotten first). */
+export const MAX_APPLIED_REQUEST_IDS = 200;
+
 export type RequestOutcome =
   | { requestId: string; outcome: "applied" }
   | { requestId: string; outcome: "skipped"; reason: SkipReason }
@@ -26,6 +29,10 @@ export type RequestOutcome =
  * the Account copied onto the Session player at Start, which the Security Rules can't see), already
  * Sitting out, already left. Leaving while in a Match is deferred (the host tries again after the
  * Match, since the player can't leave mid-match), and it keeps its place in the order.
+ *
+ * Every applied request's id is kept in the Session (`appliedRequestIds`). A request whose id is
+ * there already was applied to this copy, so it is not applied again (it is reported `applied`
+ * without changing anything): that is what makes a request count once across reloads and takeovers.
  *
  * Returns the new Session and one outcome per request, in the order they were applied.
  */
@@ -42,6 +49,10 @@ export function applyRequests(
   let current = session;
   const outcomes: RequestOutcome[] = [];
   for (const request of ordered) {
+    if (current.appliedRequestIds?.includes(request.id)) {
+      outcomes.push({ requestId: request.id, outcome: "applied" });
+      continue;
+    }
     const result = applyOne(current, request, ctx);
     if (result.outcome.outcome === "applied") current = result.session;
     outcomes.push(result.outcome);
@@ -59,7 +70,12 @@ function applyOne(
     outcome: { requestId: request.id, outcome: "skipped", reason },
   });
   const applied = (next: Session): { session: Session; outcome: RequestOutcome } => ({
-    session: next,
+    session: {
+      ...next,
+      appliedRequestIds: [...(next.appliedRequestIds ?? []), request.id].slice(
+        -MAX_APPLIED_REQUEST_IDS,
+      ),
+    },
     outcome: { requestId: request.id, outcome: "applied" },
   });
 

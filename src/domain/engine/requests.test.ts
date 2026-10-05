@@ -205,3 +205,60 @@ describe("applyRequests", () => {
     expect(JSON.stringify(s)).toBe(before);
   });
 });
+
+describe("applyRequests remembers which requests it applied", () => {
+  it("records the id of every applied request in the Session, in order, and nothing for skipped ones", () => {
+    const s = create();
+    const out = request(s, "P1", "sit-out");
+    const other = request(s, "P2", "sit-out", { accountId: "nobody-0000" });
+    const back = request(s, "P1", "back-in");
+
+    const result = applyRequests(s, [out, other, back], ctx());
+
+    expect(result.session.appliedRequestIds).toEqual([out.id, back.id]);
+  });
+
+  it("doesn't change the original Session", () => {
+    const s = create();
+    applyRequests(s, [request(s, "P1", "sit-out")], ctx());
+    expect(s.appliedRequestIds).toBeUndefined();
+  });
+
+  it("doesn't apply a request twice: one whose id is in the Session is reported applied and changes nothing", () => {
+    const s = create();
+    const out = request(s, "P1", "sit-out");
+    const once = applyRequests(s, [out], ctx()).session;
+
+    const again = applyRequests(once, [out], ctx());
+
+    expect(again.session).toBe(once);
+    expect(again.outcomes).toEqual([{ requestId: out.id, outcome: "applied" }]);
+  });
+
+  it("is not tripped up by a request that would now be skipped: it was applied, not skipped", () => {
+    // P1 is already sitting out because of this very request: applying it again would say
+    // "already-sitting-out" (a false skip after a reload).
+    const s = create();
+    const out = request(s, "P1", "sit-out");
+    const once = applyRequests(s, [out], ctx()).session;
+    expect(player(once, "P1").sittingOut).toBe(true);
+
+    const outcome = applyRequests(once, [out], ctx()).outcomes[0];
+
+    expect(outcome?.outcome).toBe("applied");
+  });
+
+  it("remembers at most the newest 200", () => {
+    let s = create();
+    const ids: string[] = [];
+    for (let i = 0; i < 120; i++) {
+      for (const kind of ["sit-out", "back-in"] as const) {
+        const r = request(s, "P1", kind);
+        ids.push(r.id);
+        s = applyRequests(s, [r], ctx()).session;
+      }
+    }
+    expect(s.appliedRequestIds).toHaveLength(200);
+    expect(s.appliedRequestIds).toEqual(ids.slice(-200));
+  });
+});

@@ -212,3 +212,25 @@ describe("parseEndedSession", () => {
     expect(parseEndedSession(data)).toBeNull();
   });
 });
+
+describe("parseSession and applied request ids", () => {
+  it("keeps them", () => {
+    const real = { ...played(), appliedRequestIds: ["r1", "r2"] };
+    expect(parseSession(viaJson(real))?.appliedRequestIds).toEqual(["r1", "r2"]);
+  });
+
+  it("has none when there are none", () => {
+    expect(parseSession(viaJson(played()))).not.toHaveProperty("appliedRequestIds");
+  });
+
+  it("returns null when they aren't a list of ids, or there are too many", () => {
+    expect(parseSession({ ...(viaJson(played()) as object), appliedRequestIds: "r1" })).toBeNull();
+    expect(parseSession({ ...(viaJson(played()) as object), appliedRequestIds: [1] })).toBeNull();
+    expect(
+      parseSession({
+        ...(viaJson(played()) as object),
+        appliedRequestIds: Array.from({ length: 201 }, (_, i) => `r${i}`),
+      }),
+    ).toBeNull();
+  });
+});

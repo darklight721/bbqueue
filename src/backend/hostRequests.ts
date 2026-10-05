@@ -5,22 +5,10 @@ import type { Backend, Unsubscribe } from "./backend.ts";
 /** Pause before trying to mark requests again after a failure. */
 const RETRY_MS = 5_000;
 
-/** Order in which this run of the app first saw each copy of a Session: a later copy has a bigger number. */
-const versions = new WeakMap<Session, number>();
-let versionCounter = 0;
-export function versionOf(session: Session): number {
-  let version = versions.get(session);
-  if (version === undefined) {
-    version = ++versionCounter;
-    versions.set(session, version);
-  }
-  return version;
-}
-
 export interface HostRequests {
   /** Applies any new requests to the hosted Session; call again whenever the Session changes. */
   process(): void;
-  /** The server has this copy of the Session: requests applied into it (or an earlier copy) are marked. */
+  /** The server has this copy of the Session: the requests whose ids are in it can be marked `applied`. */
   uploaded(session: Session): void;
   stop(): void;
 }
@@ -29,11 +17,13 @@ export interface HostRequests {
  * The Session host's side of Players' requests (ticket 08, ADR-0007) for one Shared club.
  *
  * Requests are applied to the host's copy in the order they were made, through the engine
- * (`applyRequests`). A request that was applied is only marked `applied` once a copy of the Session
- * that includes it has reached the server, so that if this device is replaced as host before that,
- * the request is still pending for the new host. A skipped request changes nothing, so it is marked
- * at once. A leave that has to wait for the player's Match stays pending and is tried again after
- * every change of the Session.
+ * (`applyRequests`), which records each applied request's id in the Session (`appliedRequestIds`).
+ * A request that was applied is only marked `applied` once an uploaded copy of the Session holds
+ * its id, so that if this device is replaced as host before that, the request is still pending for
+ * the new host (whose copy has the id too, or doesn't, and then applies it). A copy that was
+ * uploaded without the id (a plain change that was still on its way when the request was applied)
+ * does not count. A skipped request changes nothing, so it is marked at once. A leave that has to
+ * wait for the player's Match stays pending and is tried again after every change of the Session.
  */
 export function createHostRequests(options: {
   backend: Backend;
@@ -44,14 +34,18 @@ export function createHostRequests(options: {
   onRequests?(requests: SessionRequest[]): void;
   /** The host was refused: this device isn't the Session host any more. */
   onRefused?(): void;
+  /** Whether the server is known to have exactly this copy (it came from there, or was uploaded). */
+  isPublished?(session: Session): boolean;
 }): HostRequests {
   const { backend, clubId } = options;
   let latest: SessionRequest[] = [];
   /** Requests this device has dealt with, until the server reports them resolved. */
   const handled = new Set<string>();
   const skipped: string[] = [];
-  const applied: { id: string; version: number }[] = [];
-  let uploadedVersion = 0;
+  /** Requests applied to a copy that the server may not have yet. */
+  const applied: string[] = [];
+  /** Ids held by a copy that the server has. */
+  const uploadedIds = new Set<string>();
   let flushing = false;
   let stopped = false;
   let retry: ReturnType<typeof setTimeout> | undefined;
@@ -78,12 +72,16 @@ export function createHostRequests(options: {
     );
     if (pending.length > 0) {
       const result = applyRequests(session, pending, { now: Date.now(), rng: Math.random });
-      const version = result.session === session ? 0 : versionOf(result.session);
+      // Nothing changed: the ids that were applied are in this very copy already.
+      const unchanged = result.session === session;
       for (const outcome of result.outcomes) {
         if (outcome.outcome === "deferred") continue;
         handled.add(outcome.requestId);
         if (outcome.outcome === "skipped") skipped.push(outcome.requestId);
-        else applied.push({ id: outcome.requestId, version });
+        else {
+          applied.push(outcome.requestId);
+          if (unchanged && options.isPublished?.(session)) uploadedIds.add(outcome.requestId);
+        }
       }
       // Dealt with before the Session is saved: saving tells the host's uploader, which calls back.
       if (result.session !== session) options.setSession(result.session);
@@ -96,8 +94,8 @@ export function createHostRequests(options: {
     const ready = [
       ...skipped.map((id) => ({ id, status: "skipped" as const })),
       ...applied
-        .filter((entry) => entry.version <= uploadedVersion)
-        .map((entry) => ({ id: entry.id, status: "applied" as const })),
+        .filter((id) => uploadedIds.has(id))
+        .map((id) => ({ id, status: "applied" as const })),
     ];
     if (ready.length === 0) return;
     flushing = true;
@@ -109,7 +107,7 @@ export function createHostRequests(options: {
           if (done.has(skipped[index]!)) skipped.splice(index, 1);
         }
         for (let index = applied.length - 1; index >= 0; index--) {
-          if (done.has(applied[index]!.id)) applied.splice(index, 1);
+          if (done.has(applied[index]!)) applied.splice(index, 1);
         }
         flush();
       },
@@ -132,7 +130,7 @@ export function createHostRequests(options: {
   return {
     process,
     uploaded(session) {
-      uploadedVersion = Math.max(uploadedVersion, versionOf(session));
+      for (const id of session.appliedRequestIds ?? []) uploadedIds.add(id);
       flush();
     },
     stop() {

@@ -15,14 +15,15 @@ const hostedBy = (entry: ActiveSession, me: string) => accountIdsEqual(entry.hos
  * - A session that isn't reported is dropped (it ended, or the Account left the Club), unless it
  *   is hosted by this Account, or its Club is in `report.unknown` (nothing is known yet, so the
  *   cached copy stays).
- * - A reported session in `ended` (ended on this device, its delete still on the way) is ignored.
+ * - A reported session in `ended` (ended on this device, its delete still on the way or not yet
+ *   confirmed) is ignored.
  * - Without an Account there is nobody to tell the host's copy from the others: nothing changes.
  */
 export function mergeActiveSessions(args: {
   current: readonly ActiveSession[];
   report: ActiveSessionsReport;
   me: string | null | undefined;
-  ended?: ReadonlySet<string>;
+  ended?: { has(sessionId: string): boolean };
 }): ActiveSession[] {
   const { current, report, me, ended } = args;
   if (!me) return [...current];

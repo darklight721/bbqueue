@@ -2,6 +2,7 @@ import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 import type { ActiveSession, Club, EndedSession, Session } from "../domain/types.ts";
 import {
+  applyActiveSessionOf,
   applyEndedSessionsReport,
   addHostedSession,
   applyActiveSessionsReport,
@@ -375,6 +376,62 @@ describe("Active sessions of Shared clubs", () => {
     applyActiveSessionsReport({ sessions: [shared("s2")], unknown: [] });
 
     expect(getSharedSessions()).toEqual([]);
+  });
+
+  describe("a Session this device ended", () => {
+    const endedHereOnDevice = () => localStorage.getItem("bq:v1:ended-here");
+
+    beforeEach(() => {
+      setAccount({ accountId: "roy-7k3f", name: "Roy" });
+      addHostedSession(shared("s2"));
+      removeSharedSession("c1", { endedHere: true });
+    });
+
+    it("stays gone after the app is closed and opened again, while the server still lists it", () => {
+      expect(endedHereOnDevice()).not.toBeNull();
+
+      // Closed with the delete still on its way; opened again: the server's old copy comes in.
+      resetStoreForTests();
+      applyActiveSessionsReport({ sessions: [shared("s2")], unknown: [] });
+
+      expect(getSharedSessions()).toEqual([]);
+    });
+
+    it("is forgotten once the server reports the Session gone", () => {
+      applyActiveSessionsReport({ sessions: [], unknown: [] });
+
+      expect(endedHereOnDevice()).toBeNull();
+    });
+
+    it("is not forgotten while the Club's Session isn't known, or the server still lists it", () => {
+      applyActiveSessionsReport({ sessions: [], unknown: ["c1"] });
+      expect(endedHereOnDevice()).not.toBeNull();
+
+      applyActiveSessionsReport({ sessions: [shared("s2")], unknown: [] });
+      expect(endedHereOnDevice()).not.toBeNull();
+    });
+
+    it("lets the Club have a new Session once the old one is reported gone", () => {
+      applyActiveSessionsReport({ sessions: [], unknown: [] });
+      applyActiveSessionsReport({ sessions: [shared("s3")], unknown: [] });
+
+      expect(getSharedSessions().map((entry) => entry.session.id)).toEqual(["s3"]);
+    });
+
+    it("is forgotten for the Club the server was asked about, and only for it", () => {
+      addHostedSession(shared("s9", "c9"));
+      removeSharedSession("c9", { endedHere: true });
+
+      applyActiveSessionOf("c1", null);
+
+      expect(JSON.parse(endedHereOnDevice()!).data).toEqual({ s9: "c9" });
+    });
+
+    it("is forgotten when this device starts hosting a Session of that id again", () => {
+      addHostedSession(shared("s2"));
+
+      expect(endedHereOnDevice()).toBeNull();
+    });
   });
 
   it("re-renders hooks when either kind of Active session changes", () => {

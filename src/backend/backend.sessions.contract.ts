@@ -557,8 +557,11 @@ export function runSessionsContract(name: string, createWorld: () => RolesContra
       it("clears the requests when the host ends the session", async () => {
         const { roy, ana } = await running();
         const mine = watch(ana, "own");
+        // The host's device follows everybody's requests, as the app does, so it knows which to clear.
+        const all = watch(roy, "all");
         await ask(ana, "sit-out", "sp-ana");
         await eventually(() => expect(mine()).toHaveLength(1));
+        await eventually(() => expect(all()).toHaveLength(1));
 
         await roy.backend.endSharedSession("c1");
 

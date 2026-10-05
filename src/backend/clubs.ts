@@ -12,7 +12,9 @@ import {
   getLocalClubs,
   getSession,
   getSharedClubs,
+  removeSharedSession,
   setAccount,
+  setHostedSession,
   setLocalClubs,
   setSession,
   setSharedClubs,
@@ -158,9 +160,23 @@ export async function makeClubShared(club: Club, choice: ShareChoice): Promise<v
   // Confirmed: switch over. The Shared club goes in first (it stays hidden behind the Local club
   // of the same id), so there is never a moment without the Club.
   setSharedClubs([...getSharedClubs().filter((other) => other.id !== club.id), result.club]);
-  if (result.active) {
+  if (result.active && running) {
+    const latest = getSession();
     addHostedSession(result.active);
-    setSession(null);
+    if (latest && latest.id === running.id) {
+      // The Session went on being played while the Club was being made: the device's latest copy
+      // is the one to keep, not the one that was sent. It isn't marked as uploaded, so the host's
+      // uploader sends it (also when the server held an older copy from an earlier try).
+      setHostedSession(club.id, sessionForSharing({ ...latest }, plan.meRowId, account.accountId));
+      setSession(null);
+    } else {
+      // The Session was ended while the Club was being made: the server must not keep it.
+      const finished = getEndedSessions().find((candidate) => candidate.id === running.id) ?? null;
+      removeSharedSession(club.id, { endedHere: true });
+      backend
+        .endSharedSession(club.id, finished)
+        .catch((error: unknown) => console.error("Failed to end the shared session", error));
+    }
   }
   setLocalClubs(getLocalClubs().filter((other) => other.id !== club.id));
 }

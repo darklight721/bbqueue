@@ -117,6 +117,12 @@ export interface Session {
   queues: Queue[];
   /** playerId → epoch ms of the last Streak reset caused by Sitting out. */
   streakResetAt: Record<string, number>;
+  /**
+   * Ids of the Players' requests (ADR-0007) that were applied to this copy, newest last, so a
+   * request is applied once and only marked `applied` on the server once a copy that holds its id
+   * has been uploaded. Absent until a request is applied.
+   */
+  appliedRequestIds?: string[];
 }
 
 /**

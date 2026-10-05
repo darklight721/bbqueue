@@ -46,7 +46,7 @@ export const retryDelay = (attempt: number) => Math.min(250 * 2 ** attempt, MAX_
 /** How long to wait for the server before treating a write as queued (see {@link settle}). */
 export const SETTLE_TIMEOUT_MS = 8_000;
 /** How long to wait for the cache before giving up on it. */
-const CACHE_TIMEOUT_MS = 2_000;
+export const CACHE_TIMEOUT_MS = 2_000;
 
 /**
  * Shared clubs on Firestore:
@@ -642,7 +642,7 @@ function requireRowName(name: string) {
   }
 }
 
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("timeout")), ms);
     promise.then(

@@ -117,6 +117,7 @@ export function startActiveSessionSync(maybeBackend: Backend | null = getBackend
       getSession: () => getSharedSessions().find((s) => s.clubId === clubId)?.session ?? null,
       setSession: (session) => setHostedSession(clubId, session),
       onRequests: (all) => setRequests(clubId, all),
+      isPublished: isPublishedCopy,
     });
     const uploader = createCoalescingUploader<Session>({
       send: (session) =>

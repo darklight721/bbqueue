@@ -1,3 +1,4 @@
+import { MAX_APPLIED_REQUEST_IDS } from "./engine/requests.ts";
 import {
   SKILL_LEVELS,
   type Court,
@@ -219,7 +220,11 @@ export function parseSession(value: unknown): Session | null {
   const matches = list(value.matches, MAX_MATCHES, match(value.pointSystem));
   const queues = list(value.queues, MAX_QUEUES, queue);
   const resets = streakResets(value.streakResetAt);
-  if (!players || !courts || !matches || !queues || !resets) return null;
+  const applied =
+    value.appliedRequestIds === undefined
+      ? undefined
+      : list(value.appliedRequestIds, MAX_APPLIED_REQUEST_IDS, (id) => (isId(id) ? id : null));
+  if (!players || !courts || !matches || !queues || !resets || applied === null) return null;
   return {
     id: value.id,
     name,
@@ -234,6 +239,7 @@ export function parseSession(value: unknown): Session | null {
     matches,
     queues,
     streakResetAt: resets,
+    ...(applied ? { appliedRequestIds: applied } : {}),
   };
 }
 

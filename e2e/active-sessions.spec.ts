@@ -316,6 +316,40 @@ test.describe("Shared active session", () => {
     await expect(page.getByRole("link", { name: "New session" })).toBeVisible();
   });
 
+  test("the host ends the Session offline: it is gone from the device at once and for good, and the Club gets the Ended session when the connection is back", async ({
+    page,
+    context,
+  }) => {
+    await seedStorage(page, { account: roy, sharedClubs: [riverside] });
+    await startRiversideSession(page);
+    await court(page, 1).getByRole("button", { name: "Start match" }).click();
+    const dialog = await openScoreDialog(page, 1);
+    await dialog.getByRole("button", { name: "End without score" }).click();
+    await expect(court(page, 1).getByText("Idle", { exact: true })).toBeVisible();
+    await expect.poll(async () => (await serverSession(page))?.session.matches.length).toBe(1);
+
+    await context.setOffline(true);
+    await page.getByRole("button", { name: "End session" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "End session" }).click();
+    await expect(page).toHaveURL(/\/sessions\/[^/]+\/summary$/);
+
+    // Not on the device any more.
+    expect(await readSharedSessions(page)).toEqual([]);
+    expect(await readStoredData<unknown[]>(page, "endedSessions")).toHaveLength(1);
+    // The "server" still has it until the connection is back.
+    expect(await serverSession(page)).toBeDefined();
+    expect(await readFakeEndedSessions(page)).toEqual([]);
+
+    await context.setOffline(false);
+    await expect.poll(async () => await serverSession(page)).toBeUndefined();
+    expect((await readFakeEndedSessions(page)).map((e) => [e.name, e.clubId])).toEqual([
+      ["Thursday night", riverside.id],
+    ]);
+    await page.goto("/");
+    await expect(page.getByRole("link", { name: "Resume session" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "View session" })).toHaveCount(0);
+  });
+
   test("an Organizer who isn't the host can take over after confirming; a Player can't", async ({
     page,
   }) => {

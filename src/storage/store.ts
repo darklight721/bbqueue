@@ -15,6 +15,7 @@ import {
   clearSession,
   loadAccount,
   loadClubs,
+  loadEndedHere,
   loadEndedSessions,
   loadInstallHintDismissed,
   loadSession,
@@ -25,6 +26,7 @@ import {
   removeLegacySummary,
   saveAccount,
   saveClubs,
+  saveEndedHere,
   saveEndedSession,
   saveInstallHintDismissed,
   saveSession,
@@ -99,9 +101,11 @@ const subscribeSharedSessions = subscribeTo(sharedSessionsSlot);
 function subscribeActiveSessions(listener: () => void) {
   const stopDevice = subscribeSession(listener);
   const stopShared = subscribeSharedSessions(listener);
+  const stopLocalClubs = subscribeLocalClubs(listener);
   return () => {
     stopDevice();
     stopShared();
+    stopLocalClubs();
   };
 }
 const subscribeDeviceEnded = subscribeTo(endedSessionsSlot);
@@ -195,7 +199,9 @@ export function getSession(): Session | null {
 }
 
 export function setSession(session: Session | null): void {
-  set(sessionSlot, session, (value) => (value === null ? clearSession() : saveSession(value)));
+  set(sessionSlot, session, (value) =>
+    value === null ? clearSession() : saveSession(value, getAccount()?.accountId),
+  );
 }
 
 export function useSession(): Session | null {
@@ -208,8 +214,34 @@ export function useSession(): Session | null {
 // session per Shared club: what the server last reported, or, for a Club this Account hosts, the
 // Session this device runs. Hosted copies are changed here first and uploaded afterwards.
 
-/** Sessions this device ended itself: a late report must not bring them back. */
-const endedHere = new Set<string>();
+/**
+ * Sessions this device ended itself (Session id → Club id): a late report must not bring them
+ * back. Kept on the device, so it also holds after the app is closed while the delete is still on
+ * its way; an id goes once the server reports its Session gone.
+ */
+const endedHere = new Map<string, string>(Object.entries(loadEndedHere()));
+
+function persistEndedHere(): void {
+  saveEndedHere(Object.fromEntries(endedHere));
+}
+
+/** Forgets the ended Sessions the server has now confirmed gone (none of the reported ones). */
+function forgetConfirmedEnds(
+  reported: readonly ActiveSession[],
+  unknown: readonly string[],
+  onlyClub?: string,
+): void {
+  let changed = false;
+  for (const [sessionId, clubId] of endedHere) {
+    if (onlyClub !== undefined && clubId !== onlyClub) continue;
+    if (unknown.includes(clubId) || reported.some((entry) => entry.session.id === sessionId)) {
+      continue;
+    }
+    endedHere.delete(sessionId);
+    changed = true;
+  }
+  if (changed) persistEndedHere();
+}
 
 export function getSharedSessions(): ActiveSession[] {
   return get(sharedSessionsSlot, loadSharedSessions);
@@ -224,9 +256,9 @@ export function observeSharedSessions(listener: () => void): () => void {
   return subscribeSharedSessions(listener);
 }
 
-function setSharedSessions(sessions: ActiveSession[]): void {
-  if (JSON.stringify(sessions) === JSON.stringify(getSharedSessions())) return;
-  set(sharedSessionsSlot, sessions, saveSharedSessions);
+function setSharedSessions(sessions: ActiveSession[], options: { always?: boolean } = {}): void {
+  if (!options.always && JSON.stringify(sessions) === JSON.stringify(getSharedSessions())) return;
+  set(sharedSessionsSlot, sessions, (value) => saveSharedSessions(value, getAccount()?.accountId));
 }
 
 /** Called when the Backend reports what the server has; see `mergeActiveSessions`. */
@@ -241,6 +273,7 @@ export function applyActiveSessionsReport(report: ActiveSessionsReport): void {
   });
   noteLostHosts(current, merged);
   setSharedSessions(merged);
+  forgetConfirmedEnds(report.sessions, report.unknown);
 }
 
 /**
@@ -259,6 +292,7 @@ export function applyActiveSessionOf(clubId: string, active: ActiveSession | nul
   });
   noteLostHosts(own, merged);
   setSharedSessions([...others, ...merged].sort((a, b) => a.clubId.localeCompare(b.clubId)));
+  forgetConfirmedEnds(active ? [active] : [], [], clubId);
 }
 
 /**
@@ -281,6 +315,8 @@ export function clearSharedData(
   sharedEndedSlot.loaded = true;
   saveSharedEndedSessions([]);
   notify(sharedEndedSlot);
+  endedHere.clear();
+  persistEndedHere();
   requestsSlot.value = {};
   lostHostSlot.value = {};
   notify(requestsSlot);
@@ -351,20 +387,27 @@ export function isPublishedCopy(session: Session): boolean {
 
 /** This device now hosts the Active session of a Shared club (it just started it, so the server has it). */
 export function addHostedSession(entry: ActiveSession): void {
-  endedHere.delete(entry.session.id);
+  if (endedHere.delete(entry.session.id)) persistEndedHere();
   publishedCopies.add(entry.session);
   setSharedSessions([...getSharedSessions().filter((s) => s.clubId !== entry.clubId), entry]);
 }
 
 /** The Session host changed the Session: keep it on this device; the uploader sends it on. */
 export function setHostedSession(clubId: string, session: Session): void {
-  setSharedSessions(getSharedSessions().map((s) => (s.clubId === clubId ? { ...s, session } : s)));
+  // Always replaced, even by an equal copy: a new copy is one the server isn't known to have.
+  setSharedSessions(
+    getSharedSessions().map((s) => (s.clubId === clubId ? { ...s, session } : s)),
+    { always: true },
+  );
 }
 
 /** Drop a Shared club's Active session from the device (it ended, or is gone from the server). */
 export function removeSharedSession(clubId: string, options: { endedHere?: boolean } = {}): void {
   const existing = getSharedSessions().find((s) => s.clubId === clubId);
-  if (existing && options.endedHere) endedHere.add(existing.session.id);
+  if (existing && options.endedHere) {
+    endedHere.set(existing.session.id, clubId);
+    persistEndedHere();
+  }
   setSharedSessions(getSharedSessions().filter((s) => s.clubId !== clubId));
 }
 
@@ -378,20 +421,35 @@ export interface ActiveSessionEntry {
 let mergedActive: {
   device: Session | null;
   shared: ActiveSession[];
+  local: Club[];
   entries: ActiveSessionEntry[];
 } | null = null;
 
-/** Every Active session this device can show: its own Session, then one per Shared club. */
+/**
+ * Every Active session this device can show: its own Session, then one per Shared club. While a
+ * Local club is being made shared the server already lists its Session: that copy is hidden, so
+ * the Session is shown once, as the device's own (it is the same Session, or its Club is still
+ * Local), until the conversion is confirmed and the device switches over.
+ */
 export function getActiveSessions(): ActiveSessionEntry[] {
   const device = getSession();
   const shared = getSharedSessions();
-  if (mergedActive?.device !== device || mergedActive.shared !== shared) {
+  const local = getLocalClubs();
+  if (
+    mergedActive?.device !== device ||
+    mergedActive.shared !== shared ||
+    mergedActive.local !== local
+  ) {
+    const localIds = new Set(local.map((club) => club.id));
     mergedActive = {
       device,
       shared,
+      local,
       entries: [
         ...(device ? [{ session: device, shared: null }] : []),
-        ...shared.map((entry) => ({ session: entry.session, shared: entry })),
+        ...shared
+          .filter((entry) => entry.session.id !== device?.id && !localIds.has(entry.clubId))
+          .map((entry) => ({ session: entry.session, shared: entry })),
       ],
     };
   }
@@ -439,21 +497,20 @@ export const MAX_SHARED_ENDED_PER_CLUB = 50;
  */
 export function applyEndedSessionsReport(report: { sessions: EndedSession[]; clubIds: string[] }) {
   const clubIds = new Set(report.clubIds);
+  // The ones this device hosted are on the device already (ADR-0005): not cached twice.
+  const onDevice = new Set(getDeviceEndedSessions().map((ended) => ended.id));
   const byId = new Map<string, EndedSession>();
   for (const ended of getSharedEndedSessions()) {
-    if (ended.clubId && clubIds.has(ended.clubId)) byId.set(ended.id, ended);
+    if (ended.clubId && clubIds.has(ended.clubId) && !onDevice.has(ended.id)) {
+      byId.set(ended.id, ended);
+    }
   }
   for (const ended of report.sessions) {
-    if (ended.clubId && clubIds.has(ended.clubId)) byId.set(ended.id, ended);
+    if (ended.clubId && clubIds.has(ended.clubId) && !onDevice.has(ended.id)) {
+      byId.set(ended.id, ended);
+    }
   }
-  const perClub = new Map<string, number>();
-  const kept = [...byId.values()]
-    .sort((a, b) => b.endedAt - a.endedAt)
-    .filter((ended) => {
-      const count = (perClub.get(ended.clubId!) ?? 0) + 1;
-      perClub.set(ended.clubId!, count);
-      return count <= MAX_SHARED_ENDED_PER_CLUB;
-    });
+  const kept = newestPerClub([...byId.values()], MAX_SHARED_ENDED_PER_CLUB);
   const current = getSharedEndedSessions();
   if (kept.length === current.length && kept.every((ended, i) => ended.id === current[i]?.id))
     return;
@@ -461,6 +518,18 @@ export function applyEndedSessionsReport(report: { sessions: EndedSession[]; clu
   sharedEndedSlot.value = saved;
   sharedEndedSlot.loaded = true;
   notify(sharedEndedSlot);
+}
+
+/** The `count` newest of each Club's Ended sessions, newest first. */
+function newestPerClub(sessions: readonly EndedSession[], count: number): EndedSession[] {
+  const perClub = new Map<string, number>();
+  return [...sessions]
+    .sort((a, b) => b.endedAt - a.endedAt)
+    .filter((ended) => {
+      const n = (perClub.get(ended.clubId ?? "") ?? 0) + 1;
+      perClub.set(ended.clubId ?? "", n);
+      return n <= count;
+    });
 }
 
 let mergedEnded: {
@@ -561,6 +630,8 @@ export function resetStoreForTests(): void {
     slot.loaded = false;
   }
   endedHere.clear();
+  for (const [sessionId, clubId] of Object.entries(loadEndedHere()))
+    endedHere.set(sessionId, clubId);
   lostHostSlot.value = {};
   requestsSlot.value = {};
 }
