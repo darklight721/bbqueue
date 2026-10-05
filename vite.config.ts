@@ -107,6 +107,13 @@ export default defineConfig({
         environment: "jsdom",
         globals: false,
         setupFiles: ["src/test/setup.ts"],
+        // Tests run with no Backend unless they set one, even when `.env.local` has a real
+        // Firebase config.
+        env: {
+          VITE_BACKEND: "",
+          VITE_FIREBASE_EMULATOR: "",
+          VITE_FIREBASE_PROJECT_ID: "",
+        },
         include: ["src/**/*.test.{ts,tsx}"],
         exclude: [
           "e2e/**",

@@ -77,12 +77,12 @@ Everything above runs on the emulators or the local fake, with no Firebase proje
 
 1. **Create the project.** In the Firebase console, turn on **Anonymous** sign-in under Authentication, and create a Firestore database in **production mode** (not test mode, which leaves it open for a limited time). Register a web app and copy its config into `.env.local` as the `VITE_FIREBASE_*` variables (see `.env.example`).
 2. **Deploy the Security Rules.** `.firebaserc` defaults to the demo project `demo-bbqueue` (what the emulators use), so add your project as an alias first (`firebase use --add`), then run `pnpm exec firebase deploy --only firestore:rules`. The rules are the only thing that protects the data, so don't skip this.
-3. **Turn on App Check** (reCAPTCHA Enterprise or v3) at `initializeApp` and enforce it for Firestore and Auth. Until then, a script can create Accounts, Clubs and large documents without limit.
+3. **Turn on App Check.** Create a reCAPTCHA Enterprise key for the site's domain, register it under App Check in the Firebase console, and set it as `VITE_FIREBASE_APP_CHECK_SITE_KEY`. Watch the App Check metrics until the requests show as verified, then enforce it for Firestore and Authentication. Until then, a script can create Accounts, Clubs and large documents without limit.
 4. **Restrict the API key** in the Google Cloud console to the site's HTTP referrers and to the Identity Toolkit, Token Service and Firestore APIs.
 5. **Stay on the Spark plan or set a budget alert.** On Spark, running out of quota takes the app down for the day.
 6. **Check offline cold starts.** The Firebase code is a lazy-loaded chunk (about 650 KB today). Make sure the service worker precaches it, or the app won't start offline from a cold start: `workbox.globPatterns` in `vite.config.ts` covers it, but Workbox skips files over 2 MiB by default, so check again if the chunk grows.
 
-The GitHub Pages workflow in `.github/workflows/deploy.yml` builds without the `VITE_FIREBASE_*` variables, so a deploy from it has no Accounts until they are passed to its build step.
+The GitHub Pages workflow in `.github/workflows/deploy.yml` reads the `VITE_FIREBASE_*` values from the repository's Actions **variables** (Settings → Secrets and variables → Actions → Variables). Without them, a deploy has no Accounts.
 
 ## Project structure
 

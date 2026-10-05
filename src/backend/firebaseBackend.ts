@@ -1,4 +1,5 @@
 import { initializeApp, type FirebaseOptions } from "firebase/app";
+import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "firebase/app-check";
 import {
   connectAuthEmulator,
   deleteUser,
@@ -67,6 +68,11 @@ export interface FirebaseBackendOptions {
   online?: OnlineSource;
   /** Keep Firestore's cache on disk (default). Node tests have no IndexedDB and turn it off. */
   persistentCache?: boolean;
+  /**
+   * reCAPTCHA Enterprise site key for App Check. When set (and not on the emulators), every
+   * Auth and Firestore request carries an App Check token, so the project can enforce it.
+   */
+  appCheckSiteKey?: string;
 }
 
 export function createFirebaseBackend(
@@ -76,6 +82,13 @@ export function createFirebaseBackend(
   const random = options.random ?? Math.random;
   const online = options.online ?? browserOnline;
   const app = initializeApp(config, options.appName);
+  // App Check has to start before Auth and Firestore are first used.
+  if (options.appCheckSiteKey && !options.emulator) {
+    initializeAppCheck(app, {
+      provider: new ReCaptchaEnterpriseProvider(options.appCheckSiteKey),
+      isTokenAutoRefreshEnabled: true,
+    });
+  }
   const auth = getAuth(app);
   const db = openFirestore(app, options.persistentCache ?? true);
   if (options.emulator) {

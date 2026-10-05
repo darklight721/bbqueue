@@ -55,7 +55,11 @@ function selectBackend(): Backend | null {
       VITE_FIREBASE_STORAGE_BUCKET: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
       VITE_FIREBASE_MESSAGING_SENDER_ID: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
     });
-    if (config) return createLazyFirebaseBackend(config);
+    if (config) {
+      return createLazyFirebaseBackend(config, {
+        appCheckSiteKey: import.meta.env.VITE_FIREBASE_APP_CHECK_SITE_KEY || undefined,
+      });
+    }
   }
   return null;
 }
