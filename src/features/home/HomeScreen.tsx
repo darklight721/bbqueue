@@ -116,7 +116,9 @@ export function HomeScreen() {
         </nav>
 
         <p className="pt-6 text-center text-sm text-base-content/55">
-          Works offline. Everything stays on this device.
+          {account
+            ? "Works offline. Shared clubs sync when you're online."
+            : "Works offline. Everything stays on this device."}
         </p>
       </main>
     </div>
