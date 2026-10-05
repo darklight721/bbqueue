@@ -193,6 +193,23 @@ export interface Backend {
    */
   takeOverSession(clubId: string): Promise<ActiveSession>;
   /**
+   * Turns a Local club into a Shared club (ticket 10). `club` is the Shared club to create (see
+   * `makeSharedClub` in the domain): the Local club's id, name and rows, with exactly one row
+   * linked, to this Account, as Organizer. Its Ended sessions and, when there is one, its Active
+   * session (this Account becomes the Session host) go with it. Needs a connection.
+   *
+   * Nothing on the device changes here: the caller switches the device over once this resolves.
+   * Whatever fails leaves the server possibly holding a part of the Club; calling again with the
+   * same Club picks up where it stopped (rows and Ended sessions already there are skipped), and
+   * `deleteSharedClub` removes it. Rejects with `offline`, `no-account`, `forbidden` (the id is
+   * taken by somebody else's Club), `session-exists` or `failed`.
+   */
+  makeSharedClub(input: {
+    club: Club;
+    endedSessions: EndedSession[];
+    activeSession: Session | null;
+  }): Promise<{ club: Club; active: ActiveSession | null }>;
+  /**
    * The Active session of a Club as the server has it right now, or null when there is none.
    * Needs a connection (`offline` otherwise). The old host's device uses it to learn who the host
    * is when an upload was refused.

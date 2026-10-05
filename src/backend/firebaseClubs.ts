@@ -609,7 +609,7 @@ const toLink = (link: AccountLink, uid: string) => ({
 });
 
 /** The record for a row. A link is only written with the uid of the Account it points at. */
-function toRecord(player: ClubPlayer, linkUid?: string): DocumentData {
+export function toRecord(player: ClubPlayer, linkUid?: string): DocumentData {
   return {
     name: player.name,
     skill: player.skill,

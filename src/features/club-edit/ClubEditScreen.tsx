@@ -41,6 +41,7 @@ import { ClubCardLink } from "./ClubCardLink.tsx";
 import { linkBlocksSave, type LinkState } from "./linkState.ts";
 import { clubErrorMessage } from "./clubErrors.ts";
 import { ClubReadOnly } from "./ClubReadOnly.tsx";
+import { MakeShared } from "./MakeShared.tsx";
 import { DangerZone, LEAVE_MESSAGE, LeaveClub } from "./LeaveClub.tsx";
 import {
   clubFromForm,
@@ -570,6 +571,10 @@ function ClubEditor({ club }: { club: Club | null }) {
             </ul>
           )}
         </section>
+
+        {club?.kind === "local" && hasBackend ? (
+          <MakeShared club={club} account={account} online={online !== false} dirty={dirty} />
+        ) : null}
 
         {club && (canLeave || canDelete) ? (
           <DangerZone>

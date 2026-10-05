@@ -8,7 +8,7 @@ import { listenToServer, serverChanged, type SimulatedClubsState } from "./simul
 /** Where the simulated "server" keeps Active sessions, and the ends still waiting for the connection. */
 export interface SimulatedSessionsState extends Pick<
   SimulatedClubsState,
-  "loadClubs" | "observeExternalChanges"
+  "loadClubs" | "saveClubs" | "observeExternalChanges"
 > {
   /** One record per Shared club that has an Active session. */
   loadActiveSessions(): ActiveSession[];
@@ -45,6 +45,7 @@ export type ActiveSessionsApi = Pick<
   | "observeSessionRequests"
   | "resolveSessionRequests"
   | "observeEndedSessions"
+  | "makeSharedClub"
 >;
 
 /**
@@ -271,6 +272,62 @@ export function createSimulatedSessions(
         );
         serverChanged();
         return Promise.resolve();
+      } catch (error) {
+        return Promise.reject(error);
+      }
+    },
+
+    makeSharedClub({ club, endedSessions, activeSession }) {
+      try {
+        if (!online.get()) throw new BackendError("offline");
+        const account = getAccount();
+        if (!account) throw new BackendError("no-account");
+        const linked = club.players.filter((row) => row.link);
+        const meRow = linked[0];
+        if (
+          club.kind !== "shared" ||
+          linked.length !== 1 ||
+          !meRow?.link ||
+          meRow.link.role !== "organizer" ||
+          !accountIdsEqual(meRow.link.accountId, account.accountId) ||
+          endedSessions.some((ended) => ended.clubId !== club.id) ||
+          (activeSession && activeSession.clubId !== club.id)
+        ) {
+          throw new BackendError("failed");
+        }
+        const clubs = state.loadClubs();
+        const there = clubs.find((candidate) => candidate.id === club.id);
+        // A Club somebody else has taken the id of; or a part of this one from an earlier try.
+        if (there && !there.players.every((row) => !row.link || row.id === meRow.id)) {
+          throw new BackendError("forbidden");
+        }
+        const record = state.loadActiveSessions().find((s) => s.clubId === club.id);
+        if (activeSession && record && !mine(account.accountId, record)) {
+          throw new BackendError("session-exists");
+        }
+
+        state.saveClubs([...clubs.filter((candidate) => candidate.id !== club.id), club]);
+        const known = new Set(state.loadEndedSessions().map((ended) => ended.id));
+        state.saveEndedSessions([
+          ...state.loadEndedSessions(),
+          ...endedSessions.filter((ended) => !known.has(ended.id)),
+        ]);
+        let active: ActiveSession | null = null;
+        if (activeSession) {
+          active = {
+            clubId: club.id,
+            session: activeSession,
+            hostAccountId: account.accountId,
+            hostName: account.name,
+            updatedAt: Date.now(),
+          };
+          state.saveActiveSessions([
+            ...state.loadActiveSessions().filter((s) => s.clubId !== club.id),
+            active,
+          ]);
+        }
+        serverChanged();
+        return Promise.resolve({ club, active });
       } catch (error) {
         return Promise.reject(error);
       }

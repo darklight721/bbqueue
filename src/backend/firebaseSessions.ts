@@ -30,7 +30,7 @@ import type {
   SessionRequestKind,
 } from "../domain/types.ts";
 import { BackendError, type OnlineSource, type Unsubscribe } from "./backend.ts";
-import { retryDelay, settle, stringList, toBackendError } from "./firebaseClubs.ts";
+import { retryDelay, settle, stringList, toBackendError, toRecord } from "./firebaseClubs.ts";
 import type { ActiveSessionsApi } from "./simulatedSessions.ts";
 
 /**
@@ -270,6 +270,114 @@ export function createFirebaseActiveSessions(
         const active = toActiveSession(clubId, { ...data, updatedAt: null });
         if (!active) throw new BackendError("failed");
         return { ...active, updatedAt: Date.now() };
+      } catch (error) {
+        throw toBackendError(error);
+      }
+    },
+
+    async makeSharedClub({ club, endedSessions, activeSession }) {
+      if (!deps.online.get()) throw new BackendError("offline");
+      const { account, uid } = await requireViewer();
+      const linked = club.players.filter((row) => row.link);
+      if (
+        club.kind !== "shared" ||
+        linked.length !== 1 ||
+        linked[0]?.link?.role !== "organizer" ||
+        linked[0].link.accountId.toLowerCase() !== account.accountId.toLowerCase() ||
+        endedSessions.some((ended) => ended.clubId !== club.id) ||
+        (activeSession && activeSession.clubId !== club.id)
+      ) {
+        throw new BackendError("failed");
+      }
+
+      // Is there a part of this Club on the server already (an earlier try that stopped)? Then carry
+      // on from there. A Club with this id that isn't just mine can't be read: it isn't ours to touch.
+      let there = false;
+      try {
+        const existing = await getDocFromServer(clubRef(club.id));
+        if (existing.exists()) {
+          const data = existing.data();
+          const only = (list: unknown) => {
+            const uids = stringList(list);
+            return uids.length === 1 && uids[0] === uid;
+          };
+          if (!only(data.memberUids) || !only(data.organizerUids)) {
+            throw new BackendError("forbidden");
+          }
+          there = true;
+        }
+      } catch (error) {
+        throw toBackendError(error);
+      }
+
+      // At most 500 writes in a batch: the Club and its rows, more rows, then the Ended sessions.
+      const CHUNK = 400;
+      const rows = [...club.players].sort((a, b) => Number(!!b.link) - Number(!!a.link)); // the linked row goes in the Club's first batch
+      const commit = (batch: ReturnType<typeof writeBatch>) => confirmed(batch.commit());
+      try {
+        for (let start = 0; start < Math.max(rows.length, 1); start += CHUNK) {
+          const batch = writeBatch(db);
+          if (start === 0 && !there) {
+            batch.set(clubRef(club.id), {
+              name: club.name,
+              memberUids: [uid],
+              organizerUids: [uid],
+              createdAt: serverTimestamp(),
+            });
+          }
+          for (const row of rows.slice(start, start + CHUNK)) {
+            batch.set(doc(db, "clubs", club.id, "players", row.id), toRecord(row, uid));
+          }
+          await commit(batch);
+        }
+
+        const known = new Set<string>();
+        if (there) {
+          for (const row of (await getDocs(endedRef(club.id))).docs) known.add(row.id);
+        }
+        const missing = endedSessions.filter((ended) => !known.has(ended.id));
+        for (let start = 0; start < missing.length; start += CHUNK) {
+          const batch = writeBatch(db);
+          for (const ended of missing.slice(start, start + CHUNK)) {
+            batch.set(doc(endedRef(club.id), ended.id), {
+              hostUid: uid,
+              endedAt: ended.endedAt,
+              endedJson: JSON.stringify(ended),
+              createdAt: serverTimestamp(),
+            });
+          }
+          await commit(batch);
+        }
+
+        let active: ActiveSession | null = null;
+        if (activeSession) {
+          const record = await getDocFromServer(sessionRef(club.id));
+          if (record.exists() && record.data().hostUid !== uid) {
+            throw new BackendError("session-exists");
+          }
+          if (!record.exists()) {
+            await confirmed(
+              runTransaction(db, async (transaction) => {
+                if ((await transaction.get(sessionRef(club.id))).exists()) return;
+                transaction.set(sessionRef(club.id), {
+                  sessionJson: JSON.stringify(activeSession),
+                  hostUid: uid,
+                  hostAccountId: account.accountId,
+                  hostName: account.name,
+                  updatedAt: serverTimestamp(),
+                });
+              }),
+            );
+          }
+          active = {
+            clubId: club.id,
+            session: activeSession,
+            hostAccountId: account.accountId,
+            hostName: account.name,
+            updatedAt: Date.now(),
+          };
+        }
+        return { club, active };
       } catch (error) {
         throw toBackendError(error);
       }
@@ -583,6 +691,24 @@ export function createFirebaseActiveSessions(
       if (failures.length === results.length) throw new BackendError("forbidden");
     },
   };
+}
+
+/** How long a write may take to reach the server before it counts as not having. */
+const CONFIRM_TIMEOUT_MS = 30_000;
+
+/** Resolves when the server has the write; a network that is really down rejects as `offline`. */
+async function confirmed<T>(write: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      write,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new BackendError("offline")), CONFIRM_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** The Ended session in a record, or null when it can't be read as one. */

@@ -1,7 +1,20 @@
 import { useSyncExternalStore } from "react";
 import { diffClub, inSafeOrder } from "../domain/clubChanges.ts";
+import { makeSharedClub, sessionForSharing, type ShareChoice } from "../domain/makeShared.ts";
+import { newId } from "../domain/ids.ts";
 import type { Club } from "../domain/types.ts";
-import { getAccount, getLocalClubs, setLocalClubs } from "../storage/store.ts";
+import {
+  addHostedSession,
+  getAccount,
+  getEndedSessions,
+  getLocalClubs,
+  getSession,
+  getSharedClubs,
+  setLocalClubs,
+  setSession,
+  setSharedClubs,
+} from "../storage/store.ts";
+import { BackendError } from "./backend.ts";
 import { getBackend } from "./index.ts";
 
 /** Whether Clubs created now are Shared clubs: there is a Backend and an Account. */
@@ -96,4 +109,55 @@ export function useBackendOnline(): boolean | null {
     (listener) => (backend ? backend.observeOnline(listener) : () => {}),
     () => (backend ? backend.isOnline() : null),
   );
+}
+
+/**
+ * Make a Local club a Shared club (ticket 10): the Club, its rows, its Ended sessions and the
+ * device's Active session when that is this Club's (this Account becomes its Session host) go to
+ * the server. Only once the server has confirmed does the device switch over: the Local club goes,
+ * the Shared one takes its place, and the device's own Session slot is emptied. Whatever fails
+ * leaves the Local club exactly as it was. Needs a connection. Rejects with a BackendError.
+ */
+export async function makeClubShared(club: Club, choice: ShareChoice): Promise<void> {
+  const backend = getBackend();
+  const account = getAccount();
+  if (!backend) throw new BackendError("failed");
+  if (!account) throw new BackendError("no-account");
+  if (!backend.isOnline()) throw new BackendError("offline");
+
+  const plan = makeSharedClub(club, choice, account, newId);
+  if (!plan.ok) throw new BackendError("failed");
+
+  // The Ended sessions this device kept for the Club, and the Session it is running for it.
+  const ended = getEndedSessions().filter((candidate) => candidate.clubId === club.id);
+  const running = getSession();
+  const session =
+    running && running.clubId === club.id
+      ? sessionForSharing(running, plan.meRowId, account.accountId)
+      : null;
+
+  let result;
+  try {
+    result = await backend.makeSharedClub({
+      club: plan.club,
+      endedSessions: ended,
+      activeSession: session,
+    });
+  } catch (error) {
+    // Don't leave a half-made Club behind on the server (when the connection is gone, the next
+    // try carries on from it instead).
+    if (!(error instanceof BackendError && error.code === "offline")) {
+      await backend.deleteSharedClub(club.id).catch(() => undefined);
+    }
+    throw error;
+  }
+
+  // Confirmed: switch over. The Shared club goes in first (it stays hidden behind the Local club
+  // of the same id), so there is never a moment without the Club.
+  setSharedClubs([...getSharedClubs().filter((other) => other.id !== club.id), result.club]);
+  if (result.active) {
+    addHostedSession(result.active);
+    setSession(null);
+  }
+  setLocalClubs(getLocalClubs().filter((other) => other.id !== club.id));
 }

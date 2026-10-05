@@ -350,17 +350,20 @@ service cloud.firestore {
       // as JSON text.
       //
       // - Read: anyone on the Club.
-      // - Create: only the Session host, in the batch that ends the Session (the rules read the
-      //   Active session as it was before the batch, so the host is still the host), once: the id is
-      //   the Session's, and nobody can update a record.
+      // - Create: the Session host, in the batch that ends the Session (the rules read the Active
+      //   session as it was before the batch, so the host is still the host), or a Club's creator
+      //   importing its history when a Local club is made shared. Once: the id is the Session's, and
+      //   nobody can update a record.
       // - Update and delete: nobody. The Club keeps what was published. Rules can't count, so "the 50
       //   most recent" is what the app lists (newest 50 by `endedAt`); older ones stay unseen.
       match /endedSessions/{sessionId} {
         allow read: if signedIn() && request.auth.uid in before().memberUids;
 
+        // Either the host ends a Session (the Club's Active session is its, as it was before the
+        // batch), or the Club's creator imports its history right after making a Local club shared
+        // (ticket 10): the Club's only member and Organizer, within an hour of the Club being
+        // created (in the same batch, or in the batches that follow it).
         allow create: if signedIn()
-          && exists(/databases/$(database)/documents/clubs/$(clubId)/activeSession/current)
-          && get(/databases/$(database)/documents/clubs/$(clubId)/activeSession/current).data.hostUid == request.auth.uid
           && request.resource.data.keys().hasOnly(['hostUid', 'endedAt', 'endedJson', 'createdAt'])
           && request.resource.data.keys().hasAll(['hostUid', 'endedAt', 'endedJson', 'createdAt'])
           && request.resource.data.hostUid == request.auth.uid
@@ -368,7 +371,19 @@ service cloud.firestore {
           && request.resource.data.endedJson is string
           && request.resource.data.endedJson.size() > 0
           && request.resource.data.endedJson.size() <= 400000
-          && request.resource.data.createdAt == request.time;
+          && request.resource.data.createdAt == request.time
+          && (
+            (
+              exists(/databases/$(database)/documents/clubs/$(clubId)/activeSession/current)
+              && get(/databases/$(database)/documents/clubs/$(clubId)/activeSession/current).data.hostUid == request.auth.uid
+            )
+            || (
+              request.auth.uid in getAfter(clubPath()).data.organizerUids
+              && getAfter(clubPath()).data.memberUids.size() == 1
+              && getAfter(clubPath()).data.get('createdAt', null) != null
+              && request.time < getAfter(clubPath()).data.createdAt + duration.value(1, 'h')
+            )
+          );
 
         allow update, delete: if false;
       }

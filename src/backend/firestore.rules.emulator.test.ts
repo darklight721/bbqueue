@@ -1389,3 +1389,141 @@ describe("Ended sessions of a Shared club", () => {
     }
   });
 });
+
+describe("Making a Local club shared: the creator's import", () => {
+  const endedDoc = (db: Firestore, id: string) => doc(db, "clubs", "c1", "endedSessions", id);
+  const ended = (person: Person, extra: Record<string, unknown> = {}) => ({
+    hostUid: person.uid,
+    endedAt: 1_700_000_000_000,
+    endedJson: JSON.stringify({ id: "x", name: "Night" }),
+    createdAt: serverTimestamp(),
+    ...extra,
+  });
+  const clubRecord = () => ({
+    name: "Garage",
+    memberUids: [ROY.uid],
+    organizerUids: [ROY.uid],
+    createdAt: serverTimestamp(),
+  });
+  const row = (id: string, linked?: { accountId: string; uid: string; role: string }) => ({
+    name: `Player ${id}`,
+    skill: "intermediate",
+    ...(linked ? { link: linked } : {}),
+  });
+
+  it("lets a new Club's creator write the Club, a big roster and the whole history in one batch each", async () => {
+    await seedAccounts(ROY);
+    const db = as(ROY.uid);
+
+    // The Club and 450 rows can't be one batch (500 writes at most): the Club with the first
+    // 400 rows, then the rest.
+    const first = writeBatch(db);
+    first.set(doc(db, "clubs", "c1"), clubRecord());
+    first.set(doc(db, "clubs", "c1", "players", "p-roy"), row("roy", link(ROY, "organizer")));
+    for (let i = 0; i < 399; i++)
+      first.set(doc(db, "clubs", "c1", "players", `p-${i}`), row(String(i)));
+    await assertSucceeds(first.commit());
+
+    const rest = writeBatch(db);
+    for (let i = 399; i < 450; i++)
+      rest.set(doc(db, "clubs", "c1", "players", `p-${i}`), row(String(i)));
+    await assertSucceeds(rest.commit());
+
+    // Then the history: 400 Ended sessions in a batch.
+    const history = writeBatch(db);
+    for (let i = 0; i < 400; i++) history.set(endedDoc(db, `s${i}`), ended(ROY));
+    await assertSucceeds(history.commit());
+  });
+
+  it("lets the creator import Ended sessions in the same batch as the Club", async () => {
+    await seedAccounts(ROY);
+    const db = as(ROY.uid);
+    const batch = writeBatch(db);
+    batch.set(doc(db, "clubs", "c1"), clubRecord());
+    batch.set(doc(db, "clubs", "c1", "players", "p-roy"), row("roy", link(ROY, "organizer")));
+    for (let i = 0; i < 50; i++) batch.set(endedDoc(db, `s${i}`), ended(ROY));
+    await assertSucceeds(batch.commit());
+  });
+
+  it("refuses the import once the Club has another member, however soon", async () => {
+    await seedAccounts(ROY, ANA);
+    await seed(async (db) => {
+      await setDoc(doc(db, "clubs", "c1"), {
+        name: "Garage",
+        memberUids: [ROY.uid, ANA.uid],
+        organizerUids: [ROY.uid],
+        createdAt: new Date(),
+      });
+    });
+    await assertFails(setDoc(endedDoc(as(ROY.uid), "s1"), ended(ROY)));
+  });
+
+  it("refuses the import more than an hour after the Club was created, and for a Club that has no creation time", async () => {
+    await seedAccounts(ROY);
+    await seed(async (db) => {
+      await setDoc(doc(db, "clubs", "c1"), {
+        name: "Garage",
+        memberUids: [ROY.uid],
+        organizerUids: [ROY.uid],
+        createdAt: new Date(Date.now() - 2 * 3_600_000),
+      });
+    });
+    await assertFails(setDoc(endedDoc(as(ROY.uid), "s1"), ended(ROY)));
+    await seed(async (db) => {
+      await setDoc(doc(db, "clubs", "c1"), {
+        name: "Garage",
+        memberUids: [ROY.uid],
+        organizerUids: [ROY.uid],
+      });
+    });
+    await assertFails(setDoc(endedDoc(as(ROY.uid), "s1"), ended(ROY)));
+  });
+
+  it("refuses somebody who isn't the Club's Organizer, and a record in somebody else's name", async () => {
+    await seedAccounts(ROY, BEN);
+    const db = as(ROY.uid);
+    const create = writeBatch(db);
+    create.set(doc(db, "clubs", "c1"), clubRecord());
+    create.set(doc(db, "clubs", "c1", "players", "p-roy"), row("roy", link(ROY, "organizer")));
+    await create.commit();
+
+    await assertFails(setDoc(endedDoc(as(BEN.uid), "s1"), ended(BEN)));
+    await assertFails(setDoc(endedDoc(db, "s1"), ended(ROY, { hostUid: BEN.uid })));
+    await assertFails(setDoc(endedDoc(db, "s1"), ended(ROY, { createdAt: new Date(0) })));
+    await assertSucceeds(setDoc(endedDoc(db, "s1"), ended(ROY)));
+    // Still never changed or deleted.
+    await assertFails(setDoc(endedDoc(db, "s1"), ended(ROY, { endedJson: "{}" })));
+    await assertFails(deleteDoc(endedDoc(db, "s1")));
+  });
+
+  it("lets the creator start the Active session on the new Club, and nobody else", async () => {
+    await seedAccounts(ROY, BEN);
+    const db = as(ROY.uid);
+    const create = writeBatch(db);
+    create.set(doc(db, "clubs", "c1"), clubRecord());
+    create.set(doc(db, "clubs", "c1", "players", "p-roy"), row("roy", link(ROY, "organizer")));
+    await create.commit();
+    const record = (person: Person) => ({
+      sessionJson: JSON.stringify({ id: "s1" }),
+      hostUid: person.uid,
+      hostAccountId: person.accountId,
+      hostName: person.name,
+      updatedAt: serverTimestamp(),
+    });
+
+    await assertFails(
+      setDoc(doc(as(BEN.uid), "clubs", "c1", "activeSession", "current"), record(BEN)),
+    );
+    await assertSucceeds(setDoc(doc(db, "clubs", "c1", "activeSession", "current"), record(ROY)));
+  });
+
+  it("refuses linking anybody but the creator in the new Club's first batch", async () => {
+    await seedAccounts(ROY, ANA);
+    const db = as(ROY.uid);
+    const batch = writeBatch(db);
+    batch.set(doc(db, "clubs", "c1"), clubRecord());
+    batch.set(doc(db, "clubs", "c1", "players", "p-roy"), row("roy", link(ROY, "organizer")));
+    batch.set(doc(db, "clubs", "c1", "players", "p-ana"), row("ana", link(ANA, "player")));
+    await assertFails(batch.commit());
+  });
+});

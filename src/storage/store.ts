@@ -167,12 +167,21 @@ export function setSharedClubs(clubs: Club[]): void {
 
 let merged: { local: Club[]; shared: Club[]; clubs: Club[] } | null = null;
 
-/** Every Club the UI shows: the device's Local clubs plus the Account's Shared clubs. */
+/**
+ * Every Club the UI shows: the device's Local clubs plus the Account's Shared clubs. While a Local
+ * club is being made shared the server may already list it; the device's copy is the one that
+ * shows until the conversion is confirmed, so a Club is never shown twice.
+ */
 export function getClubs(): Club[] {
   const local = getLocalClubs();
   const shared = getSharedClubs();
   if (merged?.local !== local || merged.shared !== shared) {
-    merged = { local, shared, clubs: [...local, ...shared] };
+    const localIds = new Set(local.map((club) => club.id));
+    merged = {
+      local,
+      shared,
+      clubs: [...local, ...shared.filter((club) => !localIds.has(club.id))],
+    };
   }
   return merged.clubs;
 }

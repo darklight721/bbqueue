@@ -2,6 +2,7 @@ import type { Club } from "../domain/types.ts";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 import { runSharedClubsContract } from "./backend.clubs.contract.ts";
 import { runRolesContract } from "./backend.roles.contract.ts";
+import { runMakeSharedContract } from "./backend.makeShared.contract.ts";
 import { runSessionsContract } from "./backend.sessions.contract.ts";
 import { runBackendContract } from "./backend.contract.ts";
 import type { OnlineSource } from "./backend.ts";
@@ -61,6 +62,20 @@ runRolesContract("local fake", () => {
 });
 
 runSessionsContract("local fake", () => {
+  let devices = 0;
+  return {
+    device() {
+      const connection = controllableOnline();
+      const backend = createLocalFakeBackend({
+        online: connection.source,
+        deviceSuffix: `:device-${++devices}`,
+      });
+      return { backend, setOnline: connection.set };
+    },
+  };
+});
+
+runMakeSharedContract("local fake", () => {
   let devices = 0;
   return {
     device() {
