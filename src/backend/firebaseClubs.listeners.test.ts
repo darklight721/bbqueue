@@ -56,7 +56,8 @@ const ROWS = "clubs/c1/players";
 
 const active = (key: string) =>
   listeners.filter((listener) => listener.active && listener.key === key);
-const rowsSnapshot = (names: string[]) => ({
+const rowsSnapshot = (names: string[], fromCache = false) => ({
+  metadata: { fromCache },
   docs: names.map((name, index) => ({
     id: `p${index}`,
     data: () => ({ name, skill: "beginner" }),
@@ -64,7 +65,14 @@ const rowsSnapshot = (names: string[]) => ({
 });
 const membersSnapshot = (...ids: string[]) => membersSnapshotWith(false, ...ids);
 /** `pending`: the Clubs' own records have changes the server hasn't confirmed yet. */
-const membersSnapshotWith = (pending: boolean, ...ids: string[]) => ({
+const membersSnapshotWith = (pending: boolean, ...ids: string[]) =>
+  membersSnapshotFrom({ pending, fromCache: false }, ...ids);
+/** `fromCache`: the answer comes from what the device remembers, not from the server. */
+const membersSnapshotFrom = (
+  { pending, fromCache }: { pending: boolean; fromCache: boolean },
+  ...ids: string[]
+) => ({
+  metadata: { fromCache },
   docs: ids.map((id) => ({
     id,
     data: () => ({ name: `Club ${id}` }),
@@ -152,6 +160,109 @@ describe("observeSharedClubs listeners", () => {
     expect(reported.at(-1)?.map((club) => club.id)).toEqual(["c2"]);
     await vi.advanceTimersByTimeAsync(60_000);
     expect(active(ROWS)).toHaveLength(0);
+  });
+
+  it("shows a Club again when this Account is added to it after being taken off", async () => {
+    active(MEMBERS)[0]!.next(membersSnapshot("c1"));
+    active(ROWS)[0]!.next(rowsSnapshot(["Ana"]));
+    serverClub = () => Promise.reject({ code: "permission-denied" });
+    active(ROWS)[0]!.error(refused);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(reported.at(-1)).toEqual([]);
+
+    // The Clubs listener is asked afresh. It first answers from the cache, which still has the
+    // Club: that is not news.
+    expect(active(MEMBERS)).toHaveLength(1);
+    active(MEMBERS)[0]!.next(membersSnapshotFrom({ pending: false, fromCache: true }, "c1"));
+    expect(active(ROWS)).toHaveLength(0);
+    // The server doesn't list it (any more).
+    active(MEMBERS)[0]!.next(membersSnapshot());
+    expect(reported.at(-1)).toEqual([]);
+
+    // An Organizer adds the Account again.
+    serverClub = () => Promise.resolve({ exists: () => true });
+    active(MEMBERS)[0]!.next(membersSnapshot("c1"));
+    active(ROWS)[0]!.next(rowsSnapshot(["Ana"]));
+    expect(reported.at(-1)?.map((club) => club.id)).toEqual(["c1"]);
+  });
+
+  /** Club c1 is on the list with its rows, then the server refuses them and its record: dropped. */
+  async function dropC1() {
+    serverClub = () => Promise.reject({ code: "permission-denied" });
+    active(ROWS)[0]!.error(refused);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(reported.at(-1)).toEqual([]);
+  }
+
+  it("shows the Club when the first server answer after a restart already lists it (added again at once)", async () => {
+    active(MEMBERS)[0]!.next(membersSnapshot("c1"));
+    active(ROWS)[0]!.next(rowsSnapshot(["Ana"]));
+    await dropC1();
+
+    serverClub = () => Promise.resolve({ exists: () => true });
+    expect(active(MEMBERS)).toHaveLength(1);
+    active(MEMBERS)[0]!.next(membersSnapshot("c1"));
+    active(ROWS)[0]!.next(rowsSnapshot(["Ana"]));
+
+    expect(reported.at(-1)?.map((club) => club.id)).toEqual(["c1"]);
+  });
+
+  it("ends with exactly one Clubs listener when a Club is dropped while a restart or retry is waiting", async () => {
+    active(MEMBERS)[0]!.next(membersSnapshot("c1"));
+    active(ROWS)[0]!.next(rowsSnapshot(["Ana"]));
+    await dropC1();
+    // Added again, and refused again: the second drop waits before it restarts.
+    active(MEMBERS)[0]!.next(membersSnapshot("c1"));
+    await dropC1Again();
+    expect(active(MEMBERS)).toHaveLength(1);
+
+    // The Clubs listener fails meanwhile and has its own retry waiting.
+    active(MEMBERS)[0]!.error({ code: "unavailable" });
+    expect(active(MEMBERS)).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(active(MEMBERS)).toHaveLength(1);
+
+    // And a drop during that wait doesn't leave two.
+    active(MEMBERS)[0]!.next(membersSnapshot("c1"));
+    await dropC1Again();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(active(MEMBERS)).toHaveLength(1);
+  });
+
+  /** The server lists c1 again but still refuses its rows: dropped a second time. */
+  async function dropC1Again() {
+    serverClub = () => Promise.reject({ code: "permission-denied" });
+    active(ROWS)[0]!.error(refused);
+    await vi.advanceTimersByTimeAsync(0);
+  }
+
+  it("backs off when the same Club is dropped again and again, and starts over once its rows work", async () => {
+    active(MEMBERS)[0]!.next(membersSnapshot("c1"));
+    active(ROWS)[0]!.next(rowsSnapshot(["Ana"]));
+    await dropC1();
+    // First drop: asked afresh at once.
+    expect(listeners.filter((l) => l.key === MEMBERS)).toHaveLength(2);
+
+    // The server says it is back, but refuses again: the next restart waits (250 ms, then 500 ms).
+    for (const wait of [250, 500, 1000]) {
+      active(MEMBERS)[0]!.next(membersSnapshot("c1"));
+      const before = listeners.filter((l) => l.key === MEMBERS).length;
+      await dropC1Again();
+      expect(listeners.filter((l) => l.key === MEMBERS)).toHaveLength(before);
+      await vi.advanceTimersByTimeAsync(wait - 1);
+      expect(listeners.filter((l) => l.key === MEMBERS)).toHaveLength(before);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(listeners.filter((l) => l.key === MEMBERS)).toHaveLength(before + 1);
+      expect(active(MEMBERS)).toHaveLength(1);
+    }
+
+    // Rows from the server again: the next drop is a first drop and restarts at once.
+    serverClub = () => Promise.resolve({ exists: () => true });
+    active(MEMBERS)[0]!.next(membersSnapshot("c1"));
+    active(ROWS)[0]!.next(rowsSnapshot(["Ana"]));
+    const before = listeners.filter((l) => l.key === MEMBERS).length;
+    await dropC1Again();
+    expect(listeners.filter((l) => l.key === MEMBERS)).toHaveLength(before + 1);
   });
 
   it("keeps a Club whose rows are refused while the server still shows it to this Account", async () => {

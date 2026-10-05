@@ -742,6 +742,52 @@ describe("Linking Accounts and Roles", () => {
     await assertSucceeds(batch.commit());
   });
 
+  it("lets an Organizer unlink another Organizer, taking it off both lists", async () => {
+    await seedClub();
+    await seed(async (db) => {
+      await updateDoc(doc(db, "clubs", "c1"), { organizerUids: [ROY.uid, ANA.uid] });
+      await updateDoc(doc(db, "clubs", "c1", "players", "p-ana"), { "link.role": "organizer" });
+    });
+    const db = as(ROY.uid);
+    const batch = writeBatch(db);
+    batch.update(doc(db, "clubs", "c1", "players", "p-ana"), { link: deleteField() });
+    batch.update(doc(db, "clubs", "c1"), {
+      memberUids: arrayRemove(ANA.uid),
+      organizerUids: arrayRemove(ANA.uid),
+    });
+    await assertSucceeds(batch.commit());
+  });
+
+  it("refuses unlinking an Organizer while it stays on the Organizer list", async () => {
+    await seedClub();
+    await seed(async (db) => {
+      await updateDoc(doc(db, "clubs", "c1"), { organizerUids: [ROY.uid, ANA.uid] });
+      await updateDoc(doc(db, "clubs", "c1", "players", "p-ana"), { "link.role": "organizer" });
+    });
+    const db = as(ROY.uid);
+    const batch = writeBatch(db);
+    batch.update(doc(db, "clubs", "c1", "players", "p-ana"), { link: deleteField() });
+    batch.update(doc(db, "clubs", "c1"), { memberUids: arrayRemove(ANA.uid) });
+    await assertFails(batch.commit());
+  });
+
+  it("refuses a Player unlinking another Account, however the lists are changed", async () => {
+    await seedClub();
+    await seed(async (db) => {
+      await updateDoc(doc(db, "clubs", "c1"), { memberUids: [ROY.uid, ANA.uid, BEN.uid] });
+      await updateDoc(doc(db, "clubs", "c1", "players", "p-cat"), { link: link(BEN, "player") });
+    });
+    const db = as(ANA.uid);
+    const batch = writeBatch(db);
+    batch.update(doc(db, "clubs", "c1", "players", "p-cat"), { link: deleteField() });
+    batch.update(doc(db, "clubs", "c1"), { memberUids: arrayRemove(BEN.uid) });
+    await assertFails(batch.commit());
+    await assertFails(
+      updateDoc(doc(db, "clubs", "c1", "players", "p-cat"), { link: deleteField() }),
+    );
+    await assertFails(updateDoc(doc(db, "clubs", "c1"), { memberUids: arrayRemove(BEN.uid) }));
+  });
+
   it("refuses unlinking a row while its Account stays on the lists", async () => {
     await seedClub();
     await assertFails(

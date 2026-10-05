@@ -53,7 +53,7 @@ export async function saveClub(before: Club, after: Club): Promise<void> {
   }
   const backend = getBackend();
   if (!backend) return;
-  for (const change of inSafeOrder(diffClub(before, after))) {
+  for (const change of inSafeOrder(diffClub(before, after), before, getAccount()?.accountId)) {
     switch (change.type) {
       case "rename":
         await backend.renameSharedClub(before.id, change.name);

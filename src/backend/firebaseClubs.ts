@@ -261,6 +261,19 @@ export function createFirebaseClubs(
         const clubs = new Map<string, Entry>();
         let stopped = false;
         let reported = false;
+        /**
+         * Clubs this device found out it was taken off (see `watchPlayers`). The Clubs listener
+         * may not report that (seen on the emulator), so it can still hold them and say nothing
+         * if the Account were added again. It is started again, and until the server answers
+         * these are ignored.
+         */
+        const dropped = new Set<string>();
+        /**
+         * How many times each Club was dropped since it last worked (rows arrived from the
+         * server). The first drop restarts the Clubs listener at once; repeats back off, so a
+         * server that keeps contradicting itself isn't asked in a tight loop.
+         */
+        const dropCount = new Map<string, number>();
 
         function emit() {
           // Report only once every Club's rows are in, or a half-loaded list would look like
@@ -308,6 +321,7 @@ export function createFirebaseClubs(
               playersRef(clubId),
               (players) => {
                 attempt = 0;
+                if (!players.metadata.fromCache) dropCount.delete(clubId);
                 entry.players = players.docs.map((row) => toClubPlayer(row.id, row.data()));
                 emit();
               },
@@ -318,6 +332,15 @@ export function createFirebaseClubs(
                     if (clubs.get(clubId) !== entry) return;
                     entry.stop();
                     clubs.delete(clubId);
+                    dropped.add(clubId);
+                    const drops = dropCount.get(clubId) ?? 0;
+                    dropCount.set(clubId, drops + 1);
+                    if (drops === 0) {
+                      restartMembers();
+                    } else {
+                      clearTimeout(membersRetry);
+                      membersRetry = setTimeout(restartMembers, retryDelay(drops - 1));
+                    }
                     emit();
                     return;
                   }
@@ -342,7 +365,18 @@ export function createFirebaseClubs(
         function handleMembers(snapshot: QuerySnapshot) {
           let changed = false;
           const seen = new Set<string>();
+          const fromServer = !snapshot.metadata.fromCache;
+          for (const id of dropped) {
+            if (fromServer && !snapshot.docs.some((clubDoc) => clubDoc.id === id)) {
+              dropped.delete(id);
+            }
+          }
           for (const clubDoc of snapshot.docs) {
+            if (dropped.has(clubDoc.id)) {
+              // Still the old answer (from the cache); only the server can say it is back.
+              if (!fromServer) continue;
+              dropped.delete(clubDoc.id);
+            }
             seen.add(clubDoc.id);
             const name = String(clubDoc.data().name ?? "");
             const pending = clubDoc.metadata.hasPendingWrites;
@@ -385,6 +419,7 @@ export function createFirebaseClubs(
         let membersRetry: ReturnType<typeof setTimeout> | undefined;
         let stopMembers: Unsubscribe = () => {};
         const listenMembers = () => {
+          stopMembers();
           stopMembers = onSnapshot(
             members,
             { includeMetadataChanges: true },
@@ -395,10 +430,19 @@ export function createFirebaseClubs(
             (error) => {
               if (stopped) return;
               console.warn("Clubs listener failed, trying again", error);
+              clearTimeout(membersRetry);
               membersRetry = setTimeout(listenMembers, retryDelay(membersAttempt++));
             },
           );
         };
+        /** Ask the server about my Clubs afresh. */
+        function restartMembers() {
+          if (stopped) return;
+          clearTimeout(membersRetry);
+          stopMembers();
+          membersAttempt = 0;
+          listenMembers();
+        }
         listenMembers();
 
         return () => {

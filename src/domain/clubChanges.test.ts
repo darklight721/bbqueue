@@ -207,4 +207,76 @@ describe("inSafeOrder", () => {
       "unlink",
     ]);
   });
+
+  it("unlinks or removes a row first when its Account is linked to another row in the same Save", () => {
+    const before: Club = {
+      ...club,
+      players: [
+        { ...ana, link: { accountId: "ana-2222", role: "player" } },
+        { ...ben, link: { accountId: "ben-3333", role: "player" } },
+        { id: "p3", name: "Cat", skill: "beginner" },
+      ],
+    };
+    const changes = inSafeOrder(
+      [
+        { type: "rename", name: "Friday" },
+        { type: "link", playerId: "p3", link: { accountId: "ANA-2222", role: "player" } },
+        { type: "unlink", playerId: "p1" },
+        { type: "removePlayer", playerId: "p2" },
+      ],
+      before,
+    );
+    expect(changes.map((c) => c.type)).toEqual(["unlink", "rename", "link", "removePlayer"]);
+  });
+
+  it("keeps an unlink of an Account that goes nowhere else last", () => {
+    const before: Club = {
+      ...club,
+      players: [{ ...ana, link: { accountId: "ana-2222", role: "player" } }, ben],
+    };
+    const changes = inSafeOrder(
+      [
+        { type: "unlink", playerId: "p1" },
+        { type: "rename", name: "Friday" },
+      ],
+      before,
+    );
+    expect(changes.map((c) => c.type)).toEqual(["rename", "unlink"]);
+  });
+
+  it("never moves the viewer's own Account first: removing your row and linking yourself elsewhere keeps the removal last", () => {
+    const before: Club = {
+      ...club,
+      players: [
+        { ...ana, link: { accountId: "roy-7k3f", role: "organizer" } },
+        {
+          id: "p3",
+          name: "Roy B.",
+          skill: "beginner",
+          link: { accountId: "bo-1111", role: "organizer" },
+        },
+        { id: "p4", name: "Cat", skill: "beginner" },
+      ],
+    };
+    const changes = inSafeOrder(
+      [
+        { type: "removePlayer", playerId: "p1" },
+        { type: "link", playerId: "p4", link: { accountId: "ROY-7K3F", role: "organizer" } },
+      ],
+      before,
+      "roy-7k3f",
+    );
+    expect(changes.map((c) => c.type)).toEqual(["link", "removePlayer"]);
+    // Somebody else's Account in the same position is moved first.
+    expect(
+      inSafeOrder(
+        [
+          { type: "removePlayer", playerId: "p3" },
+          { type: "link", playerId: "p4", link: { accountId: "bo-1111", role: "player" } },
+        ],
+        before,
+        "roy-7k3f",
+      ).map((c) => c.type),
+    ).toEqual(["removePlayer", "link"]);
+  });
 });

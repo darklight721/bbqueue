@@ -128,8 +128,34 @@ export function diffClub(before: Club, after: Club): ClubChange[] {
  * `changes` in an order that keeps a Club's "at least one Organizer" rule true at every step:
  * making Organizers first, ordinary edits next, and demoting, unlinking or removing last. Without
  * this, handing the Club to someone else and stepping down in one Save would fail on the way.
+ *
+ * The one exception: when a row is unlinked or removed and the same Account is linked to another
+ * row in the same Save (an Account moved from one row to another), the unlink or removal goes
+ * first, because an Account can only be linked to one row at a time. `before` (the Club as it is
+ * now) finds the Account behind an unlink. The viewer's own Account is never moved first: that
+ * would take them off the Club before the link that needs them as an Organizer, so such a Save
+ * fails cleanly with `already-linked` instead.
+ *
+ * Known, accepted gaps (both fail with `already-linked`; neither can lock anyone out): a link that replaces another
+ * Account on the same row is a `link` change, not an unlink, so its old Account isn't seen as
+ * moving; and two Accounts swapped between two rows can't be ordered.
  */
-export function inSafeOrder(changes: readonly ClubChange[]): ClubChange[] {
+export function inSafeOrder(
+  changes: readonly ClubChange[],
+  before?: Club,
+  viewerAccountId?: string | null,
+): ClubChange[] {
+  const linkedAgain = (accountId: string | undefined): boolean =>
+    !!accountId &&
+    changes.some((change) => {
+      const link =
+        change.type === "link"
+          ? change.link
+          : change.type === "addPlayer"
+            ? change.player.link
+            : undefined;
+      return !!link && accountIdsEqual(link.accountId, accountId);
+    });
   const rank = (change: ClubChange): number => {
     switch (change.type) {
       case "link":
@@ -139,8 +165,12 @@ export function inSafeOrder(changes: readonly ClubChange[]): ClubChange[] {
       case "setRole":
         return change.role === "organizer" ? 0 : 2;
       case "unlink":
-      case "removePlayer":
-        return 2;
+      case "removePlayer": {
+        const row = before?.players.find((player) => player.id === change.playerId);
+        const accountId = row?.link?.accountId;
+        if (accountId && viewerAccountId && accountIdsEqual(accountId, viewerAccountId)) return 2;
+        return linkedAgain(accountId) ? -1 : 2;
+      }
       default:
         return 1;
     }

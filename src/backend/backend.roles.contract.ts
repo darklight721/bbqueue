@@ -267,6 +267,50 @@ export function runRolesContract(name: string, createWorld: () => RolesContractW
       await eventually(() => expect(roy.row("c1", cat.id)).toEqual(cat));
     });
 
+    it("lets an Organizer unlink another Organizer: they lose their access, the Club keeps an Organizer", async () => {
+      const { roy, ana } = await setup();
+      await roy.backend.linkClubPlayer("c1", cat.id, ana.account.accountId, "organizer");
+      await eventually(() => expect(ana.club("c1")).toBeDefined());
+
+      await roy.backend.unlinkClubPlayer("c1", cat.id);
+
+      await eventually(() => expect(ana.club("c1")).toBeUndefined());
+      await eventually(() => expect(roy.row("c1", cat.id)).toEqual(cat));
+      // Firestore refuses (forbidden); the simulated servers know no such Club for her (not-found).
+      expect(["forbidden", "not-found"]).toContain(
+        (await rejection(ana.backend.renameSharedClub("c1", "Mine"))).code,
+      );
+      await roy.backend.renameSharedClub("c1", "Still Roy's");
+      await eventually(() => expect(roy.club("c1")?.name).toBe("Still Roy's"));
+    });
+
+    it("keeps a Player from unlinking another Account", async () => {
+      const { world, roy, ana } = await setup();
+      const ben = await person(world, "Ben");
+      await roy.backend.linkClubPlayer("c1", cat.id, ana.account.accountId, "player");
+      await roy.backend.linkClubPlayer("c1", dan.id, ben.account.accountId, "player");
+      await eventually(() => expect(ana.club("c1")).toBeDefined());
+      await eventually(() => expect(ben.club("c1")).toBeDefined());
+
+      expect((await rejection(ana.backend.unlinkClubPlayer("c1", dan.id))).code).toBe("forbidden");
+
+      expect(roy.row("c1", dan.id)?.link?.accountId).toBe(ben.account.accountId);
+      expect(ben.club("c1")).toBeDefined();
+    });
+
+    it("lets an Organizer unlink an Account and link it to another row", async () => {
+      const { roy, ana } = await setup();
+      await roy.backend.linkClubPlayer("c1", cat.id, ana.account.accountId, "player");
+      await eventually(() => expect(ana.club("c1")).toBeDefined());
+
+      await roy.backend.unlinkClubPlayer("c1", cat.id);
+      await eventually(() => expect(ana.club("c1")).toBeUndefined());
+      await roy.backend.linkClubPlayer("c1", dan.id, ana.account.accountId, "player");
+
+      await eventually(() => expect(ana.row("c1", dan.id)?.link?.role).toBe("player"));
+      expect(roy.row("c1", cat.id)).toEqual(cat);
+    });
+
     it("takes an Account off the Club when its row is removed", async () => {
       const { roy, ana } = await setup();
       await roy.backend.linkClubPlayer("c1", cat.id, ana.account.accountId, "player");
