@@ -39,7 +39,7 @@ test.describe("Linking Accounts (one device)", () => {
   }) => {
     await expect(catField(page)).toHaveAttribute("placeholder", "Name or @Account ID");
     await catField(page).fill("@ANA-2222");
-    await expect(page.getByText(/Linked to/)).toHaveText("Linked to ana-2222");
+    await expect(page.getByText("ana-2222", { exact: true })).toBeVisible();
     await expect(catField(page)).toHaveValue("Ana Bell");
     await expect(catField(page)).toBeFocused();
     await expect(role(page, "Ana Bell")).toHaveValue("player");
@@ -56,7 +56,7 @@ test.describe("Linking Accounts (one device)", () => {
 
     await page.getByRole("link", { name: /Tuesday/ }).click();
     await expect(role(page, "Ana Bell")).toHaveValue("player");
-    await expect(page.getByRole("button", { name: /Remove link/ })).toHaveCount(0);
+    await expect(page.getByText("ana-2222", { exact: true })).toBeVisible();
   });
 
   test("an unknown or already-linked Account ID is rejected under the field", async ({ page }) => {
@@ -72,14 +72,14 @@ test.describe("Linking Accounts (one device)", () => {
     await expect(page.getByText("That Account is already on this roster.")).toBeVisible();
   });
 
-  test("✕ takes back a link that isn't saved yet, and clears the name", async ({ page }) => {
+  test("Unlink takes back a link that isn't saved yet, and clears the name", async ({ page }) => {
     await catField(page).fill("@ana-2222");
     await expect(catField(page)).toHaveValue("Ana Bell");
-    await page.getByRole("button", { name: "Remove link for Ana Bell" }).click();
+    await page.getByRole("button", { name: "Unlink Ana Bell" }).click();
 
     await expect(catField(page)).toHaveValue("");
     await expect(catField(page)).toBeFocused();
-    await expect(page.getByText(/Linked to/)).toHaveCount(0);
+    await expect(page.getByText("ana-2222", { exact: true })).toHaveCount(0);
     await catField(page).fill("Cat");
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page).toHaveURL(/\/clubs$/);
@@ -116,6 +116,80 @@ test.describe("Linking Accounts (one device)", () => {
     ).toBeVisible();
     await catField(page).fill("@ana-2222");
     await expect(page.getByText("Linking an Account needs a connection.")).toBeVisible();
+  });
+});
+
+test.describe("Unlinking a live Account (one device)", () => {
+  const withAna: Club = makeClub({
+    id: "shared-4",
+    name: "Wednesday",
+    kind: "shared",
+    players: [
+      {
+        id: "p-roy",
+        name: roy.name,
+        skill: "intermediate",
+        link: { accountId: roy.accountId, role: "organizer" },
+      },
+      {
+        id: "p-ana",
+        name: ana.name,
+        skill: "beginner",
+        link: { accountId: ana.accountId, role: "player" },
+      },
+    ],
+  });
+
+  test.beforeEach(async ({ page }) => {
+    await seedStorage(page, { account: roy, otherAccounts: [ana], sharedClubs: [withAna] });
+    await page.goto("/clubs/shared-4");
+    await expect(role(page, ana.name)).toHaveValue("player");
+  });
+
+  test("an Organizer's own row says You, and has no Unlink", async ({ page }) => {
+    await expect(page.getByText(roy.accountId, { exact: true })).toBeVisible();
+    await expect(page.getByText("You", { exact: true })).toHaveCount(1);
+    await expect(page.getByRole("button", { name: `Unlink ${roy.name}` })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: `Unlink ${ana.name}` })).toBeVisible();
+  });
+
+  test("Unlink on a saved link, then Save: the row stays on the roster, unlinked, also after a reload", async ({
+    page,
+  }) => {
+    await expect(page.getByText(ana.accountId, { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: `Unlink ${ana.name}` }).click();
+
+    // Nothing is saved until Save: the chip and the Role go from the screen.
+    await expect(page.getByText(ana.accountId, { exact: true })).toHaveCount(0);
+    await expect(role(page, ana.name)).toHaveCount(0);
+    await expect(page.getByRole("textbox", { name: "Player name" }).first()).toHaveValue(ana.name);
+    expect((await readFakeClubs(page))[0]?.players.find((p) => p.id === "p-ana")?.link).toEqual({
+      accountId: ana.accountId,
+      role: "player",
+    });
+
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page).toHaveURL(/\/clubs$/);
+    expect((await readFakeClubs(page))[0]?.players.find((p) => p.id === "p-ana")).toEqual({
+      id: "p-ana",
+      name: ana.name,
+      skill: "beginner",
+    });
+
+    await page.goto("/clubs/shared-4");
+    await page.reload();
+    await expect(page.getByRole("textbox", { name: "Player name" }).first()).toHaveValue(ana.name);
+    await expect(page.getByText(ana.accountId, { exact: true })).toHaveCount(0);
+    await expect(role(page, ana.name)).toHaveCount(0);
+    await expect(page.getByRole("button", { name: `Unlink ${ana.name}` })).toHaveCount(0);
+    // Roy's own row is untouched.
+    await expect(role(page, roy.name)).toHaveValue("organizer");
+  });
+
+  test("offline, Unlink on a saved link is turned off", async ({ page, context }) => {
+    await context.setOffline(true);
+
+    await expect(page.getByRole("button", { name: `Unlink ${ana.name}` })).toBeDisabled();
   });
 });
 

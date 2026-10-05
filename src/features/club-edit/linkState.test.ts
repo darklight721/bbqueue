@@ -60,7 +60,6 @@ describe("linkStates", () => {
       saved: false,
       isYou: false,
       exists: true,
-      name: "Ana Bell",
     });
   });
 

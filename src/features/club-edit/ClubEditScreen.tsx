@@ -419,7 +419,7 @@ function ClubEditor({ club }: { club: Club | null }) {
           <div className="grid grid-cols-2 gap-3">
             <button
               type="button"
-              className="btn btn-lg btn-outline border-base-300"
+              className="btn gap-1.5 border-base-300 px-3 whitespace-nowrap btn-lg btn-outline"
               disabled={addBlocked}
               onClick={addRow}
             >

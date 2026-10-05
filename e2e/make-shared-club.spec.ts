@@ -80,7 +80,7 @@ test.describe("Make shared club", () => {
     const anaField = page.getByRole("textbox", { name: "Player name" }).first();
     await expect(anaField).toHaveValue("Ana");
     await anaField.fill(`@${ana.accountId}`);
-    await expect(page.getByText(/Linked to/)).toHaveText(`Linked to ${ana.accountId}`);
+    await expect(page.getByText(ana.accountId, { exact: true })).toBeVisible();
     await expect(page.getByRole("combobox", { name: "Role for Ana Bell" })).toHaveValue("player");
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page).toHaveURL(/\/clubs$/);

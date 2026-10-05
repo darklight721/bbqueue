@@ -62,7 +62,7 @@ test.describe("Shared clubs on the server", () => {
     await expect(names.last()).toHaveAttribute("placeholder", "Name or @Account ID");
     await names.last().fill(`@${ana.accountId}`);
     await expect(names.last()).toHaveValue("Ana Bell");
-    await expect(page.getByText(/Linked to/)).toHaveText(`Linked to ${ana.accountId}`);
+    await expect(page.getByText(ana.accountId, { exact: true })).toBeVisible();
     await page.getByRole("combobox", { name: "Role for Ana Bell" }).selectOption("organizer");
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page).toHaveURL(/\/clubs$/);

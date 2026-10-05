@@ -6,8 +6,7 @@ import type { PlayerRow } from "./clubForm.ts";
 export type LinkState =
   /**
    * Linked to an Account. `saved` is false for a link made on this screen and not saved yet.
-   * `exists` is false once a lookup shows it is gone, null while unknown; `name` is the
-   * Account's name once looked up.
+   * `exists` is false once a lookup shows it is gone, null while unknown.
    */
   | {
       kind: "linked";
@@ -16,7 +15,6 @@ export type LinkState =
       isYou: boolean;
       saved: boolean;
       exists: boolean | null;
-      name: string | null;
     }
   /** The name is an ordinary name: nothing to link. */
   | { kind: "none" }
@@ -101,7 +99,6 @@ export function linkStates(rows: readonly PlayerRow[], context: LinkContext) {
         isYou: !!viewer && key === normalizeAccountId(viewer),
         saved: savedLinks.get(row.id) === key,
         exists: key in lookups ? lookups[key] !== null : null,
-        name: lookups[key]?.name ?? null,
       });
       continue;
     }

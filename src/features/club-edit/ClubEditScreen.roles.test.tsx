@@ -70,8 +70,8 @@ const save = () => userEvent.click(screen.getByRole("button", { name: "Save" }))
 /** The name field currently holding `value`. */
 const nameField = (value: string) => screen.getByDisplayValue(value) as HTMLInputElement;
 const roleSelect = (who: string) => screen.getByRole("combobox", { name: `Role for ${who}` });
-/** The linked line's text, e.g. "Linked to ana-2222". */
-const linkedLine = () => screen.findByText(/Linked to/);
+/** The linked line's Account ID, e.g. "ana-2222" (the only place it shows as text). */
+const linkedLine = (accountId = anaAccount.accountId) => screen.findByText(accountId);
 /** Clear the name field holding `value` and type `text` in it. */
 async function typeOver(user: ReturnType<typeof userEvent.setup>, value: string, text: string) {
   const field = nameField(value);
@@ -94,8 +94,9 @@ describe("Club screen for an Organizer", () => {
     expect(roleSelect("Roy Smith")).toHaveValue("organizer");
     expect(screen.getByText("The only Organizer.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Remove Roy Smith" })).not.toBeInTheDocument();
-    // Saved links can't be taken back with ✕; there is no separate Account ID field.
-    expect(screen.queryByRole("button", { name: /Remove link/ })).not.toBeInTheDocument();
+    // Your own row can't be unlinked here (Leave club does that); there is no separate Account
+    // ID field.
+    expect(screen.queryByRole("button", { name: /Unlink/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: /Account ID/ })).not.toBeInTheDocument();
   });
 
@@ -111,7 +112,7 @@ describe("Club screen for an Organizer", () => {
     renderAt("/clubs/c1");
 
     const field = await typeOver(user, "Cat", `@${anaAccount.accountId.toUpperCase()}`);
-    expect(await linkedLine()).toHaveTextContent(`Linked to ${anaAccount.accountId}`);
+    expect(await linkedLine()).toHaveAttribute("title", anaAccount.accountId);
     expect(field).toHaveValue("Ana Bell");
     expect(field).toHaveFocus();
     expect(roleSelect("Ana Bell")).toHaveValue("player");
@@ -137,7 +138,7 @@ describe("Club screen for an Organizer", () => {
     await linkedLine();
   });
 
-  it("keeps the link when the name is changed, and then shows the Account's name too", async () => {
+  it("keeps the link when the name is changed, showing the Account ID and never the Account's name", async () => {
     const user = userEvent.setup();
     renderAt("/clubs/c1");
 
@@ -145,9 +146,8 @@ describe("Club screen for an Organizer", () => {
     await linkedLine();
     await typeOver(user, "Ana Bell", "Ana B.");
 
-    expect(screen.getByText(/Linked to/)).toHaveTextContent(
-      `Linked to ${anaAccount.accountId} · Ana Bell`,
-    );
+    expect(screen.getByText(anaAccount.accountId)).toBeInTheDocument();
+    expect(screen.queryByText(/Ana Bell/)).not.toBeInTheDocument();
     await save();
     expect((await clubOf(ana))?.players.find((p) => p.id === CAT.id)).toMatchObject({
       name: "Ana B.",
@@ -155,15 +155,15 @@ describe("Club screen for an Organizer", () => {
     });
   });
 
-  it("✕ on a link that isn't saved yet takes it back and clears the name", async () => {
+  it("Unlink on a link that isn't saved yet takes it back and clears the name", async () => {
     const user = userEvent.setup();
     renderAt("/clubs/c1");
 
     const field = await typeOver(user, "Cat", `@${anaAccount.accountId}`);
     await linkedLine();
-    await user.click(screen.getByRole("button", { name: "Remove link for Ana Bell" }));
+    await user.click(screen.getByRole("button", { name: "Unlink Ana Bell" }));
 
-    expect(screen.queryByText(/Linked to/)).not.toBeInTheDocument();
+    expect(screen.queryByText(anaAccount.accountId)).not.toBeInTheDocument();
     expect(field).toHaveValue("");
     expect(field).toHaveFocus();
     await save();
@@ -355,7 +355,7 @@ describe("New club while signed in", () => {
     expect(roleSelect("Roy Smith")).toHaveValue("organizer");
     expect(screen.getByText("The only Organizer.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Remove Roy Smith" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Remove link/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Unlink/ })).not.toBeInTheDocument();
   });
 
   it("leaves without asking when nothing was typed", async () => {
@@ -377,7 +377,7 @@ describe("New club while signed in", () => {
     await user.type(screen.getAllByRole("textbox", { name: "Player name" }).at(-1)!, "@");
     expect(nameField("@")).toHaveAttribute("placeholder", "Name or @Account ID");
     await user.type(nameField("@"), anaAccount.accountId);
-    expect(await linkedLine()).toHaveTextContent(`Linked to ${anaAccount.accountId}`);
+    await linkedLine();
     await user.selectOptions(roleSelect("Ana Bell"), "organizer");
     await save();
 

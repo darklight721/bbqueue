@@ -47,7 +47,7 @@ test.describe("Linking Accounts between two people", () => {
     await field.fill(`@${ana.accountId.toUpperCase()}`);
     // The Account's name replaces the text; the linked line and a Role appear.
     await expect(field).toHaveValue("Ana Bell");
-    await expect(page.getByText(/Linked to/)).toHaveText(`Linked to ${ana.accountId}`);
+    await expect(page.getByText(ana.accountId, { exact: true })).toBeVisible();
     await expect(role(page, "Ana Bell")).toHaveValue("player");
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page).toHaveURL(/\/clubs$/);
@@ -105,7 +105,7 @@ test.describe("Linking Accounts between two people", () => {
 
     // Make Ana an Organizer too and step down in the same Save.
     await (await catField(page)).fill(`@${ana.accountId}`);
-    await expect(page.getByText(/Linked to/)).toBeVisible();
+    await expect(page.getByText(ana.accountId, { exact: true })).toBeVisible();
     await role(page, "Ana Bell").selectOption("organizer");
     await role(page, "Roy Smith").selectOption("player");
     await page.getByRole("button", { name: "Save" }).click();
@@ -131,7 +131,7 @@ test.describe("Linking Accounts between two people", () => {
     await anaPage.context().close();
   });
 
-  test("✕ takes back a link that isn't saved yet: the field is cleared, and Save keeps the row unlinked", async ({
+  test("Unlink takes back a link that isn't saved yet: the field is cleared, and Save keeps the row unlinked", async ({
     page,
     browser,
     baseURL,
@@ -147,10 +147,10 @@ test.describe("Linking Accounts between two people", () => {
     const field = await catField(page);
     await field.fill(`@${ana.accountId}`);
     await expect(field).toHaveValue("Ana Bell");
-    await page.getByRole("button", { name: "Remove link for Ana Bell" }).click();
+    await page.getByRole("button", { name: "Unlink Ana Bell" }).click();
     await expect(field).toHaveValue("");
     await expect(field).toBeFocused();
-    await expect(page.getByText(/Linked to/)).toHaveCount(0);
+    await expect(page.getByText(ana.accountId, { exact: true })).toHaveCount(0);
 
     // An empty name can't be saved; with a name again, the row saves unlinked.
     await page.getByRole("button", { name: "Save" }).click();
@@ -167,6 +167,66 @@ test.describe("Linking Accounts between two people", () => {
     await anaPage.goto("/clubs");
     await expect(anaPage.getByRole("heading", { level: 1, name: "Clubs" })).toBeVisible();
     await expect(anaPage.getByRole("link", { name: new RegExp(clubName) })).toHaveCount(0);
+
+    await anaPage.context().close();
+  });
+
+  test("Unlink on a saved link, then Save: the other person loses the Club from their list, and gets it back when linked again", async ({
+    page,
+    browser,
+    baseURL,
+  }) => {
+    await signUp(page, "Roy Smith");
+    const anaPage = await (await browser.newContext({ baseURL })).newPage();
+    const ana = await signUp(anaPage, "Ana Bell");
+    await anaPage.goto("/clubs");
+
+    const clubName = uniqueId("Tuesday");
+    const clubId = await createClubWithCat(page, clubName);
+    await page.goto(`/clubs/${clubId}`);
+    await (await catField(page)).fill(`@${ana.accountId}`);
+    await expect(role(page, "Ana Bell")).toHaveValue("player");
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page).toHaveURL(/\/clubs$/);
+    const anaRow = anaPage.getByRole("link", { name: new RegExp(clubName) });
+    await expect(anaRow).toBeVisible();
+
+    // Ana's page is never reloaded from here on: the marker is gone if it is.
+    await anaPage.evaluate(() => ((window as unknown as { __noReload: number }).__noReload = 1));
+
+    // Roy unlinks her and saves. Nothing changes for her until he does.
+    await page.goto(`/clubs/${clubId}`);
+    await page.getByRole("button", { name: "Unlink Ana Bell" }).click();
+    await expect(page.getByText(ana.accountId, { exact: true })).toHaveCount(0);
+    await expect(role(page, "Ana Bell")).toHaveCount(0);
+    await expect(anaRow).toBeVisible();
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page).toHaveURL(/\/clubs$/);
+
+    // Like leaving: the Club goes from her list (live), and her row stays on the roster, unlinked.
+    await expect(anaRow).toHaveCount(0);
+    await expect
+      .poll(async () => {
+        const server = await readServerClub(clubId);
+        return server?.players.map((p) => [p.name, p.link?.role ?? null]).sort();
+      })
+      .toEqual([
+        ["Ana Bell", null],
+        ["Roy Smith", "organizer"],
+      ]);
+
+    // Roy links her again, to the same row: the Club comes back without her reloading.
+    await page.goto(`/clubs/${clubId}`);
+    const anaField = page.getByRole("textbox", { name: "Player name" }).first();
+    await expect(anaField).toHaveValue("Ana Bell");
+    await anaField.fill(`@${ana.accountId}`);
+    await expect(page.getByText(ana.accountId, { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page).toHaveURL(/\/clubs$/);
+    await expect(anaRow).toBeVisible();
+    expect(
+      await anaPage.evaluate(() => (window as unknown as { __noReload?: number }).__noReload),
+    ).toBe(1);
 
     await anaPage.context().close();
   });

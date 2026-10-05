@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { CloseIcon, LinkIcon, WarningIcon } from "../../components/icons.tsx";
+import { LinkIcon, WarningIcon } from "../../components/icons.tsx";
 import { ROW_ACTION_COLUMN, ROW_SELECT_COLUMN } from "../../components/PlayerRowEditor.tsx";
 import type { Role } from "../../domain/types.ts";
 import { linkProblem, type LinkState } from "./linkState.ts";
@@ -48,16 +48,17 @@ export interface LinkedLineProps {
   /** Another Organizer is needed before this one can step down or leave. */
   onlyOrganizer: boolean;
   onRole: (role: Role) => void;
-  /** A saved link to an Account that no longer exists. */
+  /** Unlink a saved link (whether or not the Account still exists). */
   onUnlink: () => void;
-  /** A link made here and not saved yet: take it back. */
+  /** Unlink a link made here and not saved yet: take it back. */
   onUndo: () => void;
 }
 
 /**
- * The line under a linked Club player row, for Organizers: the Account ID (and the Account's
- * name when it differs from the row's), You, and the Role, which sits under the Skill level so
- * Roles line up down the roster. A link that isn't saved yet can be taken back with ✕.
+ * The line under a linked Club player row, for Organizers: the Account ID on one line, and under
+ * it "You" on your own row or Unlink on anyone else's; then the Role, which sits under the Skill
+ * level so Roles line up down the roster. Unlink takes back a link that isn't saved yet (offline
+ * too), or removes a saved one (online only). An Account that no longer exists has no Role.
  */
 export function LinkedLine({
   playerName,
@@ -72,59 +73,58 @@ export function LinkedLine({
   const roleId = useId();
   const who = playerName.trim() || "this player";
   const gone = state.exists === false;
-  // The Account's own name only when it adds something (it often matches the row's name).
-  const accountName =
-    state.name && state.name.trim().toLowerCase() !== playerName.trim().toLowerCase()
-      ? state.name
-      : null;
 
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center gap-2">
-        <div className="flex min-w-0 flex-1 items-center gap-1.5 pl-1">
-          <span
-            className={`inline-flex min-w-0 items-start gap-1.5 rounded-field px-2.5 py-1.5 text-sm leading-5 ${
-              gone ? "bg-error/10 text-error" : "bg-base-200 text-base-content/80"
+        <div className="flex min-w-0 flex-1">
+          {/* Fills the column, so its edges match the name field above; as tall as the Role
+              select beside it (daisyUI's field height), both lines inside. Content is inset like
+              the name field's text. */}
+          <div
+            className={`flex h-[calc(var(--size-field,0.25rem)*10)] w-full min-w-0 flex-col justify-center rounded-field px-3 text-sm leading-5 ${
+              gone
+                ? "bg-error/10 text-error"
+                : state.isYou
+                  ? "bg-primary/10 text-base-content/85"
+                  : "bg-base-200 text-base-content/80"
             }`}
           >
-            {gone ? (
-              <WarningIcon className="mt-0.5 size-4 shrink-0" />
-            ) : (
-              <LinkIcon className="mt-0.5 size-4 shrink-0 text-primary" />
-            )}
-            <span className="min-w-0 [overflow-wrap:anywhere]">
-              {state.saved ? null : "Linked to "}
-              <span className={`font-mono font-semibold ${gone ? "line-through" : ""}`}>
+            <span className="flex min-w-0 items-center gap-1.5">
+              {gone ? (
+                <WarningIcon className="size-4 shrink-0" />
+              ) : (
+                <LinkIcon className="size-4 shrink-0 text-primary" />
+              )}
+              <span
+                title={state.accountId}
+                className={`min-w-0 truncate font-mono font-semibold ${gone ? "line-through" : ""}`}
+              >
                 {state.accountId}
               </span>
-              {accountName ? <span className="text-base-content/60"> · {accountName}</span> : null}
             </span>
-          </span>
-          {state.isYou ? (
-            <span className="badge shrink-0 badge-sm font-semibold badge-neutral">You</span>
-          ) : null}
-          {!state.saved && !state.isYou ? (
-            <button
-              type="button"
-              className="btn -ml-1 size-10 shrink-0 btn-circle text-base-content/60 btn-ghost hover:text-error"
-              aria-label={`Remove link for ${who}`}
-              onClick={onUndo}
-            >
-              <CloseIcon className="size-4" />
-            </button>
-          ) : null}
+            {/* Under the Account ID, past the icon. */}
+            <span className="flex min-h-6 items-center pl-5.5">
+              {state.isYou ? (
+                <span className="text-xs font-semibold text-primary">You</span>
+              ) : (
+                <button
+                  type="button"
+                  className={`-mx-1 inline-flex min-h-6 items-center rounded-selector px-1 text-xs font-semibold underline decoration-current/40 underline-offset-2 hover:decoration-current disabled:cursor-not-allowed disabled:no-underline disabled:opacity-50 ${
+                    gone ? "text-error" : "text-base-content/65 hover:text-error"
+                  }`}
+                  onClick={state.saved ? onUnlink : onUndo}
+                  disabled={state.saved && !online}
+                >
+                  Unlink <span className="sr-only">{who}</span>
+                </button>
+              )}
+            </span>
+          </div>
         </div>
         <div className={ROW_SELECT_COLUMN}>
-          {gone ? (
-            <button
-              type="button"
-              className="btn w-full border-base-300 btn-outline"
-              onClick={onUnlink}
-              disabled={!online}
-            >
-              Unlink <span className="sr-only">{who}</span>
-            </button>
-          ) : (
+          {/* An Account that no longer exists has no Role to pick; the column stays for alignment. */}
+          {gone ? null : (
             <RoleSelect
               id={roleId}
               who={who}
@@ -137,16 +137,17 @@ export function LinkedLine({
         {/* Under Remove, so the Role sits right under the Skill level. */}
         <span aria-hidden="true" className={ROW_ACTION_COLUMN} />
       </div>
+      {/* Helper lines start where the chip's content and the name field's text do. */}
       {gone ? (
-        <p role="alert" className="pl-1 text-sm font-semibold text-error">
+        <p role="alert" className="pl-3 text-sm font-semibold text-error">
           This Account no longer exists.
         </p>
       ) : null}
       {onlyOrganizer && !roleMessage ? (
-        <p className="pl-1 text-sm text-base-content/60">The only Organizer.</p>
+        <p className="pl-3 text-sm text-base-content/60">The only Organizer.</p>
       ) : null}
       {roleMessage ? (
-        <p role="alert" className="pl-1 text-sm font-semibold text-error">
+        <p role="alert" className="pl-3 text-sm font-semibold text-error">
           {roleMessage}
         </p>
       ) : null}
