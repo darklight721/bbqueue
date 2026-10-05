@@ -291,6 +291,27 @@ describe("Shared club rules", () => {
     );
   });
 
+  it("refuses a Club whose creation time isn't the server's, or that leaves it out", async () => {
+    await seedAccounts(ROY);
+    const db = as(ROY.uid);
+    const record = (extra: Record<string, unknown> = {}) => ({
+      name: "Tuesday",
+      memberUids: [ROY.uid],
+      organizerUids: [ROY.uid],
+      createdAt: serverTimestamp(),
+      ...extra,
+    });
+    // A date far in the future would keep the creator's import window open for good.
+    await assertFails(
+      setDoc(doc(db, "clubs", "c1"), record({ createdAt: new Date("2100-01-01") })),
+    );
+    await assertFails(setDoc(doc(db, "clubs", "c1"), record({ createdAt: new Date(0) })));
+    const { createdAt: _createdAt, ...withoutTime } = record();
+    await assertFails(setDoc(doc(db, "clubs", "c1"), withoutTime));
+    await assertFails(setDoc(doc(db, "clubs", "c1"), record({ extra: 1 })));
+    await assertSucceeds(setDoc(doc(db, "clubs", "c1"), record()));
+  });
+
   it("refuses a Club creation batch with a row linked to somebody else", async () => {
     await seedAccounts(ROY, ANA);
     const db = as(ROY.uid);
@@ -300,6 +321,7 @@ describe("Shared club rules", () => {
         name: "Tuesday",
         memberUids: [ROY.uid],
         organizerUids: [ROY.uid],
+        createdAt: serverTimestamp(),
       });
       batch.set(doc(db, "clubs", "c1", "players", "p-x"), row);
       return batch.commit();
@@ -501,6 +523,7 @@ describe("Shared club rules", () => {
       name: "Big",
       memberUids: [ROY.uid],
       organizerUids: [ROY.uid],
+      createdAt: serverTimestamp(),
     });
     rowIds.forEach((id, index) => {
       create.set(doc(db, "clubs", "big", "players", id), {
@@ -844,6 +867,7 @@ describe("Shared Active session", () => {
 
   /** A record as the app writes it when an Organizer starts a Session. */
   const startRecord = (person: Person, extra: Record<string, unknown> = {}) => ({
+    sessionId: "s1",
     sessionJson: JSON.stringify({ id: "s1", name: "Tuesday night" }),
     hostUid: person.uid,
     hostAccountId: person.accountId,
@@ -857,6 +881,7 @@ describe("Shared Active session", () => {
     await seedClub();
     await seed(async (db) => {
       await setDoc(sessionDoc(db), {
+        sessionId: "s1",
         sessionJson: JSON.stringify({ id: "s1", name: "Tuesday night" }),
         hostUid: ROY.uid,
         hostAccountId: ROY.accountId,
@@ -933,6 +958,11 @@ describe("Shared Active session", () => {
         setDoc(sessionDoc(db), startRecord(ROY, { sessionJson: "x".repeat(700_001) })),
       );
       await assertFails(setDoc(sessionDoc(db), startRecord(ROY, { hostName: "" })));
+      await assertFails(setDoc(sessionDoc(db), startRecord(ROY, { sessionId: "" })));
+      await assertFails(setDoc(sessionDoc(db), startRecord(ROY, { sessionId: 7 })));
+      await assertFails(setDoc(sessionDoc(db), startRecord(ROY, { sessionId: "x".repeat(101) })));
+      const { sessionId: _sessionId, ...withoutSessionId } = startRecord(ROY);
+      await assertFails(setDoc(sessionDoc(db), withoutSessionId));
       await assertSucceeds(
         setDoc(sessionDoc(db), startRecord(ROY, { sessionJson: "x".repeat(700_000) })),
       );
@@ -990,6 +1020,8 @@ describe("Shared Active session", () => {
         updateDoc(sessionDoc(db), { ...upload("x"), hostAccountId: ANA.accountId }),
       );
       await assertFails(updateDoc(sessionDoc(db), { ...upload("x"), hostName: "Ana" }));
+      // Nor the Session it is the record of: the Ended session is named by it.
+      await assertFails(updateDoc(sessionDoc(db), { ...upload("x"), sessionId: "s2" }));
       // Not even an Organizer takes over by writing to it (that is ticket 07).
       await assertFails(
         updateDoc(sessionDoc(as(ANA.uid)), {
@@ -1085,6 +1117,7 @@ describe("Shared Active session", () => {
       await makeAnaOrganizer();
       const db = as(ANA.uid);
       await assertFails(updateDoc(sessionDoc(db), takeOver(ANA, { sessionJson: "{}" })));
+      await assertFails(updateDoc(sessionDoc(db), takeOver(ANA, { sessionId: "s2" })));
       await assertFails(updateDoc(sessionDoc(db), takeOver(ANA, { isAdmin: true })));
       await assertFails(updateDoc(sessionDoc(db), takeOver(ANA, { updatedAt: new Date(0) })));
     });
@@ -1145,6 +1178,7 @@ describe("Players' requests", () => {
     await seedClub();
     await seed(async (db) => {
       await setDoc(doc(db, "clubs", "c1", "activeSession", "current"), {
+        sessionId: "s1",
         sessionJson: JSON.stringify({ id: "s1" }),
         hostUid: ROY.uid,
         hostAccountId: ROY.accountId,
@@ -1286,26 +1320,29 @@ describe("Players' requests", () => {
 });
 
 describe("Ended sessions of a Shared club", () => {
+  const activeDoc = (db: Firestore) => doc(db, "clubs", "c1", "activeSession", "current");
   const endedDoc = (db: Firestore, id = "s1") => doc(db, "clubs", "c1", "endedSessions", id);
 
   /** An Ended session as the host's batch writes it. */
   const published = (person: Person, extra: Record<string, unknown> = {}) => ({
     hostUid: person.uid,
-    endedAt: 1_700_000_000_000,
+    endedAt: Date.now() - 1000,
     endedJson: JSON.stringify({ id: "s1", name: "Thursday" }),
     createdAt: serverTimestamp(),
     ...extra,
   });
 
-  /** Roy hosts a running session (Ana is a Player on the Club, Ben isn't). */
-  async function seedRunning() {
+  /** Roy hosts a running session `s1` (Ana is a Player on the Club, Ben isn't). */
+  async function seedRunning(extra: Record<string, unknown> = {}) {
     await seedClub();
     await seed(async (db) => {
-      await setDoc(doc(db, "clubs", "c1", "activeSession", "current"), {
+      await setDoc(activeDoc(db), {
+        sessionId: "s1",
         sessionJson: JSON.stringify({ id: "s1" }),
         hostUid: ROY.uid,
         hostAccountId: ROY.accountId,
         hostName: ROY.name,
+        ...extra,
       });
     });
   }
@@ -1314,7 +1351,7 @@ describe("Ended sessions of a Shared club", () => {
   function end(person: Person, extra: Record<string, unknown> = {}, id = "s1") {
     const db = as(person.uid);
     const batch = writeBatch(db);
-    batch.delete(doc(db, "clubs", "c1", "activeSession", "current"));
+    batch.delete(activeDoc(db));
     batch.set(endedDoc(db, id), published(person, extra));
     return batch.commit();
   }
@@ -1324,9 +1361,71 @@ describe("Ended sessions of a Shared club", () => {
     await assertSucceeds(end(ROY));
   });
 
-  it("lets the host publish while the Session is still active, too", async () => {
+  it("refuses publishing while the Session is still active: the Active session has to go in the same batch", async () => {
     await seedRunning();
-    await assertSucceeds(setDoc(endedDoc(as(ROY.uid)), published(ROY)));
+    await assertFails(setDoc(endedDoc(as(ROY.uid)), published(ROY)));
+    // Not even by writing the Ended session next to an update of the Active session.
+    const db = as(ROY.uid);
+    const batch = writeBatch(db);
+    batch.update(activeDoc(db), { sessionJson: "{}", updatedAt: serverTimestamp() });
+    batch.set(endedDoc(db), published(ROY));
+    await assertFails(batch.commit());
+  });
+
+  it("lets a Session end only once: no Ended sessions can be made up after it, or beside it", async () => {
+    await seedRunning();
+    const db = as(ROY.uid);
+    // Probe: many Ended sessions with ids of the host's choosing, in the ending batch…
+    const many = writeBatch(db);
+    many.delete(activeDoc(db));
+    for (let i = 0; i < 50; i++) many.set(endedDoc(db, `fake-${i}`), published(ROY));
+    await assertFails(many.commit());
+    // …one with the right id and one more beside it…
+    const two = writeBatch(db);
+    two.delete(activeDoc(db));
+    two.set(endedDoc(db, "s1"), published(ROY));
+    two.set(endedDoc(db, "s2"), published(ROY));
+    await assertFails(two.commit());
+    // …and after the Session has ended there is no Active session to end any more.
+    await assertSucceeds(end(ROY));
+    await assertFails(setDoc(endedDoc(db, "s2"), published(ROY)));
+    await assertFails(setDoc(endedDoc(db, "s3"), published(ROY)));
+  });
+
+  it("refuses an Ended session whose id isn't the one the Active session was started with", async () => {
+    await seedRunning();
+    await assertFails(end(ROY, {}, "other"));
+    await assertSucceeds(end(ROY, {}, "s1"));
+  });
+
+  it("refuses ending when the Active session record has no Session id", async () => {
+    await seedClub();
+    await seed(async (db) => {
+      await setDoc(activeDoc(db), {
+        sessionJson: JSON.stringify({ id: "s1" }),
+        hostUid: ROY.uid,
+        hostAccountId: ROY.accountId,
+        hostName: ROY.name,
+      });
+    });
+    await assertFails(end(ROY));
+  });
+
+  it("lets a host who was taken off the Club end the Session, with the one Ended session of it only", async () => {
+    await seedRunning();
+    await seed(async (db) => {
+      await updateDoc(doc(db, "clubs", "c1"), {
+        organizerUids: [ANA.uid],
+        memberUids: [ANA.uid],
+      });
+    });
+    const db = as(ROY.uid);
+    const other = writeBatch(db);
+    other.delete(activeDoc(db));
+    other.set(endedDoc(db, "s9"), published(ROY));
+    await assertFails(other.commit());
+    await assertSucceeds(end(ROY));
+    await assertFails(setDoc(endedDoc(db, "s9"), published(ROY)));
   });
 
   it("refuses anybody who isn't the Session host: a Player, another Organizer, outsiders", async () => {
@@ -1339,6 +1438,7 @@ describe("Ended sessions of a Shared club", () => {
     await assertFails(setDoc(endedDoc(anonymous()), published(ROY)));
     // Nor in somebody else's name.
     await assertFails(setDoc(endedDoc(as(ANA.uid)), published(ROY)));
+    await assertFails(end(ANA));
   });
 
   it("refuses publishing when the Club has no Active session", async () => {
@@ -1346,19 +1446,42 @@ describe("Ended sessions of a Shared club", () => {
     await assertFails(setDoc(endedDoc(as(ROY.uid)), published(ROY)));
   });
 
+  it("refuses an endedAt in the far future, in the past of time itself or not a whole number", async () => {
+    await seedRunning();
+    // Fifty of these would hide the Club's real history for good.
+    await assertFails(end(ROY, { endedAt: 9e15 }));
+    await assertFails(end(ROY, { endedAt: Date.now() + 10 * 60_000 }));
+    await assertFails(end(ROY, { endedAt: -1 }));
+    await assertFails(end(ROY, { endedAt: 1.5 }));
+    await assertFails(end(ROY, { endedAt: Number.MAX_SAFE_INTEGER }));
+    // A little clock skew is fine, and so is any time in the past.
+    await assertSucceeds(end(ROY, { endedAt: Date.now() + 60_000 }));
+  });
+
+  it("accepts any time in the past as endedAt", async () => {
+    await seedRunning();
+    await assertSucceeds(end(ROY, { endedAt: 0 }));
+  });
+
   it("refuses a record with other fields, a missing field, a wrong host, a time of the host's choosing or a bad body", async () => {
     await seedRunning();
     const db = as(ROY.uid);
-    await assertFails(setDoc(endedDoc(db), published(ROY, { isAdmin: true })));
+    const ending = (data: Record<string, unknown>) => {
+      const batch = writeBatch(db);
+      batch.delete(activeDoc(db));
+      batch.set(endedDoc(db), data);
+      return batch.commit();
+    };
+    await assertFails(ending(published(ROY, { isAdmin: true })));
     const { endedAt: _endedAt, ...withoutTime } = published(ROY);
-    await assertFails(setDoc(endedDoc(db), withoutTime));
-    await assertFails(setDoc(endedDoc(db), published(ROY, { hostUid: ANA.uid })));
-    await assertFails(setDoc(endedDoc(db), published(ROY, { createdAt: new Date(0) })));
-    await assertFails(setDoc(endedDoc(db), published(ROY, { endedAt: "yesterday" })));
-    await assertFails(setDoc(endedDoc(db), published(ROY, { endedJson: "" })));
-    await assertFails(setDoc(endedDoc(db), published(ROY, { endedJson: { id: "s1" } })));
-    await assertFails(setDoc(endedDoc(db), published(ROY, { endedJson: "x".repeat(400_001) })));
-    await assertSucceeds(setDoc(endedDoc(db), published(ROY, { endedJson: "x".repeat(400_000) })));
+    await assertFails(ending(withoutTime));
+    await assertFails(ending(published(ROY, { hostUid: ANA.uid })));
+    await assertFails(ending(published(ROY, { createdAt: new Date(0) })));
+    await assertFails(ending(published(ROY, { endedAt: "yesterday" })));
+    await assertFails(ending(published(ROY, { endedJson: "" })));
+    await assertFails(ending(published(ROY, { endedJson: { id: "s1" } })));
+    await assertFails(ending(published(ROY, { endedJson: "x".repeat(400_001) })));
+    await assertSucceeds(ending(published(ROY, { endedJson: "x".repeat(400_000) })));
   });
 
   it("lets anyone on the Club read them, and nobody else", async () => {
@@ -1379,14 +1502,57 @@ describe("Ended sessions of a Shared club", () => {
     await assertFails(getDoc(endedDoc(anonymous())));
   });
 
-  it("lets nobody change or delete one, the host included", async () => {
+  it("lets nobody change one, the host included, and nobody replace one", async () => {
     await seedRunning();
     await assertSucceeds(end(ROY));
     for (const uid of [ROY.uid, ANA.uid, BEN.uid]) {
       await assertFails(updateDoc(endedDoc(as(uid)), { endedJson: "{}" }));
       await assertFails(setDoc(endedDoc(as(uid)), published(ROY, { endedJson: "{}" })));
-      await assertFails(deleteDoc(endedDoc(as(uid))));
     }
+  });
+
+  it("lets any Organizer delete them (a Club's history goes with the Club), and nobody else", async () => {
+    await seedRunning();
+    await assertSucceeds(end(ROY));
+    await seed(async (db) => {
+      await updateDoc(doc(db, "clubs", "c1"), { organizerUids: [ROY.uid, ANA.uid] });
+    });
+    await assertFails(deleteDoc(endedDoc(as(BEN.uid))));
+    await assertFails(deleteDoc(endedDoc(anonymous())));
+    await assertSucceeds(deleteDoc(endedDoc(as(ANA.uid))));
+  });
+
+  it("refuses a Player deleting one", async () => {
+    await seedRunning();
+    await assertSucceeds(end(ROY));
+    await assertFails(deleteDoc(endedDoc(as(ANA.uid))));
+  });
+
+  it("leaves nothing of a Club's history for somebody who creates its id again, when it is deleted the way the app does", async () => {
+    await seedRunning();
+    await assertSucceeds(end(ROY));
+    // Roy deletes the history first, with Ana still on the Club, then the rows and the Club.
+    const roy = as(ROY.uid);
+    await assertSucceeds(deleteDoc(endedDoc(roy)));
+    const rest = writeBatch(roy);
+    for (const row of ["p-roy", "p-ana", "p-cat"])
+      rest.delete(doc(roy, "clubs", "c1", "players", row));
+    rest.delete(doc(roy, "clubs", "c1"));
+    await assertSucceeds(rest.commit());
+
+    // Ben takes the same id: he can create the Club, and its history is empty.
+    await seedAccounts(BEN);
+    const ben = as(BEN.uid);
+    await assertSucceeds(
+      setDoc(doc(ben, "clubs", "c1"), {
+        name: "Mine",
+        memberUids: [BEN.uid],
+        organizerUids: [BEN.uid],
+        createdAt: serverTimestamp(),
+      }),
+    );
+    const history = await getDocs(collection(ben, "clubs", "c1", "endedSessions"));
+    if (!history.empty) throw new Error("the old Club's history was left behind");
   });
 });
 
@@ -1445,6 +1611,16 @@ describe("Making a Local club shared: the creator's import", () => {
     await assertSucceeds(batch.commit());
   });
 
+  it("refuses imported Ended sessions with an endedAt in the far future", async () => {
+    await seedAccounts(ROY);
+    const db = as(ROY.uid);
+    const batch = writeBatch(db);
+    batch.set(doc(db, "clubs", "c1"), clubRecord());
+    batch.set(doc(db, "clubs", "c1", "players", "p-roy"), row("roy", link(ROY, "organizer")));
+    batch.set(endedDoc(db, "s1"), ended(ROY, { endedAt: 9e15 }));
+    await assertFails(batch.commit());
+  });
+
   it("refuses the import once the Club has another member, however soon", async () => {
     await seedAccounts(ROY, ANA);
     await seed(async (db) => {
@@ -1491,8 +1667,7 @@ describe("Making a Local club shared: the creator's import", () => {
     await assertFails(setDoc(endedDoc(db, "s1"), ended(ROY, { hostUid: BEN.uid })));
     await assertFails(setDoc(endedDoc(db, "s1"), ended(ROY, { createdAt: new Date(0) })));
     await assertSucceeds(setDoc(endedDoc(db, "s1"), ended(ROY)));
-    // Still never changed (it can only be deleted by the Club's only member, see "Deleting an
-    // Account"; this Club has just the one).
+    // Still never changed.
     await assertFails(setDoc(endedDoc(db, "s1"), ended(ROY, { endedJson: "{}" })));
   });
 
@@ -1504,6 +1679,7 @@ describe("Making a Local club shared: the creator's import", () => {
     create.set(doc(db, "clubs", "c1", "players", "p-roy"), row("roy", link(ROY, "organizer")));
     await create.commit();
     const record = (person: Person) => ({
+      sessionId: "s1",
       sessionJson: JSON.stringify({ id: "s1" }),
       hostUid: person.uid,
       hostAccountId: person.accountId,
@@ -1571,20 +1747,20 @@ describe("Deleting an Account", () => {
     });
   }
 
-  it("lets the Club's only member delete its Ended sessions, and nobody else", async () => {
+  it("lets the Club's Organizer delete its Ended sessions, and nobody else", async () => {
     await seedSolo();
     await assertFails(deleteDoc(endedDoc(as(ANA.uid), "s0")));
     await assertFails(deleteDoc(endedDoc(anonymous(), "s0")));
     await assertSucceeds(deleteDoc(endedDoc(as(ROY.uid), "s0")));
   });
 
-  it("refuses it once the Club has anybody else on it, and still refuses any update", async () => {
+  it("lets an Organizer delete them with others on the Club too, and still refuses any update", async () => {
     await seedSolo({ others: true });
-    await assertFails(deleteDoc(endedDoc(as(ROY.uid), "s0")));
     await assertFails(updateDoc(endedDoc(as(ROY.uid), "s1"), { endedJson: "x" }));
+    await assertSucceeds(deleteDoc(endedDoc(as(ROY.uid), "s0")));
   });
 
-  it("refuses a member who isn't an Organizer, even when they are the only one", async () => {
+  it("refuses a member who isn't an Organizer", async () => {
     await seedSolo();
     await seed(async (db) => {
       await updateDoc(doc(db, "clubs", "c1"), { memberUids: [ANA.uid], organizerUids: [ANA.uid] });

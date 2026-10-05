@@ -349,6 +349,8 @@ export function createSimulatedSessions(
         const current = record(clubId);
         if (!current) return Promise.resolve();
         if (!mine(account.accountId, current)) throw new BackendError("forbidden");
+        // The Ended session is the end of this Session: a record named otherwise is refused.
+        if (ended && ended.id !== current.session.id) throw new BackendError("forbidden");
         if (online.get()) {
           removeRecord(clubId);
           if (ended) publish(ended);

@@ -625,6 +625,42 @@ export function runSessionsContract(name: string, createWorld: () => RolesContra
         expect(watchEnded(ana)().sessions).toEqual([]);
       });
 
+      it("only takes an Ended session that is the Session being ended", async () => {
+        const { roy, ana } = await setup();
+        const watches = watchEnded(ana);
+        const session = makeClubSession();
+        await roy.backend.startSharedSession("c1", session);
+        await eventually(() => expect(roy.session("c1")).toBeDefined());
+        const other = makeClubEnded(makeClubSession("Another night"), 1_700_000_000_000);
+
+        const error = await rejection(roy.backend.endSharedSession("c1", other));
+
+        expect(error.code).toBe("forbidden");
+        expect(watches().sessions).toEqual([]);
+        // The Session is still running, and ends properly with its own Ended session.
+        await eventually(() => expect(roy.session("c1")).toBeDefined());
+        await roy.backend.endSharedSession("c1", makeClubEnded(session, 1_700_000_000_000));
+        await eventually(() => expect(watches().sessions).toHaveLength(1));
+      });
+
+      it("deletes a Club's Ended sessions with the Club, even with others on it: its id can't be used to read them", async () => {
+        const { roy, ana, ben } = await setup();
+        const annaWatches = watchEnded(ana);
+        const session = makeClubSession();
+        await roy.backend.startSharedSession("c1", session);
+        await roy.backend.endSharedSession("c1", makeClubEnded(session, 1_700_000_000_000));
+        await eventually(() => expect(annaWatches().sessions).toHaveLength(1));
+
+        await roy.backend.deleteSharedClub("c1");
+        await eventually(() => expect(annaWatches().clubIds).toEqual([]));
+
+        // Ben takes the same id.
+        const benWatches = watchEnded(ben);
+        await ben.backend.createSharedClub({ id: "c1", name: "Mine", players: [] });
+        await eventually(() => expect(benWatches().clubIds).toEqual(["c1"]));
+        expect(benWatches().sessions).toEqual([]);
+      });
+
       it("when the host ends offline, the Ended session and the end wait together and land when it is back", async () => {
         const { roy, ana } = await setup();
         const watches = watchEnded(ana);

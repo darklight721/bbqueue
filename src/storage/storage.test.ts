@@ -366,3 +366,48 @@ describe("Active sessions of Shared clubs", () => {
     expect(loadSharedSessions()).toEqual([]);
   });
 });
+
+describe("data that is stored in a shape the app can't use", () => {
+  const stored = (key: string, data: unknown) =>
+    localStorage.setItem(key, JSON.stringify({ version: 1, data }));
+
+  it("doesn't load a Session with a null Match, so it can't crash every launch", () => {
+    stored("bq:v1:session", { ...session, matches: [null] });
+    expect(loadSession()).toBeNull();
+  });
+
+  it("doesn't load a Session whose name is an object", () => {
+    stored("bq:v1:session", { ...session, name: {} });
+    expect(loadSession()).toBeNull();
+  });
+
+  it("drops only the shared sessions that can't be used", () => {
+    const good = {
+      clubId: "c1",
+      session,
+      hostAccountId: "roy-7k3f",
+      hostName: "Roy",
+      updatedAt: 1,
+    };
+    stored("bq:v1:shared-sessions", [
+      { ...good, clubId: "bad", session: { ...session, players: [null] } },
+      null,
+      good,
+    ]);
+    expect(loadSharedSessions().map((entry) => entry.clubId)).toEqual(["c1"]);
+  });
+
+  it("drops only the Ended sessions that can't be used", () => {
+    stored(ENDED_KEY, [
+      { ...endedSession("bad", 5), matches: [null] },
+      "x",
+      endedSession("good", 9),
+    ]);
+    expect(loadEndedSessions().map((ended) => ended.id)).toEqual(["good"]);
+  });
+
+  it("doesn't load Clubs whose players aren't records", () => {
+    stored("bq:v1:clubs", [{ id: "c", name: "Club", players: [null] }]);
+    expect(loadClubs()).toEqual([]);
+  });
+});

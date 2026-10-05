@@ -1,6 +1,6 @@
 rules_version = '2';
 
-// Security Rules (tickets 02 and 04 to 11). Tested on the Firebase emulator:
+// Security Rules (ADR-0006, ADR-0007). Tested on the Firebase emulator:
 // src/backend/firestore.rules.emulator.test.ts (`pnpm test:firebase`).
 //
 // Data (see src/backend/firebaseBackend.ts and firebaseClubs.ts):
@@ -9,7 +9,7 @@ rules_version = '2';
 //   clubs/{clubId}                    { name, memberUids, organizerUids, createdAt }
 //   clubs/{clubId}/players/{playerId} { name, skill, link?: { accountId, uid, role } }
 //   clubs/{clubId}/activeSession/current
-//                                     { sessionJson, hostUid, hostAccountId, hostName, updatedAt }
+//                                     { sessionId, sessionJson, hostUid, hostAccountId, hostName, updatedAt }
 //   clubs/{clubId}/activeSession/current/requests/{requestId}
 //                                     { uid, accountId, sessionId, sessionPlayerId, kind, createdAt }
 //   clubs/{clubId}/endedSessions/{sessionId}
@@ -104,13 +104,17 @@ service cloud.firestore {
       allow get: if signedIn() && (resource == null || request.auth.uid in resource.data.memberUids);
       allow list: if signedIn() && request.auth.uid in resource.data.memberUids;
 
-      // Anyone signed in with an Account can create a Club, as its only member and Organizer.
+      // Anyone signed in with an Account can create a Club, as its only member and Organizer. The
+      // creation time is the server's: the creator's one-hour window to import history (see Ended
+      // sessions) can't be held open by choosing a date.
       allow create: if signedIn()
         && exists(/databases/$(database)/documents/accounts/$(request.auth.uid))
         && request.resource.data.keys().hasOnly(['name', 'memberUids', 'organizerUids', 'createdAt'])
+        && request.resource.data.keys().hasAll(['name', 'memberUids', 'organizerUids', 'createdAt'])
         && validName(request.resource.data.name)
         && request.resource.data.memberUids == [request.auth.uid]
-        && request.resource.data.organizerUids == [request.auth.uid];
+        && request.resource.data.organizerUids == [request.auth.uid]
+        && request.resource.data.createdAt == request.time;
 
       // An Organizer may rename the Club and change who is a member or Organizer (the rows say
       // who, see above), as long as an Organizer is left and Organizers are members.
@@ -231,9 +235,11 @@ service cloud.firestore {
       //
       // - Read: anyone on the Club (`memberUids`).
       // - Create: an Organizer, naming themselves as the host. Their Account ID must be the one
-      //   reserved for their uid, so the host's name on screen can't be somebody else's.
+      //   reserved for their uid, so the host's name on screen can't be somebody else's. It also
+      //   records the Session's id (`sessionId`), which never changes: the Ended session of this
+      //   Session must be named by it.
       // - Update: the host (`hostUid`) replaces the Session text and the time. `hostUid`,
-      //   `hostAccountId` and `hostName` can't change in that clause.
+      //   `hostAccountId` and `hostName` can't change in that clause (nor can `sessionId`).
       // - Take over: an Organizer of the Club may make themselves the host, changing only the host
       //   fields and the time.
       // - Delete: only the host, or an Organizer while the whole Club is being deleted.
@@ -253,8 +259,11 @@ service cloud.firestore {
         allow create: if signedIn()
           && docId == 'current'
           && request.auth.uid in before().organizerUids
-          && request.resource.data.keys().hasOnly(['sessionJson', 'hostUid', 'hostAccountId', 'hostName', 'updatedAt'])
-          && request.resource.data.keys().hasAll(['sessionJson', 'hostUid', 'hostAccountId', 'hostName', 'updatedAt'])
+          && request.resource.data.keys().hasOnly(['sessionId', 'sessionJson', 'hostUid', 'hostAccountId', 'hostName', 'updatedAt'])
+          && request.resource.data.keys().hasAll(['sessionId', 'sessionJson', 'hostUid', 'hostAccountId', 'hostName', 'updatedAt'])
+          && request.resource.data.sessionId is string
+          && request.resource.data.sessionId.size() > 0
+          && request.resource.data.sessionId.size() <= 100
           && validSessionJson(request.resource.data.sessionJson)
           && request.resource.data.hostUid == request.auth.uid
           && request.resource.data.hostAccountId is string
@@ -350,31 +359,38 @@ service cloud.firestore {
         }
       }
 
-      // Ended sessions of the Club (ticket 09, ADR-0005): `{ hostUid, endedAt, endedJson, createdAt }`,
-      // one record per Session, named by the Session's id. `endedJson` is the slimmed Ended session
-      // as JSON text.
+      // Ended sessions of the Club (ADR-0005): `{ hostUid, endedAt, endedJson, createdAt }`, one
+      // record per Session, named by the Session's id. `endedJson` is the slimmed Ended session as
+      // JSON text.
       //
       // - Read: anyone on the Club.
-      // - Create: the Session host, in the batch that ends the Session (the rules read the Active
-      //   session as it was before the batch, so the host is still the host), or a Club's creator
-      //   importing its history when a Local club is made shared. Once: the id is the Session's, and
-      //   nobody can update a record.
-      // - Update: nobody. Delete: only the Club's only member (ticket 11, deleting their Account),
-      //   so a Club with anybody else on it keeps what was published.
-      // - Rules can't count, so "the 50 most recent" is what the app lists (newest 50 by `endedAt`);
-      //   older ones stay on the server unlisted.
+      // - Create: only (a) the Session host, in the batch that ends the Session: the Active session
+      //   is gone after the batch and the record is named by the Session id it holds (`sessionId`),
+      //   so a Session ends once and cannot be filled with invented history; or (b) a Club's
+      //   creator importing its history when a Local club is made shared: the Club's only member
+      //   and Organizer, within an hour of the Club being created (the server's time, see Club
+      //   create). Either way `endedAt` is a real time (not in the future, give or take clock
+      //   skew), so a record can't pin itself to the top of "the 50 most recent".
+      // - Update: nobody.
+      // - Delete: any Organizer. The app deletes a Club's history before the Club itself, so a
+      //   Club's id that is created again later has none of the old one. Rules can't count or list,
+      //   so they can't make that sure; they only make it possible.
+      // - "The 50 most recent" is what the app lists (newest 50 by `endedAt`); older ones stay on
+      //   the server unlisted.
       match /endedSessions/{sessionId} {
+        function sensibleEndedAt(endedAt) {
+          return endedAt is int
+            && endedAt >= 0
+            && endedAt <= request.time.toMillis() + 300000;
+        }
+
         allow read: if signedIn() && request.auth.uid in before().memberUids;
 
-        // Either the host ends a Session (the Club's Active session is its, as it was before the
-        // batch), or the Club's creator imports its history right after making a Local club shared
-        // (ticket 10): the Club's only member and Organizer, within an hour of the Club being
-        // created (in the same batch, or in the batches that follow it).
         allow create: if signedIn()
           && request.resource.data.keys().hasOnly(['hostUid', 'endedAt', 'endedJson', 'createdAt'])
           && request.resource.data.keys().hasAll(['hostUid', 'endedAt', 'endedJson', 'createdAt'])
           && request.resource.data.hostUid == request.auth.uid
-          && request.resource.data.endedAt is number
+          && sensibleEndedAt(request.resource.data.endedAt)
           && request.resource.data.endedJson is string
           && request.resource.data.endedJson.size() > 0
           && request.resource.data.endedJson.size() <= 400000
@@ -383,6 +399,8 @@ service cloud.firestore {
             (
               exists(/databases/$(database)/documents/clubs/$(clubId)/activeSession/current)
               && get(/databases/$(database)/documents/clubs/$(clubId)/activeSession/current).data.hostUid == request.auth.uid
+              && get(/databases/$(database)/documents/clubs/$(clubId)/activeSession/current).data.get('sessionId', null) == sessionId
+              && !existsAfter(/databases/$(database)/documents/clubs/$(clubId)/activeSession/current)
             )
             || (
               request.auth.uid in getAfter(clubPath()).data.organizerUids
@@ -394,12 +412,7 @@ service cloud.firestore {
 
         allow update: if false;
 
-        // Deleting is for an Account that is going (ticket 11): only the Club's only member, who is
-        // its Organizer, and so the only person with a stake in what it kept. A Club with anybody
-        // else on it keeps every Ended session.
-        allow delete: if signedIn()
-          && request.auth.uid in before().organizerUids
-          && before().memberUids == [request.auth.uid];
+        allow delete: if signedIn() && request.auth.uid in before().organizerUids;
       }
     }
   }

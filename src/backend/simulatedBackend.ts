@@ -74,9 +74,22 @@ export function createSimulatedBackend(
 
   const sessions = createSimulatedSessions(state, () => state.loadAccount(), online);
 
+  /** What a Club leaves behind on the "server" goes with it, so its id can't be used to read it. */
+  function deleteHistory(clubId: string) {
+    state.saveEndedSessions(state.loadEndedSessions().filter((ended) => ended.clubId !== clubId));
+    state.saveActiveSessions(state.loadActiveSessions().filter((s) => s.clubId !== clubId));
+    state.saveRequests(state.loadRequests().filter((r) => r.clubId !== clubId));
+  }
+
   return {
     ...clubs,
     ...sessions,
+
+    async deleteSharedClub(clubId) {
+      await clubs.deleteSharedClub(clubId);
+      deleteHistory(clubId);
+      serverChanged();
+    },
     isOnline: () => online.get(),
     observeOnline: (listener) => online.subscribe(listener),
 

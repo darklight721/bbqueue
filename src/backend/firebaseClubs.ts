@@ -26,7 +26,15 @@ import { normalizeAccountId } from "../domain/accountId.ts";
 import { creatorPlayer, type ClubChange } from "../domain/clubChanges.ts";
 import { clubChangeProblem, ownRow } from "../domain/permissions.ts";
 import { newId } from "../domain/ids.ts";
-import type { Account, AccountLink, Club, ClubPlayer, Role, SkillLevel } from "../domain/types.ts";
+import {
+  SKILL_LEVELS,
+  type Account,
+  type AccountLink,
+  type Club,
+  type ClubPlayer,
+  type Role,
+  type SkillLevel,
+} from "../domain/types.ts";
 import { MAX_NAME_LENGTH, normalizeName } from "../domain/validation.ts";
 import { BackendError, type OnlineSource, type Unsubscribe } from "./backend.ts";
 import type { SharedClubsApi } from "./simulatedClubs.ts";
@@ -447,8 +455,8 @@ export function createFirebaseClubs(
 
     async deleteSharedClub(clubId) {
       await requireClub(clubId);
-      const { uid } = await requireViewer();
-      await deleteWholeClub(clubId, uid);
+      await requireViewer();
+      await deleteWholeClub(clubId);
     },
 
     async addClubPlayer(clubId, player) {
@@ -530,15 +538,15 @@ export function createFirebaseClubs(
     },
   };
 
-  /** Removes `clubId` entirely; when `uid` is its only member, its history goes with it. */
-  async function deleteWholeClub(clubId: string, uid: string): Promise<void> {
+  /**
+   * Removes `clubId` entirely. The history goes first, always: the Ended sessions (any Organizer
+   * may delete them), so that nothing is left behind for somebody who learns the id and creates
+   * the Club again. Then the rows nobody is linked to, then the rest with the Club in one batch.
+   */
+  async function deleteWholeClub(clubId: string): Promise<void> {
     const CHUNK = 400;
     const club = await getDoc(clubRef(clubId));
     if (!club.exists()) return;
-    const sole = (() => {
-      const members = stringList(club.data().memberUids);
-      return members.length === 1 && members[0] === uid;
-    })();
 
     const removeInBatches = async (refs: DocumentReference[]) => {
       for (let start = 0; start < refs.length; start += CHUNK) {
@@ -549,26 +557,24 @@ export function createFirebaseClubs(
     };
 
     const rows = (await getDocs(playersRef(clubId))).docs;
-    if (sole) {
-      // Only this Account is on the Club, so the rules let it delete the Club's history. It goes
-      // first, in batches, while the Club is still there to be checked against.
-      await removeInBatches(
-        (await getDocs(collection(db, "clubs", clubId, "endedSessions"))).docs.map((d) => d.ref),
-      );
-      try {
-        await removeInBatches(
-          (
-            await getDocs(collection(db, "clubs", clubId, "activeSession", "current", "requests"))
-          ).docs.map((d) => d.ref),
-        );
-      } catch {
-        // Requests we can't list (nobody hosts a session any more) are inert once the Club is gone.
-      }
-    }
+    await removeInBatches(
+      (await getDocs(collection(db, "clubs", clubId, "endedSessions"))).docs.map((d) => d.ref),
+    );
     // Rows nobody is linked to can go while the Club stands; the linked ones go with the Club.
     await removeInBatches(rows.filter((row) => !row.data().link).map((row) => row.ref));
+
     const batch = writeBatch(db);
     for (const row of rows.filter((row) => row.data().link)) batch.delete(row.ref);
+    // Requests only an Organizer who isn't the host can't list; they are inert once the Club is
+    // gone (nobody can read them without its Active session), so they are left when unreadable.
+    try {
+      const requests = await getDocs(
+        collection(db, "clubs", clubId, "activeSession", "current", "requests"),
+      );
+      for (const request of requests.docs.slice(0, CHUNK)) batch.delete(request.ref);
+    } catch {
+      // See above.
+    }
     // The Club's Active session goes with it (the rules let an Organizer delete it then).
     const active = doc(db, "clubs", clubId, "activeSession", "current");
     if ((await readDoc(active))?.exists()) batch.delete(active);
@@ -609,7 +615,7 @@ export function createFirebaseClubs(
         }
       }
 
-      for (const clubId of deleteClubIds) await deleteWholeClub(clubId, uid);
+      for (const clubId of deleteClubIds) await deleteWholeClub(clubId);
       for (const clubId of unlinkClubIds) {
         if (await gone(clubId)) await api.leaveClub(clubId);
       }
@@ -717,7 +723,9 @@ function toClubPlayer(id: string, data: DocumentData): ClubPlayer {
   const player: ClubPlayer = {
     id,
     name: String(data.name ?? ""),
-    skill: (data.skill as SkillLevel) ?? "intermediate",
+    skill: SKILL_LEVELS.includes(data.skill as SkillLevel)
+      ? (data.skill as SkillLevel)
+      : "intermediate",
   };
   if (
     link &&

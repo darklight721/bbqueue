@@ -4,6 +4,7 @@ import { Router } from "wouter";
 import "@fontsource/barlow-condensed/latin-700.css";
 import "./index.css";
 import { App } from "./app/App.tsx";
+import { ErrorBoundary } from "./app/ErrorBoundary.tsx";
 import { startAccountSync, startActiveSessionSync, startSharedClubSync } from "./backend/index.ts";
 
 startAccountSync();
@@ -15,8 +16,10 @@ const routerBase = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <Router base={routerBase}>
-      <App />
-    </Router>
+    <ErrorBoundary>
+      <Router base={routerBase}>
+        <App />
+      </Router>
+    </ErrorBoundary>
   </StrictMode>,
 );

@@ -21,6 +21,8 @@ import {
   type QuerySnapshot,
 } from "firebase/firestore";
 import { newId } from "../domain/ids.ts";
+import { parseEndedSession, parseSession } from "../domain/parseSession.ts";
+import { MAX_NAME_LENGTH } from "../domain/validation.ts";
 import type {
   Account,
   ActiveSession,
@@ -224,6 +226,7 @@ export function createFirebaseActiveSessions(
             throw new BackendError("session-exists");
           }
           transaction.set(sessionRef(clubId), {
+            sessionId: session.id,
             sessionJson: JSON.stringify(session),
             hostUid: uid,
             hostAccountId: account.accountId,
@@ -360,6 +363,7 @@ export function createFirebaseActiveSessions(
               runTransaction(db, async (transaction) => {
                 if ((await transaction.get(sessionRef(club.id))).exists()) return;
                 transaction.set(sessionRef(club.id), {
+                  sessionId: activeSession.id,
                   sessionJson: JSON.stringify(activeSession),
                   hostUid: uid,
                   hostAccountId: account.accountId,
@@ -503,7 +507,7 @@ export function createFirebaseActiveSessions(
               (snapshot) => {
                 attempt = 0;
                 entry.sessions = snapshot.docs.flatMap((row) => {
-                  const parsed = toEndedSession(clubId, row.data());
+                  const parsed = toEndedSession(clubId, row.id, row.data());
                   return parsed ? [parsed] : [];
                 });
                 emit();
@@ -711,26 +715,26 @@ async function confirmed<T>(write: Promise<T>): Promise<T> {
   }
 }
 
-/** The Ended session in a record, or null when it can't be read as one. */
-function toEndedSession(clubId: string, data: DocumentData): EndedSession | null {
+/**
+ * The Ended session in a record, or null when it can't be read as one. A record is named by the
+ * Session's id, so one whose Session says another id is not what it claims (it could replace or
+ * hide a real one) and is ignored.
+ */
+export function toEndedSession(
+  clubId: string,
+  rowId: string,
+  data: DocumentData,
+): EndedSession | null {
   if (typeof data.endedJson !== "string") return null;
+  let ended: EndedSession | null;
   try {
-    const ended = JSON.parse(data.endedJson) as EndedSession;
-    if (
-      typeof ended?.id !== "string" ||
-      typeof ended.name !== "string" ||
-      typeof ended.startedAt !== "number" ||
-      typeof ended.endedAt !== "number" ||
-      !Array.isArray(ended.players) ||
-      !Array.isArray(ended.matches)
-    ) {
-      return null;
-    }
-    // The Club it was published to is the truth, whatever the copy says.
-    return { ...ended, clubId };
+    ended = parseEndedSession(JSON.parse(data.endedJson));
   } catch {
     return null;
   }
+  if (!ended || ended.id !== rowId) return null;
+  // The Club it was published to is the truth, whatever the copy says.
+  return { ...ended, clubId };
 }
 
 /** The request in a record, or null when it can't be read as one. */
@@ -758,30 +762,22 @@ function toRequest(clubId: string, id: string, data: DocumentData): SessionReque
 }
 
 /** The Active session in a record, or null when it can't be read as one. */
-function toActiveSession(clubId: string, data: DocumentData): ActiveSession | null {
+export function toActiveSession(clubId: string, data: DocumentData): ActiveSession | null {
   if (typeof data.sessionJson !== "string") return null;
   if (typeof data.hostAccountId !== "string" || typeof data.hostName !== "string") return null;
-  let session: Session;
+  let session: Session | null;
   try {
-    session = JSON.parse(data.sessionJson) as Session;
+    session = parseSession(JSON.parse(data.sessionJson));
   } catch {
     return null;
   }
-  if (
-    typeof session?.id !== "string" ||
-    !Array.isArray(session.players) ||
-    !Array.isArray(session.courts) ||
-    !Array.isArray(session.matches) ||
-    !Array.isArray(session.queues)
-  ) {
-    return null;
-  }
+  if (!session) return null;
   const updatedAt = (data.updatedAt as { toMillis?: () => number } | null)?.toMillis?.();
   return {
     clubId,
     session,
-    hostAccountId: data.hostAccountId,
-    hostName: data.hostName,
+    hostAccountId: data.hostAccountId.slice(0, MAX_NAME_LENGTH),
+    hostName: data.hostName.slice(0, MAX_NAME_LENGTH),
     updatedAt: typeof updatedAt === "number" ? updatedAt : Date.now(),
   };
 }

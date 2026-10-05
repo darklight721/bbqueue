@@ -126,6 +126,43 @@ test.describe("Shared active session", () => {
     expect((await readStoredData<{ id: string }>(page, "session"))?.id).toBe(own.id);
   });
 
+  test("Session data cached on the device in a shape the app can't read doesn't stop the app, and the server's copy still shows", async ({
+    page,
+  }) => {
+    const shared = runningAtRiverside();
+    await seedStorage(page, {
+      account: ana,
+      otherAccounts: [roy],
+      sharedClubs: [riverside],
+      activeSessions: [shared],
+    });
+    // What a bad upload (or an old, half-written save) could leave behind: a null Match, a name
+    // that isn't text, in the device's Session and in the Shared clubs' cached Sessions.
+    await page.addInitScript(
+      ({ sessionKey, sharedKey, good }) => {
+        if (sessionStorage.getItem("e2e-corrupt") !== null) return;
+        sessionStorage.setItem("e2e-corrupt", "1");
+        const envelope = (data: unknown) => JSON.stringify({ version: 1, data });
+        localStorage.setItem(sessionKey, envelope({ ...good.session, matches: [null] }));
+        localStorage.setItem(
+          sharedKey,
+          envelope([{ ...good, session: { ...good.session, name: { x: 1 } } }]),
+        );
+      },
+      { sessionKey: "bq:v1:session", sharedKey: "bq:v1:shared-sessions", good: shared },
+    );
+
+    await page.goto("/");
+
+    // No crash: Home is up, the unreadable device Session isn't offered, and the server's copy of
+    // the Shared club's Session replaces the unreadable cached one.
+    await expect(page.getByRole("link", { name: "Resume session" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "View session" })).toContainText(
+      "Thursday night · Riverside · Host: Roy Smith",
+    );
+    await expect(page.getByText("Something went wrong showing this.")).toHaveCount(0);
+  });
+
   test("an Organizer starts a Shared club's Session from the Club screen and becomes its host, without replacing the device's own Session", async ({
     page,
   }) => {
