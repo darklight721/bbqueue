@@ -169,8 +169,10 @@ describe("past sessions routes", () => {
     // One Target only: not shown.
     expect(screen.queryByText("21 pts")).not.toBeInTheDocument();
 
-    // Read-only: no delete.
-    expect(screen.queryByRole("button", { name: /delete|remove/i })).not.toBeInTheDocument();
+    // Read-only apart from deleting the whole session (EndedSessionDelete.test.tsx).
+    expect(screen.getAllByRole("button", { name: /delete|remove/i })).toEqual([
+      screen.getByRole("button", { name: "Delete session" }),
+    ]);
 
     await userEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(location.current()).toBe("/sessions");

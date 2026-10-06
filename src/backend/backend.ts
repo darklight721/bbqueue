@@ -64,6 +64,13 @@ export interface EndedSessionsReport {
   sessions: EndedSession[];
   /** The Shared clubs the Account is on. Whatever the device has of any other Club can go. */
   clubIds: string[];
+  /**
+   * Shared clubs whose Ended sessions the server hasn't confirmed yet (only what the device's own
+   * cache had, or nothing, e.g. offline after a fresh start). What the device holds for them stays;
+   * for every other Club in `clubIds` `sessions` is what the server has, so whatever the device
+   * cached and the server no longer has can go.
+   */
+  unknown: string[];
 }
 
 /** Stops an observer. */
@@ -206,6 +213,14 @@ export interface Backend {
    */
   observeEndedSessions(listener: (report: EndedSessionsReport) => void): Unsubscribe;
   /**
+   * Deletes a Shared club's Ended session for everyone: the record goes, and every other device
+   * drops its copy when it hears (see `observeEndedSessions`). Resolves when the server has
+   * deleted it; deleting one that is already gone resolves too. Needs a connection. Rejects with
+   * `offline`, `no-account`, `not-found` (no such Club, or this Account isn't on it) or `forbidden`
+   * (not an Organizer: a Player, or a former Session host who is no longer an Organizer).
+   */
+  deleteEndedSession(clubId: string, sessionId: string): Promise<void>;
+  /**
    * An Organizer who isn't the Session host makes themselves the host (ADR-0007), straight away
    * and in a transaction, keeping the Session as the server has it (what the old host never
    * uploaded is lost). Also how a host who left the Club or lost the Organizer Role is replaced.
@@ -304,6 +319,7 @@ export type ActiveSessionsApi = Pick<
   | "observeSessionRequests"
   | "resolveSessionRequests"
   | "observeEndedSessions"
+  | "deleteEndedSession"
   | "makeSharedClub"
 >;
 

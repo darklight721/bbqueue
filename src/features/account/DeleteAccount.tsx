@@ -84,6 +84,7 @@ export function DeleteAccount({ account }: { account: Account }) {
         aria-describedby={disabled || problem ? noteId : undefined}
         onClick={() => setConfirming(true)}
       >
+        <TrashIcon className="size-5" />
         Delete Account
       </button>
       {blocked ? (

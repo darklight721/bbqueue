@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
   canChangeRoles,
+  canDeleteEndedSession,
   canEditClub,
   canStartSession,
   clubChangeProblem,
@@ -50,6 +51,23 @@ describe("what an Account may do", () => {
     expect(canEditClub(local, null)).toBe(true);
     expect(canStartSession(local, "ana-2222")).toBe(true);
     expect(canChangeRoles(local, "roy-7k3f")).toBe(false);
+  });
+});
+
+describe("canDeleteEndedSession", () => {
+  it("lets whoever holds the device delete one with no Club, or of a Local club", () => {
+    expect(canDeleteEndedSession(null, null)).toBe(true);
+    expect(canDeleteEndedSession(null, "ana-2222")).toBe(true);
+    expect(canDeleteEndedSession(local, null)).toBe(true);
+    expect(canDeleteEndedSession(local, "ana-2222")).toBe(true);
+  });
+
+  it("lets only an Organizer delete one of a Shared club", () => {
+    expect(canDeleteEndedSession(shared, "roy-7k3f")).toBe(true);
+    expect(canDeleteEndedSession(shared, "ROY-7K3F")).toBe(true);
+    expect(canDeleteEndedSession(shared, "ana-2222")).toBe(false);
+    expect(canDeleteEndedSession(shared, "ben-3333")).toBe(false);
+    expect(canDeleteEndedSession(shared, null)).toBe(false);
   });
 });
 

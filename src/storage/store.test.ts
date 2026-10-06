@@ -1,6 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 import type { ActiveSession, Club, EndedSession, Session } from "../domain/types.ts";
+import { loadEndedSessions, loadSharedEndedSessions } from "./storage.ts";
 import {
   applyActiveSessionOf,
   applyEndedSessionsReport,
@@ -20,6 +21,7 @@ import {
   getWelcomeDone,
   addEndedSession,
   getEndedSessions,
+  removeEndedSession,
   resetStoreForTests,
   setAccount,
   setLocalClubs,
@@ -485,14 +487,158 @@ describe("Ended sessions of Shared clubs", () => {
     expect(getEndedSessions().map((e) => e.id)).toEqual(["later", "hosted", "mine", "theirs"]);
   });
 
-  it("keeps the newest 50 per Club, and what it already had when a report is shorter", () => {
+  it("keeps the newest 50 per Club", () => {
     const many = Array.from({ length: 55 }, (_, i) => ended(`s${i}`, "c1", 1000 + i));
     applyEndedSessionsReport({ sessions: many, clubIds: ["c1"] });
     expect(getEndedSessions()).toHaveLength(50);
     expect(getEndedSessions()[0]?.id).toBe("s54");
+  });
 
-    applyEndedSessionsReport({ sessions: [many[54]!], clubIds: ["c1"] });
-    expect(getEndedSessions()).toHaveLength(50);
+  describe("sessions the server no longer has", () => {
+    it("drops a cached one the server's list of the Club doesn't have any more", () => {
+      applyEndedSessionsReport({
+        sessions: [ended("a", "c1", 1), ended("b", "c1", 2), ended("c", "c2", 3)],
+        clubIds: ["c1", "c2"],
+      });
+
+      // "b" was deleted by an Organizer.
+      applyEndedSessionsReport({
+        sessions: [ended("a", "c1", 1), ended("c", "c2", 3)],
+        clubIds: ["c1", "c2"],
+      });
+
+      expect(getEndedSessions().map((e) => e.id)).toEqual(["c", "a"]);
+      expect(loadSharedEndedSessions().map((e) => e.id)).toEqual(["c", "a"]);
+    });
+
+    it("drops all of a Club's when the server has none", () => {
+      applyEndedSessionsReport({ sessions: [ended("a", "c1", 1)], clubIds: ["c1"] });
+
+      applyEndedSessionsReport({ sessions: [], clubIds: ["c1"] });
+
+      expect(getEndedSessions()).toEqual([]);
+    });
+
+    it("keeps what it has for a Club the server hasn't confirmed (offline, nothing heard yet)", () => {
+      applyEndedSessionsReport({
+        sessions: [ended("a", "c1", 1), ended("c", "c2", 3)],
+        clubIds: ["c1", "c2"],
+      });
+
+      applyEndedSessionsReport({ sessions: [], clubIds: ["c1", "c2"], unknown: ["c1"] });
+
+      expect(getEndedSessions().map((e) => e.id)).toEqual(["a"]);
+    });
+
+    it("keeps the device's own older copy when the server's list is a full 50 that is all newer: it is outside the list, not gone", () => {
+      addEndedSession(ended("old", "c1", 500));
+      applyEndedSessionsReport({ sessions: [ended("old", "c1", 500)], clubIds: ["c1"] });
+
+      const newer = Array.from({ length: 50 }, (_, i) => ended(`s${i}`, "c1", 1000 + i));
+      applyEndedSessionsReport({ sessions: newer, clubIds: ["c1"] });
+
+      expect(loadEndedSessions().map((e) => e.id)).toEqual(["old"]);
+    });
+
+    it("drops the device's own copy of a Shared club's session once the server had it and doesn't any more", () => {
+      addEndedSession(ended("hosted", "c1", 3000));
+      applyEndedSessionsReport({ sessions: [ended("hosted", "c1", 3000)], clubIds: ["c1"] });
+      expect(getEndedSessions().map((e) => e.id)).toEqual(["hosted"]);
+
+      // Another Organizer deleted it.
+      applyEndedSessionsReport({ sessions: [], clubIds: ["c1"] });
+
+      expect(getEndedSessions()).toEqual([]);
+      expect(loadEndedSessions()).toEqual([]);
+    });
+
+    it("keeps the device's own copy across a reload before the report, and drops it after", () => {
+      addEndedSession(ended("hosted", "c1", 3000));
+      applyEndedSessionsReport({ sessions: [ended("hosted", "c1", 3000)], clubIds: ["c1"] });
+      resetStoreForTests();
+      setSharedClubs([{ id: "c1", name: "One", kind: "shared", players: [] }]);
+      expect(getEndedSessions().map((e) => e.id)).toEqual(["hosted"]);
+
+      applyEndedSessionsReport({ sessions: [], clubIds: ["c1"] });
+
+      expect(getEndedSessions()).toEqual([]);
+    });
+
+    it("never drops the device's own copy that the server hasn't been seen with (not uploaded yet)", () => {
+      // Just ended: on the device; the upload is still waiting for the connection.
+      addEndedSession(ended("fresh", "c1", 3000));
+      addEndedSession(ended("other", "c1", 2000));
+
+      applyEndedSessionsReport({ sessions: [ended("other", "c1", 2000)], clubIds: ["c1"] });
+      applyEndedSessionsReport({ sessions: [], clubIds: ["c1"] });
+      resetStoreForTests();
+      applyEndedSessionsReport({ sessions: [], clubIds: ["c1"] });
+
+      // "other" was seen on the server and has gone; "fresh" never was.
+      expect(getEndedSessions().map((e) => e.id)).toEqual(["fresh"]);
+    });
+
+    it("keeps the device's own copy when the Club isn't confirmed, and ones with no Club or a Local club", () => {
+      addEndedSession(ended("hosted", "c1", 3000));
+      addEndedSession(ended("mine", null, 2000));
+      addEndedSession(ended("local", "loc", 1000));
+      applyEndedSessionsReport({ sessions: [ended("hosted", "c1", 3000)], clubIds: ["c1"] });
+
+      applyEndedSessionsReport({ sessions: [], clubIds: ["c1"], unknown: ["c1"] });
+      applyEndedSessionsReport({ sessions: [], clubIds: ["c1"] });
+
+      expect(getEndedSessions().map((e) => e.id)).toEqual(["mine", "local"]);
+    });
+
+    it("keeps the device's own copy of a Club this Account is no longer on", () => {
+      addEndedSession(ended("hosted", "c1", 3000));
+      applyEndedSessionsReport({ sessions: [ended("hosted", "c1", 3000)], clubIds: ["c1"] });
+
+      applyEndedSessionsReport({ sessions: [], clubIds: ["c2"] });
+
+      expect(loadEndedSessions().map((e) => e.id)).toEqual(["hosted"]);
+    });
+  });
+
+  describe("removeEndedSession", () => {
+    it("removes one from the device's own list, and it stays gone after a reload", () => {
+      addEndedSession(ended("a", null, 1000));
+      addEndedSession(ended("b", null, 2000));
+
+      removeEndedSession("a");
+
+      expect(getEndedSessions().map((e) => e.id)).toEqual(["b"]);
+      resetStoreForTests();
+      expect(getEndedSessions().map((e) => e.id)).toEqual(["b"]);
+    });
+
+    it("removes one from the cache of Shared clubs' Ended sessions", () => {
+      applyEndedSessionsReport({
+        sessions: [ended("a", "c1", 1), ended("b", "c1", 2)],
+        clubIds: ["c1"],
+      });
+
+      removeEndedSession("a");
+
+      expect(getEndedSessions().map((e) => e.id)).toEqual(["b"]);
+      resetStoreForTests();
+      expect(loadSharedEndedSessions().map((e) => e.id)).toEqual(["b"]);
+    });
+
+    it("re-renders hooks", () => {
+      addEndedSession(ended("a", null, 1000));
+      const { result } = renderHook(() => useEndedSessions());
+
+      act(() => removeEndedSession("a"));
+
+      expect(result.current).toEqual([]);
+    });
+
+    it("does nothing for an unknown id", () => {
+      addEndedSession(ended("a", null, 1000));
+      removeEndedSession("zzz");
+      expect(getEndedSessions().map((e) => e.id)).toEqual(["a"]);
+    });
   });
 
   it("drops a Club's sessions when the Account is no longer on it", () => {

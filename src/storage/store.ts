@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 import type { ActiveSessionsReport } from "../backend/backend.ts";
 import { accountIdsEqual } from "../domain/accountId.ts";
-import { newestPerClub } from "../domain/endedSessions.ts";
+import { isGoneFromServer, newestPerClub } from "../domain/endedSessions.ts";
 import type {
   Account,
   ActiveSession,
@@ -16,6 +16,7 @@ import {
   clearSession,
   loadAccount,
   loadClubs,
+  loadEndedConfirmed,
   loadEndedHere,
   loadEndedSessions,
   loadInstallHintDismissed,
@@ -25,8 +26,10 @@ import {
   loadSharedSessions,
   loadWelcomeDone,
   removeLegacySummary,
+  replaceEndedSessions,
   saveAccount,
   saveClubs,
+  saveEndedConfirmed,
   saveEndedHere,
   saveEndedSession,
   saveInstallHintDismissed,
@@ -314,6 +317,8 @@ export function clearSharedData(
   notify(sharedEndedSlot);
   endedHere.clear();
   persistEndedHere();
+  endedConfirmed.clear();
+  persistEndedConfirmed();
   requestsSlot.value = {};
   lostHostSlot.value = {};
   notify(requestsSlot);
@@ -476,6 +481,30 @@ export function activeSessionOfClub(
 // most recent) and the Ended sessions of the Shared clubs the Account is on, as the server has
 // them. Screens read one list: both, newest first, each Session once.
 
+/**
+ * The device's own copies of Shared clubs' Ended sessions (Session id → Club id) that the server
+ * has been seen listing. Kept on the device, so a copy is dropped when it is deleted on the
+ * server also if that happened while the app was closed; one never seen on the server is never
+ * dropped for being absent (it may still be on its way).
+ */
+const endedConfirmed = new Map<string, string>(Object.entries(loadEndedConfirmed()));
+
+function persistEndedConfirmed(): void {
+  saveEndedConfirmed(Object.fromEntries(endedConfirmed));
+}
+
+/** Forgets confirmations of sessions that are no longer among the device's own; true when any went. */
+function forgetUnheldConfirmations(own: readonly EndedSession[]): boolean {
+  const held = new Set(own.map((ended) => ended.id));
+  let changed = false;
+  for (const id of [...endedConfirmed.keys()]) {
+    if (held.has(id)) continue;
+    endedConfirmed.delete(id);
+    changed = true;
+  }
+  return changed;
+}
+
 function getDeviceEndedSessions(): EndedSession[] {
   return get(endedSessionsSlot, loadEndedSessions);
 }
@@ -486,16 +515,57 @@ export function getSharedEndedSessions(): EndedSession[] {
 
 /**
  * Called when the Backend reports the Ended sessions of the Shared clubs this Account is on.
- * Ended sessions never change, so what the device already has is kept, the newest 50 per Club;
- * those of a Club this Account is no longer on are dropped.
+ *
+ * Shared cache: the newest 50 per Club. What the device already has is kept, except an Ended
+ * session the server no longer lists although the report covers it (deleted by an Organizer; see
+ * `isGoneFromServer`: a Club the server hasn't confirmed, and the part of a full list older than
+ * its last entry, aren't covered, so nothing is lost to a partial report). Those of a Club this
+ * Account is no longer on are dropped.
+ *
+ * The device's own copy of a Shared club's Ended session (the Session it hosted) is dropped the
+ * same way, but only once the server has been seen listing it: one that was just ended and isn't
+ * uploaded yet (offline, or the write still queued) is not on the server and must stay.
  */
-export function applyEndedSessionsReport(report: { sessions: EndedSession[]; clubIds: string[] }) {
+export function applyEndedSessionsReport(report: {
+  sessions: EndedSession[];
+  clubIds: string[];
+  unknown?: string[];
+}) {
   const clubIds = new Set(report.clubIds);
+  const device = getDeviceEndedSessions();
+
+  const listedIds = new Set(report.sessions.map((ended) => ended.id));
+  let confirmedChanged = false;
+  const gone = new Set<string>();
+  for (const ended of device) {
+    if (!ended.clubId || !clubIds.has(ended.clubId)) continue;
+    if (listedIds.has(ended.id)) {
+      if (endedConfirmed.get(ended.id) !== ended.clubId) {
+        endedConfirmed.set(ended.id, ended.clubId);
+        confirmedChanged = true;
+      }
+    } else if (endedConfirmed.has(ended.id) && isGoneFromServer(report, ended)) {
+      gone.add(ended.id);
+    }
+  }
+  const ownKept = gone.size === 0 ? device : device.filter((ended) => !gone.has(ended.id));
+  if (gone.size > 0) {
+    replaceEndedSessions(ownKept);
+    endedSessionsSlot.value = ownKept;
+    notify(endedSessionsSlot);
+  }
+  if (forgetUnheldConfirmations(ownKept) || confirmedChanged) persistEndedConfirmed();
+
   // The ones this device hosted are on the device already (ADR-0005): not cached twice.
-  const onDevice = new Set(getDeviceEndedSessions().map((ended) => ended.id));
+  const onDevice = new Set(ownKept.map((ended) => ended.id));
   const byId = new Map<string, EndedSession>();
   for (const ended of getSharedEndedSessions()) {
-    if (ended.clubId && clubIds.has(ended.clubId) && !onDevice.has(ended.id)) {
+    if (
+      ended.clubId &&
+      clubIds.has(ended.clubId) &&
+      !onDevice.has(ended.id) &&
+      !isGoneFromServer(report, ended)
+    ) {
       byId.set(ended.id, ended);
     }
   }
@@ -512,6 +582,27 @@ export function applyEndedSessionsReport(report: { sessions: EndedSession[]; clu
   sharedEndedSlot.value = saved;
   sharedEndedSlot.loaded = true;
   notify(sharedEndedSlot);
+}
+
+/**
+ * Deletes an Ended session from this device: the device's own list and the cache of Shared
+ * clubs' Ended sessions. Does nothing about the server (see `deleteEndedSession`).
+ */
+export function removeEndedSession(sessionId: string): void {
+  const device = getDeviceEndedSessions();
+  if (device.some((ended) => ended.id === sessionId)) {
+    const kept = device.filter((ended) => ended.id !== sessionId);
+    replaceEndedSessions(kept);
+    endedSessionsSlot.value = kept;
+    notify(endedSessionsSlot);
+  }
+  const shared = getSharedEndedSessions();
+  if (shared.some((ended) => ended.id === sessionId)) {
+    const kept = shared.filter((ended) => ended.id !== sessionId);
+    sharedEndedSlot.value = saveSharedEndedSessions(kept);
+    notify(sharedEndedSlot);
+  }
+  if (endedConfirmed.delete(sessionId)) persistEndedConfirmed();
 }
 
 let mergedEnded: {
@@ -614,6 +705,9 @@ export function resetStoreForTests(): void {
   endedHere.clear();
   for (const [sessionId, clubId] of Object.entries(loadEndedHere()))
     endedHere.set(sessionId, clubId);
+  endedConfirmed.clear();
+  for (const [sessionId, clubId] of Object.entries(loadEndedConfirmed()))
+    endedConfirmed.set(sessionId, clubId);
   lostHostSlot.value = {};
   requestsSlot.value = {};
 }

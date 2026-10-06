@@ -4,12 +4,13 @@ import { getBackend } from "../../backend/index.ts";
 import { ChevronRightIcon, PlusIcon, UsersIcon } from "../../components/icons.tsx";
 import { Screen } from "../../components/Screen.tsx";
 import type { Club } from "../../domain/types.ts";
-import { useClubs } from "../../storage/store.ts";
-import { playerCountLabel, sortClubs } from "./clubList.ts";
+import { useAccount, useClubs } from "../../storage/store.ts";
+import { playerCountLabel, rowBadge, sortClubs } from "./clubList.ts";
 
 /** List of Clubs; each row opens the Club for editing. */
 export function ClubsScreen() {
   const clubs = useClubs();
+  const accountId = useAccount()?.accountId;
   const sorted = useMemo(() => sortClubs(clubs), [clubs]);
   const empty = sorted.length === 0;
 
@@ -21,7 +22,7 @@ export function ClubsScreen() {
         <ul className="flex flex-col gap-3">
           {sorted.map((club, index) => (
             <li key={club.id}>
-              <ClubRow club={club} index={index} />
+              <ClubRow club={club} index={index} accountId={accountId} />
             </li>
           ))}
         </ul>
@@ -30,19 +31,18 @@ export function ClubsScreen() {
   );
 }
 
-function ClubRow({ club, index }: { club: Club; index: number }) {
+function ClubRow({ club, index, accountId }: { club: Club; index: number; accountId?: string }) {
   const nameId = useId();
   const countId = useId();
-  const deviceOnlyId = useId();
-  // Without a backend every Club is on this device, so there is nothing to tell apart.
-  const deviceOnly = club.kind === "local" && getBackend() !== null;
+  const badgeId = useId();
+  const badge = rowBadge(club, accountId, getBackend() !== null);
   const initial = club.name.trim().charAt(0).toLocaleUpperCase() || "?";
   return (
     <Link
       href={`/clubs/${club.id}`}
       aria-labelledby={nameId}
-      // The badge is part of the description: "8 players This device only".
-      aria-describedby={deviceOnly ? `${countId} ${deviceOnlyId}` : countId}
+      // The badge is part of the description: "8 players This device only", "8 players Player".
+      aria-describedby={badge ? `${countId} ${badgeId}` : countId}
       className="animate-rise group flex min-h-20 items-center gap-4 rounded-box border-[1.5px] border-base-300 bg-base-100 p-4 pr-3 shadow-sm transition-transform active:scale-[0.98]"
       style={{ animationDelay: `${Math.min(index, 8) * 40}ms` }}
     >
@@ -56,17 +56,18 @@ function ClubRow({ club, index }: { club: Club; index: number }) {
         <span id={nameId} className="truncate font-display text-2xl leading-tight font-bold">
           {club.name}
         </span>
-        {/* "8 players · [This device only]". On a narrow row the badge wraps under the count;
-            its "·" then sits left of the row's edge and is clipped away by overflow-hidden. */}
+        {/* "8 players · [This device only]" or "8 players · [Player]". On a narrow row the badge
+            wraps under the count; its "·" then sits left of the row's edge and is clipped away by
+            overflow-hidden. */}
         <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 overflow-hidden text-sm text-base-content/65">
           <span id={countId}>{playerCountLabel(club.players.length)}</span>
-          {deviceOnly ? (
+          {badge ? (
             <span className="relative flex before:absolute before:top-1/2 before:-left-1.5 before:-translate-x-1/2 before:-translate-y-1/2 before:leading-none before:content-['·']">
               <span
-                id={deviceOnlyId}
+                id={badgeId}
                 className="badge badge-outline badge-sm badge-neutral border-base-content/25 font-semibold whitespace-nowrap text-base-content/70"
               >
-                This device only
+                {badge}
               </span>
             </span>
           ) : null}

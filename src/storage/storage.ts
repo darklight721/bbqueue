@@ -18,6 +18,7 @@ const SHARED_CLUBS_KEY = "bq:v1:shared-clubs";
 const SHARED_SESSIONS_KEY = "bq:v1:shared-sessions";
 const SHARED_ENDED_SESSIONS_KEY = "bq:v1:shared-ended-sessions";
 const ENDED_HERE_KEY = "bq:v1:ended-here";
+const ENDED_CONFIRMED_KEY = "bq:v1:ended-confirmed";
 const ACCOUNT_KEY = "bq:v1:account";
 const WELCOME_DONE_KEY = "bq:v1:welcome-done";
 const INSTALL_HINT_DISMISSED_KEY = "bq:v1:install-hint-dismissed";
@@ -287,6 +288,20 @@ export function saveEndedHere(ids: Record<string, string>): void {
 }
 
 /**
+ * Ended sessions of Shared clubs that the device holds its own copy of and has seen the server
+ * list (Session id → Club id). Only these may be dropped when a later report no longer lists
+ * them: one that was never seen may just not have been uploaded yet.
+ */
+export function loadEndedConfirmed(): Record<string, string> {
+  return read(ENDED_CONFIRMED_KEY, parseEndedHere) ?? {};
+}
+
+export function saveEndedConfirmed(ids: Record<string, string>): void {
+  if (Object.keys(ids).length === 0) remove(ENDED_CONFIRMED_KEY);
+  else write(ENDED_CONFIRMED_KEY, ids);
+}
+
+/**
  * Removes everything the device cached about Shared clubs (`bq:v1:shared-*`): the Clubs, their
  * Active sessions and their Ended sessions. The server still has them; they come back on the next
  * start. Used when something cached makes the app fail.
@@ -332,6 +347,14 @@ export function saveEndedSession(
       list = list.slice(0, -1);
     }
   }
+}
+
+/** The device's own Ended sessions as they are (after one was removed); newest first. */
+export function replaceEndedSessions(sessions: readonly EndedSession[]): void {
+  write(
+    ENDED_SESSIONS_KEY,
+    [...sessions].sort((a, b) => b.endedAt - a.endedAt),
+  );
 }
 
 /**

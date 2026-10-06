@@ -571,13 +571,14 @@ export function runSessionsContract(name: string, createWorld: () => RolesContra
 
     describe("Ended sessions of a Shared club", () => {
       const watchEnded = (who: { backend: Backend }) => {
-        let latest: { sessions: EndedSession[]; clubIds: string[] } | null = null;
+        let latest: { sessions: EndedSession[]; clubIds: string[]; unknown?: string[] } | null =
+          null;
         stops.push(
           who.backend.observeEndedSessions((report) => {
             latest = report;
           }),
         );
-        return () => latest ?? { sessions: [], clubIds: [] };
+        return () => latest ?? { sessions: [], clubIds: [], unknown: [] };
       };
 
       it("publishes the Ended session to the Club when the host ends the Session, for everybody on it", async () => {
@@ -722,6 +723,82 @@ export function runSessionsContract(name: string, createWorld: () => RolesContra
 
         await eventually(() => expect(watches().clubIds).toEqual([]));
         expect(watches().sessions).toEqual([]);
+      });
+
+      describe("deleting one", () => {
+        async function withEnded() {
+          const world = await setup();
+          const session = makeClubSession();
+          await world.roy.backend.startSharedSession("c1", session);
+          const ended = makeClubEnded(session, 1_700_000_000_000);
+          await world.roy.backend.endSharedSession("c1", ended);
+          const annaWatches = watchEnded(world.ana);
+          const royWatches = watchEnded(world.roy);
+          await eventually(() => expect(annaWatches().sessions).toEqual([ended]));
+          await eventually(() => expect(royWatches().sessions).toEqual([ended]));
+          return { ...world, ended, annaWatches, royWatches };
+        }
+
+        it("lets an Organizer delete it, and everybody on the Club sees it go", async () => {
+          const { roy, ended, annaWatches, royWatches } = await withEnded();
+
+          await roy.backend.deleteEndedSession("c1", ended.id);
+
+          await eventually(() => expect(annaWatches().sessions).toEqual([]));
+          await eventually(() => expect(royWatches().sessions).toEqual([]));
+          // The Club itself is untouched.
+          expect(annaWatches().clubIds).toEqual(["c1"]);
+        });
+
+        it("only deletes the one asked for", async () => {
+          const { roy, ended, annaWatches } = await withEnded();
+          const later = makeClubSession("Later night");
+          await roy.backend.startSharedSession("c1", later);
+          const laterEnded = makeClubEnded(later, 1_700_000_100_000);
+          await roy.backend.endSharedSession("c1", laterEnded);
+          await eventually(() => expect(annaWatches().sessions).toHaveLength(2));
+
+          await roy.backend.deleteEndedSession("c1", ended.id);
+
+          await eventually(() => expect(annaWatches().sessions).toEqual([laterEnded]));
+        });
+
+        it("refuses a Player, and the Ended session stays", async () => {
+          const { ana, ended, annaWatches } = await withEnded();
+
+          const error = await rejection(ana.backend.deleteEndedSession("c1", ended.id));
+
+          expect(error.code).toBe("forbidden");
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          expect(annaWatches().sessions).toEqual([ended]);
+        });
+
+        it("treats somebody who isn't on the Club as having no such Club", async () => {
+          const { ben, ended, annaWatches } = await withEnded();
+
+          const error = await rejection(ben.backend.deleteEndedSession("c1", ended.id));
+
+          expect(error.code).toBe("not-found");
+          expect(annaWatches().sessions).toEqual([ended]);
+        });
+
+        it("needs a connection", async () => {
+          const { roy, ended, annaWatches } = await withEnded();
+          roy.setOnline(false);
+
+          const error = await rejection(roy.backend.deleteEndedSession("c1", ended.id));
+
+          expect(error.code).toBe("offline");
+          expect(annaWatches().sessions).toEqual([ended]);
+        });
+
+        it("resolves for one that is already gone", async () => {
+          const { roy, ended, annaWatches } = await withEnded();
+          await roy.backend.deleteEndedSession("c1", ended.id);
+          await eventually(() => expect(annaWatches().sessions).toEqual([]));
+
+          await expect(roy.backend.deleteEndedSession("c1", ended.id)).resolves.toBeUndefined();
+        });
       });
     });
   });

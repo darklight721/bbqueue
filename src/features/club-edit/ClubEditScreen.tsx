@@ -10,7 +10,13 @@ import {
 import { getBackend } from "../../backend/index.ts";
 import { useOnline } from "../../backend/useOnline.ts";
 import { ConfirmDialog } from "../../components/ConfirmDialog.tsx";
-import { HistoryIcon, PlayIcon, PlusIcon, WarningIcon } from "../../components/icons.tsx";
+import {
+  HistoryIcon,
+  PlayIcon,
+  PlusIcon,
+  TrashIcon,
+  WarningIcon,
+} from "../../components/icons.tsx";
 import { blurOnEnter } from "../../components/keyboard.ts";
 import { NAME_ERROR_MESSAGE } from "../../components/nameErrors.ts";
 import { OfflineNote } from "../../components/OfflineNote.tsx";
@@ -618,6 +624,7 @@ function ClubEditor({ club }: { club: Club | null }) {
                 className="btn w-full text-error btn-ghost"
                 onClick={() => setConfirmDelete(true)}
               >
+                <TrashIcon className="size-5" />
                 Delete club
               </button>
             ) : null}

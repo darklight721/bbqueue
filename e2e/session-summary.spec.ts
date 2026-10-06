@@ -395,7 +395,10 @@ test.describe("Full journey", () => {
     await expect(matches.nth(1)).toContainText("Match #2 · Court 2");
     await expect(matches.nth(1)).toContainText("No score");
     await expect(page.getByText(/\d+ pts/)).toHaveCount(0);
-    await expect(page.getByRole("button", { name: /delete/i })).toHaveCount(0);
+    // Read-only apart from deleting the whole session (ended-sessions.spec.ts).
+    await expect(page.getByRole("button", { name: /delete|remove/i })).toHaveText([
+      "Delete session",
+    ]);
 
     // 9. A reload keeps the details; Back goes to the list.
     await page.reload();

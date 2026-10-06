@@ -5,7 +5,7 @@ import {
   adminSetDoc,
   clearEmulator,
 } from "../../src/test/emulatorAdmin.ts";
-import type { Account, Club, ClubPlayer } from "../../src/domain/types.ts";
+import type { Account, Club, ClubPlayer, EndedSession } from "../../src/domain/types.ts";
 import { readStoredData } from "../fixtures.ts";
 
 /**
@@ -111,4 +111,21 @@ export async function readServerClub(clubId: string): Promise<Club | null> {
       };
     }),
   };
+}
+
+/**
+ * Put an Ended session of a Shared club on the server, as if `hostAccountId` (an existing
+ * Account) had ended it there, with Security Rules out of the way.
+ */
+export async function seedSharedEndedSession(
+  clubId: string,
+  ended: EndedSession,
+  hostAccountId: string,
+): Promise<void> {
+  await adminSetDoc(`clubs/${clubId}/endedSessions/${ended.id}`, {
+    hostUid: await uidOf(hostAccountId),
+    endedAt: ended.endedAt,
+    endedJson: JSON.stringify({ ...ended, clubId }),
+    createdAt: Date.now(),
+  });
 }

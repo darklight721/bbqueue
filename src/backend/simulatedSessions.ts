@@ -346,7 +346,7 @@ export function createSimulatedSessions(
       const report = () => {
         const account = getAccount();
         if (!account) {
-          listener({ sessions: [], clubIds: [] });
+          listener({ sessions: [], clubIds: [], unknown: [] });
           return;
         }
         const clubIds = state
@@ -358,7 +358,7 @@ export function createSimulatedSessions(
             .loadEndedSessions()
             .filter((ended) => ended.clubId !== null && clubIds.includes(ended.clubId)),
         );
-        listener({ sessions, clubIds });
+        listener({ sessions, clubIds, unknown: [] });
       };
       report();
       const stopServer = listenToServer(report);
@@ -367,6 +367,27 @@ export function createSimulatedSessions(
         stopServer();
         stopExternal?.();
       };
+    },
+
+    deleteEndedSession(clubId, sessionId) {
+      try {
+        if (!online.get()) throw new BackendError("offline");
+        const account = getAccount();
+        if (!account) throw new BackendError("no-account");
+        const club = state.loadClubs().find((candidate) => candidate.id === clubId);
+        const role = club ? roleInClub(club, account.accountId) : null;
+        if (!club || role === null) throw new BackendError("not-found");
+        if (role !== "organizer") throw new BackendError("forbidden");
+        const all = state.loadEndedSessions();
+        const rest = all.filter((ended) => !(ended.id === sessionId && ended.clubId === clubId));
+        if (rest.length !== all.length) {
+          state.saveEndedSessions(rest);
+          serverChanged();
+        }
+        return Promise.resolve();
+      } catch (error) {
+        return Promise.reject(error);
+      }
     },
   };
 }

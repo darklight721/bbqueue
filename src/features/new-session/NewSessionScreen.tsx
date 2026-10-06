@@ -7,7 +7,7 @@ import { useOnline } from "../../backend/useOnline.ts";
 import { AddPlayerForm, type NewPlayer } from "../../components/AddPlayerForm.tsx";
 import { ConfirmDialog } from "../../components/ConfirmDialog.tsx";
 import { OfflineNote } from "../../components/OfflineNote.tsx";
-import { CloseIcon, UsersIcon } from "../../components/icons.tsx";
+import { CloseIcon, EyeIcon, UsersIcon } from "../../components/icons.tsx";
 import { blurOnEnter } from "../../components/keyboard.ts";
 import { NAME_ERROR_MESSAGE } from "../../components/nameErrors.ts";
 import { NumberStepper } from "../../components/NumberStepper.tsx";
@@ -18,6 +18,7 @@ import { newId } from "../../domain/ids.ts";
 import type { Club, PointSystem } from "../../domain/types.ts";
 import { normalizeName } from "../../domain/validation.ts";
 import { canStartSession } from "../../domain/permissions.ts";
+import { roleInClub } from "../../domain/clubChanges.ts";
 import {
   activeSessionOfClub,
   getClubs,
@@ -59,6 +60,16 @@ export function NewSessionScreen() {
     () => everyClub.filter((candidate) => canStartSession(candidate, account?.accountId)),
     [everyClub, account],
   );
+  // Those Clubs are left out of the picker; say why, so they don't look lost.
+  const hidesPlayerClubs = useMemo(
+    () =>
+      !!account &&
+      everyClub.some(
+        (candidate) =>
+          candidate.kind === "shared" && roleInClub(candidate, account.accountId) === "player",
+      ),
+    [everyClub, account],
+  );
   const online = useOnline();
   const activeSessions = useActiveSessions();
   const sortedClubs = useMemo(() => byName(clubs), [clubs]);
@@ -78,6 +89,7 @@ export function NewSessionScreen() {
   const nameId = useId();
   const nameErrorId = useId();
   const clubId = useId();
+  const hiddenNoteId = useId();
 
   const club: Club | null = clubs.find((candidate) => candidate.id === clubChoice) ?? null;
   const clubPlayers = useMemo(() => (club ? byName(club.players) : []), [club]);
@@ -295,6 +307,7 @@ export function NewSessionScreen() {
           <select
             id={clubId}
             className="select select-lg w-full text-base"
+            aria-describedby={hidesPlayerClubs ? hiddenNoteId : undefined}
             value={clubChoice}
             onChange={(event) => chooseClub(event.target.value)}
           >
@@ -310,6 +323,17 @@ export function NewSessionScreen() {
             ))}
             <option value={NO_CLUB}>No club (guests only)</option>
           </select>
+          {hidesPlayerClubs ? (
+            <p
+              id={hiddenNoteId}
+              className="flex items-start gap-1.5 pt-1 pl-1 text-sm leading-snug text-base-content/70"
+            >
+              <EyeIcon className="mt-0.5 size-4 shrink-0" />
+              <span>
+                Clubs where you're a Player aren't listed: only an Organizer can start a session.
+              </span>
+            </p>
+          ) : null}
         </div>
       )}
 

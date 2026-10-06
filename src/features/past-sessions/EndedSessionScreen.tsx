@@ -1,13 +1,18 @@
-import { useId, useMemo } from "react";
-import { Link, Redirect, useSearch } from "wouter";
-import { ChevronRightIcon, ShareIcon } from "../../components/icons.tsx";
+import { useId, useMemo, useState } from "react";
+import { Link, Redirect, useLocation, useSearch } from "wouter";
+import { BackendError } from "../../backend/backend.ts";
+import { useOnline } from "../../backend/useOnline.ts";
+import { ConfirmDialog } from "../../components/ConfirmDialog.tsx";
+import { OfflineNote } from "../../components/OfflineNote.tsx";
+import { ChevronRightIcon, ShareIcon, TrashIcon } from "../../components/icons.tsx";
 import { MatchList, MatchRow } from "../../components/MatchRow.tsx";
 import { usesMixedTargets } from "../../components/matchTargets.ts";
 import { Screen } from "../../components/Screen.tsx";
 import { buildSummary, rankStandings } from "../../domain/engine/index.ts";
 import type { EndedSession } from "../../domain/types.ts";
 import { displayClubName } from "../../domain/clubName.ts";
-import { useClubs, useEndedSessions } from "../../storage/store.ts";
+import { canDeleteEndedSession } from "../../domain/permissions.ts";
+import { useAccount, useClubs, useEndedSessions } from "../../storage/store.ts";
 import { CourtLines } from "../home/CourtLines.tsx";
 import { formatDuration } from "../session/clock.ts";
 import { countLabel, rise, sessionDay, sessionTimes } from "../session-summary/summaryFormat.ts";
@@ -18,6 +23,7 @@ import {
   Totals,
 } from "../session-summary/SummaryParts.tsx";
 import { buildClubFilterOptions } from "./clubFilter.ts";
+import { deleteEndedSession } from "./deleteEndedSession.ts";
 import { originBackPath, parseOrigin, summaryPath, validateOrigin } from "./sessionOrigin.ts";
 
 /** Read-only look back at one Ended session: when, totals, Standings and every match. */
@@ -29,6 +35,7 @@ export function EndedSessionScreen({ sessionId }: { sessionId: string }) {
 
 function Details({ ended }: { ended: EndedSession }) {
   const clubs = useClubs();
+  const account = useAccount();
   const sessions = useEndedSessions();
   const search = useSearch();
   // Where the user came from (a filtered list, a club's list, or the plain list): Back returns there.
@@ -44,6 +51,8 @@ function Details({ ended }: { ended: EndedSession }) {
     [ended.players],
   );
   const showTarget = usesMixedTargets(ended.matches);
+  const club = clubs.find((candidate) => candidate.id === ended.clubId) ?? null;
+  const canDelete = canDeleteEndedSession(club, account?.accountId);
 
   return (
     <Screen title={ended.name} backTo={originBackPath(origin)}>
@@ -74,8 +83,121 @@ function Details({ ended }: { ended: EndedSession }) {
           </MatchList>
         )}
       </CollapsibleSection>
+
+      {canDelete ? (
+        <DeleteSection
+          ended={ended}
+          sharedClubName={club?.kind === "shared" ? club.name : null}
+          backPath={originBackPath(origin)}
+        />
+      ) : null}
     </Screen>
   );
+}
+
+/**
+ * "Delete session" at the very end, ruled off and quiet (a red ghost button, like Delete club) so
+ * it doesn't compete with the summary. A Shared club's is deleted on the server, which needs a
+ * connection; on success the user goes back to the list they came from.
+ */
+function DeleteSection({
+  ended,
+  sharedClubName,
+  backPath,
+}: {
+  ended: EndedSession;
+  sharedClubName: string | null;
+  backPath: string;
+}) {
+  const [, navigate] = useLocation();
+  const online = useOnline();
+  const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const noteId = useId();
+  const needsConnection = sharedClubName !== null && online === false;
+  const blocked = needsConnection || deleting;
+
+  async function remove() {
+    setConfirming(false);
+    setDeleting(true);
+    setError(null);
+    // Taken now: once the session is gone, a filter that only it matched would no longer count
+    // as a valid origin.
+    const to = backPath;
+    try {
+      await deleteEndedSession(ended);
+    } catch (failure) {
+      console.error("Failed to delete the ended session", failure);
+      setError(deleteErrorMessage(failure));
+      setDeleting(false);
+      return;
+    }
+    // The details route may already have sent us to the plain list when the session vanished from
+    // the store; this puts us on the list we came from either way, without a Back entry for it.
+    navigate(to, { replace: true });
+  }
+
+  const message =
+    `'${ended.name}' and its matches will be gone for good.` +
+    (sharedClubName ? ` Everyone on ${sharedClubName} loses it too.` : "");
+
+  return (
+    <div className="mt-4 flex flex-col gap-1 border-t border-base-300 pt-6">
+      <button
+        type="button"
+        // Red only when it can be used; daisyUI's disabled grey shows otherwise.
+        className={`btn w-full btn-ghost ${blocked ? "" : "text-error"}`}
+        disabled={blocked}
+        aria-describedby={needsConnection || error ? noteId : undefined}
+        onClick={() => setConfirming(true)}
+      >
+        {deleting ? (
+          <span className="loading loading-sm loading-spinner" aria-hidden="true" />
+        ) : (
+          <TrashIcon className="size-5" />
+        )}
+        {deleting ? "Deleting…" : "Delete session"}
+      </button>
+      {error ? (
+        <p
+          id={noteId}
+          role="alert"
+          className="px-4 text-center text-sm leading-snug font-semibold text-error"
+        >
+          {error}
+        </p>
+      ) : needsConnection ? (
+        <OfflineNote id={noteId} className="justify-center px-4 text-center">
+          Deleting needs a connection.
+        </OfflineNote>
+      ) : null}
+
+      <ConfirmDialog
+        open={confirming}
+        title="Delete this session?"
+        message={message}
+        confirmLabel="Delete"
+        cancelLabel="Keep"
+        tone="danger"
+        onConfirm={() => void remove()}
+        onCancel={() => setConfirming(false)}
+      />
+    </div>
+  );
+}
+
+function deleteErrorMessage(error: unknown): string {
+  switch (error instanceof BackendError ? error.code : null) {
+    case "offline":
+      return "You're offline. Deleting needs a connection.";
+    case "forbidden":
+      return "Only Organizers can delete this club's sessions.";
+    case "not-found":
+      return "This club is no longer available.";
+    default:
+      return "Couldn't delete the session. Please try again.";
+  }
 }
 
 /** Card link to the shareable Session summary (its Back button returns here). */

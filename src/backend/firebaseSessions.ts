@@ -1,5 +1,6 @@
 import {
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocFromCache,
@@ -484,12 +485,14 @@ export function createFirebaseActiveSessions(db: Firestore, deps: FirebaseDeps):
         watching = uid;
         stopClubs();
         stopClubs = uid ? watchClubs(uid) : () => {};
-        if (!uid) listener({ sessions: [], clubIds: [] });
+        if (!uid) listener({ sessions: [], clubIds: [], unknown: [] });
       });
 
       function watchClubs(uid: string): Unsubscribe {
         interface Entry {
           sessions: EndedSession[];
+          /** Whether the server has answered (not just the device's cache). */
+          confirmed: boolean;
           stop: Unsubscribe;
         }
         const clubs = new Map<string, Entry>();
@@ -500,6 +503,7 @@ export function createFirebaseActiveSessions(db: Firestore, deps: FirebaseDeps):
           listener({
             sessions: [...clubs.values()].flatMap((entry) => entry.sessions),
             clubIds: [...clubs.keys()],
+            unknown: [...clubs].flatMap(([id, entry]) => (entry.confirmed ? [] : [id])),
           });
         }
 
@@ -510,14 +514,18 @@ export function createFirebaseActiveSessions(db: Firestore, deps: FirebaseDeps):
           const listen = () => {
             stopSnapshot = onSnapshot(
               // The 50 most recent: what everybody sees. Older ones stay on the server (rules can't
-              // count, and nobody may delete them) but aren't listed.
+              // count) but aren't listed.
               query(endedRef(clubId), orderBy("endedAt", "desc"), limit(ENDED_SESSIONS_PER_CLUB)),
+              // Metadata changes too: the server answering with what the cache had is no change in
+              // the documents, but it is how we learn the list is the server's, not a cache's.
+              { includeMetadataChanges: true },
               (snapshot) => {
                 attempt = 0;
                 entry.sessions = snapshot.docs.flatMap((row) => {
                   const parsed = toEndedSession(clubId, row.id, row.data());
                   return parsed ? [parsed] : [];
                 });
+                entry.confirmed = !snapshot.metadata.fromCache;
                 emit();
               },
               (error) => {
@@ -541,7 +549,7 @@ export function createFirebaseActiveSessions(db: Firestore, deps: FirebaseDeps):
           for (const clubDoc of snapshot.docs) {
             seen.add(clubDoc.id);
             if (clubs.has(clubDoc.id)) continue;
-            const entry: Entry = { sessions: [], stop: () => {} };
+            const entry: Entry = { sessions: [], confirmed: false, stop: () => {} };
             clubs.set(clubDoc.id, entry);
             watchEnded(clubDoc.id, entry);
           }
@@ -587,6 +595,18 @@ export function createFirebaseActiveSessions(db: Firestore, deps: FirebaseDeps):
         stopAccount();
         stopClubs();
       };
+    },
+
+    async deleteEndedSession(clubId, sessionId) {
+      if (!deps.online.get()) throw new BackendError("offline");
+      const { uid } = await requireViewer();
+      await requireOrganizer(clubId, uid);
+      try {
+        // Waits for the server, so a refusal (e.g. no longer an Organizer) reaches the caller.
+        await confirmed(deleteDoc(doc(endedRef(clubId), sessionId)));
+      } catch (error) {
+        throw toBackendError(error);
+      }
     },
 
     async requestSessionChange(clubId, input) {

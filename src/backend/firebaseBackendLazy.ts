@@ -82,6 +82,8 @@ export function createLazyFirebaseBackend(
       loaded.then((backend) => backend.endSharedSession(clubId, ended)),
     observeEndedSessions: (listener) =>
       observeWhenLoaded((backend) => backend.observeEndedSessions(listener)),
+    deleteEndedSession: (clubId, sessionId) =>
+      loaded.then((backend) => backend.deleteEndedSession(clubId, sessionId)),
     takeOverSession: (clubId) => loaded.then((backend) => backend.takeOverSession(clubId)),
     makeSharedClub: (input) => loaded.then((backend) => backend.makeSharedClub(input)),
     getActiveSession: (clubId) => loaded.then((backend) => backend.getActiveSession(clubId)),

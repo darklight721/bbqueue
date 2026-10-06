@@ -253,3 +253,74 @@ test.describe("Club name on the Ended session details", () => {
     await expect(page.getByText("Saved Name", { exact: true })).toBeVisible();
   });
 });
+
+test.describe("Delete session", () => {
+  const deleteButton = (page: Page) => page.getByRole("button", { name: "Delete session" });
+  const dialog = (page: Page) => page.getByRole("dialog", { name: "Delete this session?" });
+
+  test("a guests-only session: Delete → confirm → back on Past sessions, gone, still gone after a reload", async ({
+    page,
+  }) => {
+    const { guestOne } = await seedAll(page);
+    await page.goto("/sessions");
+    await sessionLink(page, "Guest one").click();
+    await expect(page).toHaveURL(urlEnding(`/sessions/${guestOne.id}`));
+
+    await deleteButton(page).click();
+    await expect(dialog(page)).toContainText("'Guest one' and its matches will be gone for good.");
+    await dialog(page).getByRole("button", { name: "Delete" }).click();
+
+    await expect(page).toHaveURL(urlEnding("/sessions"));
+    await expect(page.getByRole("heading", { level: 1, name: "Past sessions" })).toBeVisible();
+    await expect(page.getByText("3 sessions")).toBeVisible();
+    await expect(sessionLink(page, "Guest one")).toHaveCount(0);
+
+    await page.reload();
+    await expect(page.getByText("3 sessions")).toBeVisible();
+    await expect(sessionLink(page, "Guest one")).toHaveCount(0);
+    // Its old address now just lands on the list.
+    await page.goto(`/sessions/${guestOne.id}`);
+    await expect(page).toHaveURL(urlEnding("/sessions"));
+  });
+
+  test("Keep leaves it where it was", async ({ page }) => {
+    const { guestOne } = await seedAll(page);
+    await page.goto(`/sessions/${guestOne.id}`);
+    await deleteButton(page).click();
+    await dialog(page).getByRole("button", { name: "Keep" }).click();
+
+    await expect(dialog(page)).toHaveCount(0);
+    await expect(page).toHaveURL(urlEnding(`/sessions/${guestOne.id}`));
+    await page.reload();
+    await expect(page.getByRole("heading", { level: 1, name: "Guest one" })).toBeVisible();
+  });
+
+  test("deleting from a Club's filtered list goes back to that list", async ({ page }) => {
+    const { alpha } = await seedAll(page);
+    await page.goto(`/sessions?club=${alpha.id}`);
+    await sessionLink(page, "Alpha one").click();
+
+    await deleteButton(page).click();
+    await dialog(page).getByRole("button", { name: "Delete" }).click();
+
+    await expect(page).toHaveURL(urlEnding(`/sessions?club=${alpha.id}`));
+    await expect(clubFilter(page)).toHaveValue(alpha.id);
+    await expect(sessionLink(page, "Alpha one")).toHaveCount(0);
+    await expect(sessionLink(page, "Alpha two")).toBeVisible();
+    await expect(sessionLink(page, "Bravo one")).toHaveCount(0);
+  });
+
+  test("Back after deleting doesn't return to the deleted session", async ({ page }) => {
+    const { alpha } = await seedAll(page);
+    await page.goto("/");
+    await page.goto(`/clubs/${alpha.id}/sessions`);
+    await sessionLink(page, "Alpha two").click();
+    await deleteButton(page).click();
+    await dialog(page).getByRole("button", { name: "Delete" }).click();
+    await expect(page).toHaveURL(urlEnding(`/clubs/${alpha.id}/sessions`));
+    await expect(sessionLink(page, "Alpha two")).toHaveCount(0);
+
+    await page.goBack();
+    await expect(page).not.toHaveURL(/\/sessions\/[^/?]+$/);
+  });
+});

@@ -35,7 +35,7 @@ What an Account may do in a Shared club: Organizer or Player.
 _Avoid_: Permission, access level
 
 **Organizer**:
-A Role that may change the Club, its roster and Roles, start Sessions, and run them. A Shared club always has at least one Organizer; there is no separate owner.
+A Role that may change the Club, its roster and Roles, start Sessions, run them, and delete its Ended sessions. A Shared club always has at least one Organizer; there is no separate owner.
 _Avoid_: Owner, admin, manager
 
 **Player**:
@@ -65,7 +65,7 @@ The one Organizer, on one device, who runs an Active session of a Shared club. O
 _Avoid_: Runner, controller, master device
 
 **Ended session**:
-A Session that has been ended and kept, with its Session players and Ended matches, for looking back on. A Session ended without any Ended match is not kept. On a device, only the 50 most recently ended are kept; older ones are dropped. A Shared club keeps every Ended session, and the 50 most recently ended are shown. The app labels the list of Ended sessions "Past sessions"; that is UI copy only, not a separate term.
+A Session that has been ended and kept, with its Session players and Ended matches, for looking back on. A Session ended without any Ended match is not kept. On a device, only the 50 most recently ended are kept; older ones are dropped. A Shared club keeps every Ended session, and the 50 most recently ended are shown. An Ended session can be deleted: one of a Shared club only by an Organizer, and then it is gone for everyone on the Club; any other by whoever holds the device. The app labels the list of Ended sessions "Past sessions"; that is UI copy only, not a separate term.
 _Avoid_: Past session, archived session, old session
 
 **Session summary**:

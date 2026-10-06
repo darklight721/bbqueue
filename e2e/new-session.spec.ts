@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import type { Club, Session } from "../src/domain/types.ts";
+import type { Account, Club, Role, Session } from "../src/domain/types.ts";
 import {
   makeClub,
   makeClubPlayer,
@@ -529,5 +529,73 @@ test.describe("Opened from a Club", () => {
     await expect(page.getByRole("combobox", { name: "Club" })).toBeEnabled();
     await page.getByRole("button", { name: "Back" }).click();
     await expect(page).toHaveURL(/\/$/);
+  });
+});
+
+test.describe("Clubs where the Account is a Player", () => {
+  const roy: Account = { accountId: "roy-7k3f", name: "Roy Smith" };
+  const note = (page: Page) =>
+    page.getByText(
+      "Clubs where you're a Player aren't listed: only an Organizer can start a session.",
+    );
+  const clubOptions = (page: Page) =>
+    page.getByRole("combobox", { name: "Club" }).getByRole("option");
+
+  function sharedClub(name: string, role: Role): Club {
+    return makeClub({
+      name,
+      kind: "shared",
+      players: [
+        makeClubPlayer({ name: roy.name, link: { accountId: roy.accountId, role } }),
+        makeClubPlayer({ name: "Ana" }),
+      ],
+    });
+  }
+
+  test("a Player's Shared club isn't listed, and a note under the picker says why", async ({
+    page,
+  }) => {
+    await seedStorage(page, {
+      account: roy,
+      sharedClubs: [sharedClub("Riverside", "player"), sharedClub("Mill Lane", "organizer")],
+      clubs: [makeClub({ name: "Beacon" })],
+    });
+    await page.goto("/sessions/new");
+
+    await expect(clubOptions(page)).toHaveText([
+      "Choose a club",
+      "Beacon",
+      "Mill Lane",
+      "No club (guests only)",
+    ]);
+    await expect(note(page)).toBeVisible();
+    await expect(page.getByRole("combobox", { name: "Club" })).toHaveAccessibleDescription(
+      /Clubs where you're a Player aren't listed/,
+    );
+  });
+
+  test("when every Club is a Player's, the note still shows under the picker", async ({ page }) => {
+    await seedStorage(page, { account: roy, sharedClubs: [sharedClub("Riverside", "player")] });
+    await page.goto("/sessions/new");
+
+    await expect(note(page)).toBeVisible();
+    await expect(clubOptions(page)).toHaveText(["No club (guests only)"]);
+  });
+
+  test("with only Organizer and Local clubs there is no note", async ({ page }) => {
+    await seedStorage(page, {
+      account: roy,
+      sharedClubs: [sharedClub("Mill Lane", "organizer")],
+      clubs: [makeClub({ name: "Beacon" })],
+    });
+    await page.goto("/sessions/new");
+
+    await expect(clubOptions(page)).toHaveText([
+      "Choose a club",
+      "Beacon",
+      "Mill Lane",
+      "No club (guests only)",
+    ]);
+    await expect(note(page)).toHaveCount(0);
   });
 });

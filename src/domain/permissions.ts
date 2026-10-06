@@ -38,6 +38,15 @@ export function canDeleteClub(club: Club, viewer: Viewer): boolean {
   return canEditClub(club, viewer);
 }
 
+/**
+ * Delete an Ended session. `club` is the Club it belongs to as this device knows it, or null (no
+ * Club, or a Club not on the device). No Club or a Local club: whoever holds the device. A Shared
+ * club: only an Organizer, by their Role now (not whether they hosted it).
+ */
+export function canDeleteEndedSession(club: Club | null, viewer: Viewer): boolean {
+  return !club || canEditClub(club, viewer);
+}
+
 /** The Club player row linked to `viewer`, if any. */
 export function ownRow(club: Club, viewer: Viewer): ClubPlayer | null {
   if (!viewer) return null;

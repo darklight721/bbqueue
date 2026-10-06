@@ -6,7 +6,12 @@ import { memoryLocation } from "wouter/memory-location";
 import { setBackendForTests } from "../../backend/index.ts";
 import { createInMemoryBackend } from "../../backend/inMemoryBackend.ts";
 import type { Club } from "../../domain/types.ts";
-import { resetStoreForTests, setLocalClubs } from "../../storage/store.ts";
+import {
+  resetStoreForTests,
+  setAccount,
+  setLocalClubs,
+  setSharedClubs,
+} from "../../storage/store.ts";
 import { ClubsScreen } from "./ClubsScreen.tsx";
 
 function player(id: string) {
@@ -90,5 +95,41 @@ describe("ClubsScreen", () => {
     const row = screen.getByRole("link", { name: "Riverside" });
     expect(within(row).getByText("This device only")).toHaveClass("badge");
     expect(row).toHaveAccessibleDescription("1 player This device only");
+  });
+
+  it("badges a Shared club where the Account is a Player; Organizer and Local rows get no Role badge", () => {
+    setBackendForTests(createInMemoryBackend());
+    setAccount({ accountId: "roy-7k3f", name: "Roy" });
+    setSharedClubs([
+      {
+        id: "s1",
+        name: "Riverside",
+        kind: "shared",
+        players: [
+          player("a"),
+          { ...player("roy"), link: { accountId: "roy-7k3f", role: "player" } },
+        ],
+      },
+      {
+        id: "s2",
+        name: "Beacon",
+        kind: "shared",
+        players: [{ ...player("roy"), link: { accountId: "roy-7k3f", role: "organizer" } }],
+      },
+    ]);
+    setLocalClubs([{ id: "c1", name: "Mill Lane", kind: "local", players: [] }]);
+    renderScreen();
+
+    const riverside = screen.getByRole("link", { name: "Riverside" });
+    expect(within(riverside).getByText("Player")).toHaveClass("badge");
+    expect(riverside).toHaveAccessibleDescription("2 players Player");
+
+    const beacon = screen.getByRole("link", { name: "Beacon" });
+    expect(within(beacon).queryByText("Player")).not.toBeInTheDocument();
+    expect(beacon).toHaveAccessibleDescription("1 player");
+
+    const mill = screen.getByRole("link", { name: "Mill Lane" });
+    expect(within(mill).queryByText("Player")).not.toBeInTheDocument();
+    expect(mill).toHaveAccessibleDescription("No players This device only");
   });
 });

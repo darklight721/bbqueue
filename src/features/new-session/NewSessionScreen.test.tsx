@@ -9,8 +9,10 @@ import {
   getClubs,
   getSession,
   resetStoreForTests,
+  setAccount,
   setLocalClubs,
   setSession,
+  setSharedClubs,
 } from "../../storage/store.ts";
 import { defaultSessionName } from "./newSession.ts";
 
@@ -378,5 +380,57 @@ describe("NewSessionScreen opened from a Club", () => {
     expect(screen.queryByRole("textbox", { name: "Club" })).not.toBeInTheDocument();
     await user().click(screen.getByRole("button", { name: "Back" }));
     expect(location.current()).toBe("/");
+  });
+});
+
+describe("NewSessionScreen: Clubs where the Account is a Player", () => {
+  const roy = { accountId: "roy-7k3f", name: "Roy" };
+  const NOTE = "Clubs where you're a Player aren't listed: only an Organizer can start a session.";
+  const sharedClub = (id: string, name: string, role: "organizer" | "player"): Club => ({
+    id,
+    name,
+    kind: "shared",
+    players: [{ id: `${id}-roy`, name: "Roy", skill: "intermediate", link: { ...roy, role } }],
+  });
+
+  beforeEach(() => {
+    localStorage.clear();
+    resetStoreForTests();
+    setAccount(roy);
+  });
+
+  it("leaves them out of the picker and says why, under the picker", () => {
+    setLocalClubs([beacon]);
+    setSharedClubs([
+      sharedClub("s1", "Riverside", "player"),
+      sharedClub("s2", "Mill", "organizer"),
+    ]);
+    renderScreen();
+    expect(
+      within(clubSelect())
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual(["Choose a club", "Beacon", "Mill", "No club (guests only)"]);
+    expect(screen.getByText(NOTE)).toBeInTheDocument();
+    expect(clubSelect()).toHaveAccessibleDescription(NOTE);
+  });
+
+  it("still says why when every Club is left out", () => {
+    setSharedClubs([sharedClub("s1", "Riverside", "player")]);
+    renderScreen();
+    expect(
+      within(clubSelect())
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual(["No club (guests only)"]);
+    expect(screen.getByText(NOTE)).toBeInTheDocument();
+  });
+
+  it("says nothing with only Organizer and Local clubs", () => {
+    setLocalClubs([beacon]);
+    setSharedClubs([sharedClub("s2", "Mill", "organizer")]);
+    renderScreen();
+    expect(screen.queryByText(NOTE)).not.toBeInTheDocument();
+    expect(clubSelect()).not.toHaveAccessibleDescription();
   });
 });
