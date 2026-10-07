@@ -99,14 +99,24 @@ export function MakeShared({
         type="button"
         className="btn w-full border-base-300 bg-base-100 btn-outline sm:w-auto sm:self-start"
         disabled={blocked}
+        aria-busy={busy || undefined}
         aria-describedby={blocked || problem ? reasonId : undefined}
         onClick={() => {
           setPicked(null);
           setChoosing(true);
         }}
       >
-        <UsersIcon className="size-5" />
-        {busy ? "Sharing…" : "Make shared club"}
+        {busy ? (
+          <>
+            <span className="loading loading-spinner loading-sm" aria-hidden="true" />
+            Sharing…
+          </>
+        ) : (
+          <>
+            <UsersIcon className="size-5" />
+            Make shared club
+          </>
+        )}
       </button>
       {!online ? (
         <OfflineNote id={reasonId}>You're offline. Sharing a club needs a connection.</OfflineNote>

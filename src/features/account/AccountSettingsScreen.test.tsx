@@ -198,14 +198,17 @@ describe("Account settings", () => {
     await user.click(screen.getByRole("button", { name: "Edit name" }));
     await user.type(screen.getByLabelText("Your name"), " Jr{Enter}");
 
-    expect(screen.getByRole("button", { name: "Saving…" })).toHaveAttribute(
-      "aria-disabled",
-      "true",
-    );
+    const busy = screen.getByRole("button", { name: "Saving…" });
+    expect(busy).toHaveAttribute("aria-disabled", "true");
+    expect(busy).toHaveAttribute("aria-busy", "true");
     expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
 
     await act(async () => fail());
     expect(screen.getByRole("alert")).toHaveTextContent("You're offline. Connect and try again.");
+    const normal = screen.getByRole("button", { name: "Save" });
+    expect(normal).not.toHaveAttribute("aria-disabled");
+    expect(normal).not.toHaveAttribute("aria-busy");
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
     expect(screen.getByLabelText("Your name")).toHaveValue("Roy Smith Jr");
     expect(getAccount()).toEqual(ROY);
   });

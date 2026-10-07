@@ -328,6 +328,38 @@ describe("Make shared club", () => {
     expect(makeButton()).toBeEnabled();
   });
 
+  it("shows it's busy while the server answers, and after a failure is normal again", async () => {
+    await start();
+    let fail!: (error: unknown) => void;
+    vi.spyOn(backend, "makeSharedClub").mockReturnValue(
+      new Promise((_, reject) => (fail = reject)),
+    );
+    vi.spyOn(backend, "deleteSharedClub").mockResolvedValue(undefined);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    renderClub();
+
+    await userEvent.click(makeButton());
+    await userEvent.click(screen.getByRole("radio", { name: "Roy S." }));
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await userEvent.click(
+      within(screen.getByRole("dialog", { name: "Make Garage a shared club?" })).getByRole(
+        "button",
+        { name: "Make shared club" },
+      ),
+    );
+
+    const busy = screen.getByRole("button", { name: "Sharing…" });
+    expect(busy).toBeDisabled();
+    expect(busy).toHaveAttribute("aria-busy", "true");
+    expect(busy.querySelector(".loading-spinner")).toHaveAttribute("aria-hidden", "true");
+
+    await act(async () => fail(new BackendError("failed")));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't make this club shared.");
+    expect(makeButton()).toBeEnabled();
+    expect(makeButton()).not.toHaveAttribute("aria-busy");
+  });
+
   it("shows a Club once, even while the server already lists it", async () => {
     await start();
     // The server has the Club (a conversion in progress); the device still has the Local one.

@@ -118,6 +118,11 @@ function ClubEditor({ club }: { club: Club | null }) {
   const [problem, setProblem] = useState<string | null>(null);
   const [roleMessage, setRoleMessage] = useState<{ rowId: string; text: string } | null>(null);
   const [confirmLeave, setConfirmLeave] = useState(false);
+  /** Delete club / Leave club confirmed and waiting for the server. */
+  const [deleting, setDeleting] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  /** An action that navigates on success is running: Back and links stay put. */
+  const pending = saving || deleting || leaving;
   /** Accounts found by Account ID (null: none has it), keyed by lowercase Account ID. */
   const [lookups, setLookups] = useState<Lookups>({});
   /** Rows whose name field was left: a half-typed `@Account ID` there is now worth a message. */
@@ -130,7 +135,7 @@ function ClubEditor({ club }: { club: Club | null }) {
     if (resolved !== form.rows) setForm({ ...form, rows: resolved });
   }
 
-  const formRef = useRef<HTMLDivElement>(null);
+  const formRef = useRef<HTMLFieldSetElement>(null);
   const nameId = useId();
   const nameErrorId = useId();
   const playersHeadingId = useId();
@@ -356,30 +361,37 @@ function ClubEditor({ club }: { club: Club | null }) {
   }
 
   async function deleteClub() {
-    if (!club) return;
-    setConfirmDelete(false);
+    if (!club || deleting) return;
+    setDeleting(true);
+    setProblem(null);
     try {
       await removeClub(club);
       navigate("/clubs", { replace: true });
     } catch (error) {
       console.error("Failed to delete Club", error);
       setProblem(clubErrorMessage(error));
+      setConfirmDelete(false);
+      setDeleting(false);
     }
   }
 
   async function leave() {
-    if (!club) return;
-    setConfirmLeave(false);
+    if (!club || leaving) return;
+    setLeaving(true);
+    setProblem(null);
     try {
       await leaveClub(club);
       navigate("/clubs", { replace: true });
     } catch (error) {
       console.error("Failed to leave Club", error);
       setProblem(clubErrorMessage(error));
+      setConfirmLeave(false);
+      setLeaving(false);
     }
   }
 
   function guardBack(): boolean | Promise<boolean> {
+    if (pending) return false;
     if (!dirty) return true;
     return new Promise<boolean>((resolve) => setDiscardResolver(() => resolve));
   }
@@ -392,6 +404,10 @@ function ClubEditor({ club }: { club: Club | null }) {
   /** Click handler for a link off this screen: with unsaved changes, confirm like Back first. */
   function leaveVia(href: string) {
     return async (event: MouseEvent<HTMLAnchorElement>) => {
+      if (pending) {
+        event.preventDefault();
+        return;
+      }
       if (!dirty) return;
       event.preventDefault();
       if (await guardBack()) navigate(href);
@@ -426,7 +442,7 @@ function ClubEditor({ club }: { club: Club | null }) {
             <button
               type="button"
               className="btn gap-1.5 border-base-300 px-3 whitespace-nowrap btn-lg btn-outline"
-              disabled={addBlocked}
+              disabled={addBlocked || saving}
               onClick={addRow}
             >
               <PlusIcon className="size-5" />
@@ -436,16 +452,24 @@ function ClubEditor({ club }: { club: Club | null }) {
               type="button"
               className="btn btn-lg btn-primary"
               disabled={saving}
+              aria-busy={saving || undefined}
               onClick={() => void save()}
             >
-              Save
+              {saving ? (
+                <>
+                  <span className="loading loading-spinner loading-sm" aria-hidden="true" />
+                  Saving…
+                </>
+              ) : (
+                "Save"
+              )}
             </button>
           </div>
         </div>
       }
     >
-      {/* Not a <form>: Enter in a field shouldn't trigger Save. */}
-      <div ref={formRef} className="flex flex-col gap-8">
+      {/* Not a <form>: Enter in a field shouldn't trigger Save. Fields are off while saving. */}
+      <fieldset ref={formRef} disabled={saving} className="flex min-w-0 flex-col gap-8">
         <div className="flex flex-col gap-1">
           <label htmlFor={nameId} className="text-sm font-semibold text-base-content/80">
             Club name
@@ -630,7 +654,7 @@ function ClubEditor({ club }: { club: Club | null }) {
             ) : null}
           </DangerZone>
         ) : null}
-      </div>
+      </fieldset>
 
       <ConfirmDialog
         open={confirmDelete}
@@ -638,6 +662,8 @@ function ClubEditor({ club }: { club: Club | null }) {
         message="This can't be undone."
         confirmLabel="Delete"
         tone="danger"
+        busy={deleting}
+        busyLabel="Deleting…"
         onConfirm={() => void deleteClub()}
         onCancel={() => setConfirmDelete(false)}
       />
@@ -647,6 +673,8 @@ function ClubEditor({ club }: { club: Club | null }) {
         message={LEAVE_MESSAGE}
         confirmLabel="Leave club"
         tone="danger"
+        busy={leaving}
+        busyLabel="Leaving…"
         onConfirm={() => void leave()}
         onCancel={() => setConfirmLeave(false)}
       />

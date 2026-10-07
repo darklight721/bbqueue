@@ -199,9 +199,17 @@ export function DeleteAccount({ account }: { account: Account }) {
             type="button"
             className="btn btn-lg btn-error"
             disabled={busy}
+            aria-busy={busy || undefined}
             onClick={() => void run()}
           >
-            {busy ? "Deleting…" : "Delete Account"}
+            {busy ? (
+              <>
+                <span className="loading loading-spinner loading-sm" aria-hidden="true" />
+                Deleting…
+              </>
+            ) : (
+              "Delete Account"
+            )}
           </button>
         </div>
       </Modal>

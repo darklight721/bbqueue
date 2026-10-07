@@ -267,6 +267,39 @@ describe("Delete Account", () => {
     expect(getSharedClubs()).toHaveLength(1);
   });
 
+  it("shows it's busy while the server answers, and on failure goes back to normal with the error", async () => {
+    await setup();
+    await roy.createSharedClub({ id: "solo", name: "Solo", players: [] });
+    sync();
+    renderAt("/account");
+    await vi.waitFor(() => expect(getSharedClubs()).toHaveLength(1));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    let fail = () => {};
+    vi.spyOn(roy, "deleteAccount").mockImplementation(
+      () =>
+        new Promise<void>((_, reject) => {
+          fail = () => reject(new BackendError("failed"));
+        }),
+    );
+
+    await confirmDelete();
+
+    const dialog = screen.getByRole("dialog", { name: "Delete your Account?" });
+    const busy = within(dialog).getByRole("button", { name: "Deleting…" });
+    expect(busy).toBeDisabled();
+    expect(busy).toHaveAttribute("aria-busy", "true");
+    expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeDisabled();
+
+    await act(async () => fail());
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Couldn't delete your Account. Nothing on this device changed. Try again.",
+    );
+    expect(screen.queryByRole("button", { name: "Deleting…" })).not.toBeInTheDocument();
+    expect(deleteButton()).toBeEnabled();
+    expect(deleteButton()).not.toHaveAttribute("aria-busy");
+  });
+
   it("keeps a Session this Account hosted in the device's empty Session slot, and leaves it on the server for somebody to take over", async () => {
     await setup();
     await roy.createSharedClub({

@@ -1,6 +1,6 @@
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { Router } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
 import { App } from "../../app/App.tsx";
@@ -416,6 +416,36 @@ describe("New club while signed in", () => {
   });
 });
 
+describe("Leave club as one of several Organizers", () => {
+  it("shows it's busy while the server answers and keeps Back and the form still", async () => {
+    await roy.linkClubPlayer("c1", CAT.id, anaAccount.accountId, "organizer");
+    signInAs(roy, royAccount);
+    let fail!: (error: unknown) => void;
+    vi.spyOn(roy, "leaveClub").mockReturnValue(new Promise((_, reject) => (fail = reject)));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const user = userEvent.setup();
+    const location = renderAt("/clubs/c1");
+
+    await user.click(await screen.findByRole("button", { name: "Leave club" }));
+    const dialog = screen.getByRole("dialog", { name: "Leave Tuesday?" });
+    await user.click(within(dialog).getByRole("button", { name: "Leave club" }));
+
+    expect(within(dialog).getByRole("button", { name: "Leaving…" })).toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
+    expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Back", hidden: true }));
+    expect(location.current()).toBe("/clubs/c1");
+
+    await act(async () => fail(new BackendError("failed")));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Couldn't save your changes. Try again.");
+    expect(screen.getByRole("button", { name: "Leave club" })).toBeEnabled();
+  });
+});
+
 describe("Club screen for a Player", () => {
   beforeEach(async () => {
     await roy.linkClubPlayer("c1", CAT.id, anaAccount.accountId, "player");
@@ -458,6 +488,35 @@ describe("Club screen for a Player", () => {
     expect(getClubs()).toEqual([]);
     const stays = server.clubs.find((c) => c.id === "c1")?.players.find((p) => p.id === CAT.id);
     expect(stays).toEqual(CAT);
+  });
+
+  it("Leave club shows it's busy while the server answers, then is normal again after a failure", async () => {
+    let fail!: (error: unknown) => void;
+    const leave = vi
+      .spyOn(ana, "leaveClub")
+      .mockReturnValue(new Promise((_, reject) => (fail = reject)));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const user = userEvent.setup();
+    const location = renderAt("/clubs/c1");
+
+    await user.click(screen.getByRole("button", { name: "Leave club" }));
+    const dialog = screen.getByRole("dialog", { name: "Leave Tuesday?" });
+    await user.click(within(dialog).getByRole("button", { name: "Leave club" }));
+
+    const busy = within(dialog).getByRole("button", { name: "Leaving…" });
+    expect(busy).toHaveAttribute("aria-busy", "true");
+    expect(busy).toHaveAttribute("aria-disabled", "true");
+    expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeDisabled();
+    await user.click(busy);
+    expect(leave).toHaveBeenCalledOnce();
+    expect(screen.getByRole("dialog", { name: "Leave Tuesday?" })).toBeInTheDocument();
+
+    await act(async () => fail(new BackendError("failed")));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Couldn't save your changes. Try again.");
+    expect(location.current()).toBe("/clubs/c1");
+    expect(screen.getByRole("button", { name: "Leave club" })).toBeEnabled();
   });
 
   it("turns Leave club off while offline, with the reason", () => {

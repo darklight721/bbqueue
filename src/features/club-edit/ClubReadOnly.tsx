@@ -25,6 +25,7 @@ export function ClubReadOnly({ club }: { club: Club }) {
   const online = useOnline();
   const sessionCount = useEndedSessions().filter((ended) => ended.clubId === club.id).length;
   const [confirmLeave, setConfirmLeave] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const headingId = useId();
 
@@ -38,18 +39,22 @@ export function ClubReadOnly({ club }: { club: Club }) {
   );
 
   async function leave() {
-    setConfirmLeave(false);
+    if (leaving) return;
+    setLeaving(true);
+    setProblem(null);
     try {
       await leaveClub(club);
       navigate("/clubs", { replace: true });
     } catch (error) {
       console.error("Failed to leave Club", error);
       setProblem(clubErrorMessage(error));
+      setConfirmLeave(false);
+      setLeaving(false);
     }
   }
 
   return (
-    <Screen title={club.name} subtitle="You're a Player" backTo="/clubs">
+    <Screen title={club.name} subtitle="You're a Player" backTo="/clubs" onBack={() => !leaving}>
       <div className="flex flex-col gap-8">
         {sessionCount > 0 ? (
           <nav aria-label="Club sessions">
@@ -133,6 +138,8 @@ export function ClubReadOnly({ club }: { club: Club }) {
         message={LEAVE_MESSAGE}
         confirmLabel="Leave club"
         tone="danger"
+        busy={leaving}
+        busyLabel="Leaving…"
         onConfirm={() => void leave()}
         onCancel={() => setConfirmLeave(false)}
       />

@@ -1,12 +1,14 @@
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { Router } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
 import { App } from "../../app/App.tsx";
+import { BackendError } from "../../backend/backend.ts";
 import { createInMemoryBackend, type InMemoryBackend } from "../../backend/inMemoryBackend.ts";
 import { setBackendForTests, startAccountSync, startSharedClubSync } from "../../backend/index.ts";
 import { createRng, createSession } from "../../domain/engine/index.ts";
+import type { ActiveSession } from "../../domain/types.ts";
 import {
   applyActiveSessionsReport,
   getSession,
@@ -40,6 +42,7 @@ beforeEach(async () => {
 afterEach(() => {
   for (const stop of stops.splice(0)) stop();
   setBackendForTests(null);
+  vi.restoreAllMocks();
 });
 
 describe("New session with a Shared club", () => {
@@ -109,6 +112,35 @@ describe("New session with a Shared club: starting", () => {
     // Roy's own roster row is linked to his Account, and the Session player keeps that link.
     expect(players.find((p) => p.name === "Roy")?.accountId).toBe(hosted[0]?.hostAccountId);
     expect(players.find((p) => p.name === "Ana")).not.toHaveProperty("accountId");
+  });
+
+  it("shows it's busy while the server answers, and on failure goes back to normal with the error", async () => {
+    await chooseRiversideWithFour();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    let fail = () => {};
+    vi.spyOn(backend, "startSharedSession").mockImplementation(
+      () =>
+        new Promise<ActiveSession>((_, reject) => {
+          fail = () => reject(new BackendError("failed"));
+        }),
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Start session" }));
+
+    const busy = screen.getByRole("button", { name: "Starting…" });
+    expect(busy).toBeDisabled();
+    expect(busy).toHaveAttribute("aria-busy", "true");
+    // Back does nothing until the server has answered.
+    await userEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(screen.getByRole("heading", { name: "New session" })).toBeInTheDocument();
+
+    await act(async () => fail());
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Couldn't start the session.");
+    const normal = screen.getByRole("button", { name: "Start session" });
+    expect(normal).toBeEnabled();
+    expect(normal).not.toHaveAttribute("aria-busy");
+    expect(screen.queryByRole("button", { name: "Starting…" })).not.toBeInTheDocument();
   });
 
   it("needs a connection: the Start button is off and says why", async () => {

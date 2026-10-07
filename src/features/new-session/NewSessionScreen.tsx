@@ -227,6 +227,8 @@ export function NewSessionScreen() {
     <Screen
       title="New session"
       backTo={lockedClubId ? `/clubs/${encodeURIComponent(lockedClubId)}` : "/"}
+      // Starting navigates to the Session on success, so Back waits for the server's answer.
+      onBack={() => !starting}
       footer={
         <div className="flex items-center gap-3">
           <div className="min-w-0 flex-1">
@@ -264,9 +266,17 @@ export function NewSessionScreen() {
               type="button"
               className="btn btn-lg btn-primary shrink-0"
               disabled={!canStart || starting}
+              aria-busy={starting || undefined}
               onClick={requestStart}
             >
-              Start session
+              {starting ? (
+                <>
+                  <span className="loading loading-spinner loading-sm" aria-hidden="true" />
+                  Starting…
+                </>
+              ) : (
+                "Start session"
+              )}
             </button>
           )}
         </div>

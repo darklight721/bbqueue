@@ -1,9 +1,10 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { Router } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
 import { App } from "../../app/App.tsx";
+import { BackendError } from "../../backend/backend.ts";
 import { createInMemoryBackend, type InMemoryBackend } from "../../backend/inMemoryBackend.ts";
 import { setBackendForTests, startAccountSync, startSharedClubSync } from "../../backend/index.ts";
 import type { Club } from "../../domain/types.ts";
@@ -238,6 +239,88 @@ describe("Club screens with Accounts", () => {
       await user.click(screen.getByRole("button", { name: "Delete" }));
 
       expect(getClubs()).toEqual([]);
+    });
+
+    describe("while the server answers", () => {
+      beforeEach(() => {
+        vi.spyOn(console, "error").mockImplementation(() => {});
+      });
+      afterEach(() => vi.restoreAllMocks());
+
+      it("Save shows it's busy, locks the form and Back, and after a failure is normal again", async () => {
+        let fail!: (error: unknown) => void;
+        vi.spyOn(backend, "renameSharedClub").mockReturnValue(
+          new Promise((_, reject) => (fail = reject)),
+        );
+        const user = userEvent.setup();
+        renderAt("/clubs/c1");
+
+        await user.clear(screen.getByRole("textbox", { name: "Club name" }));
+        await user.type(screen.getByRole("textbox", { name: "Club name" }), "Friday");
+        await user.click(screen.getByRole("button", { name: "Save" }));
+
+        const busy = screen.getByRole("button", { name: "Saving…" });
+        expect(busy).toBeDisabled();
+        expect(busy).toHaveAttribute("aria-busy", "true");
+        expect(busy.querySelector(".loading-spinner")).toHaveAttribute("aria-hidden", "true");
+        expect(screen.getByRole("button", { name: "Add player" })).toBeDisabled();
+        expect(screen.getByRole("textbox", { name: "Club name" })).toBeDisabled();
+        for (const input of nameInputs()) expect(input).toBeDisabled();
+
+        // Back does nothing, not even the discard question.
+        await user.click(screen.getByRole("button", { name: "Back" }));
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+        expect(screen.getByRole("heading", { level: 1, name: "Edit club" })).toBeInTheDocument();
+
+        await act(async () => fail(new BackendError("failed")));
+
+        expect(screen.getByRole("alert")).toHaveTextContent(
+          "Couldn't save your changes. Try again.",
+        );
+        const save = screen.getByRole("button", { name: "Save" });
+        expect(save).toBeEnabled();
+        expect(save).not.toHaveAttribute("aria-busy");
+        expect(screen.getByRole("button", { name: "Add player" })).toBeEnabled();
+        expect(screen.getByRole("textbox", { name: "Club name" })).toBeEnabled();
+      });
+
+      it("Delete club keeps its dialog open and busy, then closes it with the error on failure", async () => {
+        let fail!: (error: unknown) => void;
+        const remove = vi
+          .spyOn(backend, "deleteSharedClub")
+          .mockReturnValue(new Promise((_, reject) => (fail = reject)));
+        const user = userEvent.setup();
+        renderAt("/clubs/c1");
+
+        await user.click(screen.getByRole("button", { name: "Delete club" }));
+        const dialog = screen.getByRole("dialog", { name: "Delete Tuesday?" });
+        await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+
+        const busy = within(dialog).getByRole("button", { name: "Deleting…" });
+        expect(busy).toHaveAttribute("aria-busy", "true");
+        expect(busy).toHaveAttribute("aria-disabled", "true");
+        expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeDisabled();
+        await user.click(busy); // no second delete
+        await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+        expect(remove).toHaveBeenCalledOnce();
+        expect(screen.getByRole("dialog", { name: "Delete Tuesday?" })).toBeInTheDocument();
+
+        // Back does nothing while it runs.
+        fireEvent.click(screen.getByRole("button", { name: "Back", hidden: true }));
+
+        await act(async () => fail(new BackendError("failed")));
+
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+        expect(screen.getByRole("alert")).toHaveTextContent(
+          "Couldn't save your changes. Try again.",
+        );
+        expect(screen.getByRole("heading", { level: 1, name: "Edit club" })).toBeInTheDocument();
+        expect(getClubs()).toHaveLength(1);
+
+        // The next try starts from the normal dialog.
+        await user.click(screen.getByRole("button", { name: "Delete club" }));
+        expect(screen.getByRole("button", { name: "Delete" })).toBeEnabled();
+      });
     });
   });
 });

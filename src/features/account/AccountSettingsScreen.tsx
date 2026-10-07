@@ -303,6 +303,7 @@ function NameSection({
               type="submit"
               className={`btn flex-1 border-0 bg-volt text-[#14201a] shadow-md hover:bg-volt/90 ${saving ? "btn-disabled" : ""}`}
               aria-disabled={saving || undefined}
+              aria-busy={saving || undefined}
             >
               {saving ? (
                 <>

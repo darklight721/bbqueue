@@ -60,9 +60,17 @@ export function TakeOver({ clubId, hostName }: { clubId: string; hostName: strin
           type="button"
           className="btn btn-sm h-9 shrink-0 border-base-300 bg-base-100 btn-outline"
           disabled={offline || busy}
+          aria-busy={busy || undefined}
           onClick={() => setConfirming(true)}
         >
-          {busy ? "Taking over…" : "Take over"}
+          {busy ? (
+            <>
+              <span className="loading loading-spinner loading-sm" aria-hidden="true" />
+              Taking over…
+            </>
+          ) : (
+            "Take over"
+          )}
         </button>
       </div>
       {problem ? (

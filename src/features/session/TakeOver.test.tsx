@@ -1,9 +1,10 @@
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { Router } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
 import { App } from "../../app/App.tsx";
+import { BackendError } from "../../backend/backend.ts";
 import {
   createInMemoryBackend,
   createInMemoryServer,
@@ -96,6 +97,7 @@ beforeEach(() => {
 afterEach(() => {
   for (const stop of stops.splice(0)) stop();
   setBackendForTests(null);
+  vi.restoreAllMocks();
 });
 
 describe("Take over", () => {
@@ -142,6 +144,35 @@ describe("Take over", () => {
     expect(screen.queryByText(/Watching\./)).not.toBeInTheDocument();
     expect(getSharedSessions()[0]).toMatchObject({ hostName: "Roy" });
     expect((await ana.getActiveSession("c1"))?.hostName).toBe("Roy");
+  });
+
+  it("shows it's busy while the server answers, and on failure goes back to normal with the error", async () => {
+    await setup("roy");
+    renderSession();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    let fail = () => {};
+    vi.spyOn(roy, "takeOverSession").mockImplementation(
+      () =>
+        new Promise<ActiveSession>((_, reject) => {
+          fail = () => reject(new BackendError("failed"));
+        }),
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Take over" }));
+    await userEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Take over" }),
+    );
+
+    const busy = screen.getByRole("button", { name: "Taking over…" });
+    expect(busy).toBeDisabled();
+    expect(busy).toHaveAttribute("aria-busy", "true");
+
+    await act(async () => fail());
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Couldn't take over. Please try again.");
+    const normal = screen.getByRole("button", { name: "Take over" });
+    expect(normal).toBeEnabled();
+    expect(normal).not.toHaveAttribute("aria-busy");
   });
 
   it("needs a connection: the button is off and says why", async () => {
