@@ -108,6 +108,14 @@ The points each Team reached in an Ended match, checked against that Match's Tar
 Every Session player who played at least one Ended match in a Session, in place order. Ranked by most wins, then fewest losses, then most Ended matches played. Players level on all three share a place. Only Ended matches with a Score produce a win or a loss. Session players who never played are not in the Standings.
 _Avoid_: Rankings, leaderboard, table
 
+**Win rate**:
+Wins divided by wins plus losses, over some set of Ended matches. Ended matches without a Score count as played but not toward the Win rate. With no win or loss there is no Win rate.
+_Avoid_: Win ratio, win percentage
+
+**Play record**:
+What one person has played across Ended sessions: their Ended matches, wins, losses, Win rate and Partners. Either a Club player's, within one Club, or an Account's own, across every Club player linked to it. Guests have no Play record. The app labels it "Stats"; that is UI copy only.
+_Avoid_: Player stats, profile, career, history
+
 **Top winners**:
 The Session players in 1st to 3rd place in a Session's Standings who have at least one win.
 _Avoid_: Leaderboard, champions

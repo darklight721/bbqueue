@@ -247,7 +247,20 @@ function endedPlayer(value: unknown): EndedSessionPlayer | null {
   if (!isRec(value)) return null;
   const name = text(value.name, MAX_NAME_LENGTH);
   if (!isId(value.id) || name === null || !isSkill(value.skill)) return null;
-  return { id: value.id, name, skill: value.skill };
+  // Older Ended sessions were saved without it: read as null.
+  if (
+    value.clubPlayerId !== undefined &&
+    value.clubPlayerId !== null &&
+    !isId(value.clubPlayerId)
+  ) {
+    return null;
+  }
+  return {
+    id: value.id,
+    name,
+    skill: value.skill,
+    clubPlayerId: (value.clubPlayerId as string | null | undefined) ?? null,
+  };
 }
 
 function endedMatch(pointSystem: PointSystem): (value: unknown) => EndedSessionMatch | null {

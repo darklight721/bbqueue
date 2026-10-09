@@ -46,7 +46,7 @@ function endedSession(id: string, endedAt: number): EndedSession {
     pointSystem: 21,
     startedAt: endedAt - 1000,
     endedAt,
-    players: [{ id: "p1", name: "Ann", skill: "advanced" }],
+    players: [{ id: "p1", name: "Ann", skill: "advanced", clubPlayerId: null }],
     matches: [
       {
         number: 1,
@@ -177,6 +177,23 @@ describe("ended sessions", () => {
       ["named", "Riverside"],
       ["old", null],
     ]);
+  });
+
+  it("keeps the Club player id on the device, and reads older records without it as null", () => {
+    const withId = {
+      ...endedSession("new", 2000),
+      players: [{ id: "p1", name: "Ann", skill: "advanced" as const, clubPlayerId: "cp-ann" }],
+    };
+    saveEndedSession([], withId);
+    expect(loadEndedSessions()[0]?.players[0]?.clubPlayerId).toBe("cp-ann");
+
+    const old = endedSession("old", 1000);
+    const legacy = {
+      ...old,
+      players: old.players.map(({ clubPlayerId: _omitted, ...rest }) => rest),
+    };
+    localStorage.setItem(ENDED_KEY, JSON.stringify({ version: 1, data: [legacy] }));
+    expect(loadEndedSessions()[0]?.players.map((p) => p.clubPlayerId)).toEqual([null]);
   });
 
   it("replaces an Ended session with the same id", () => {

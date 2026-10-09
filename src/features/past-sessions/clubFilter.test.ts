@@ -133,6 +133,16 @@ describe("session origin", () => {
     expect(parseOrigin("")).toEqual({ kind: "all" });
   });
 
+  it("round-trips a Stats origin", () => {
+    const player = { kind: "playerStats", clubId: "c1", clubPlayerId: "p 1" } as const;
+    expect(detailsPath("s1", player)).toBe("/sessions/s1?statsClub=c1&statsPlayer=p+1");
+    expect(parseOrigin("statsClub=c1&statsPlayer=p+1")).toEqual(player);
+    expect(originBackPath(player)).toBe("/clubs/c1/players/p%201/stats");
+    expect(detailsPath("s1", { kind: "accountStats" })).toBe("/sessions/s1?accountStats=1");
+    expect(parseOrigin("?accountStats=1")).toEqual({ kind: "accountStats" });
+    expect(originBackPath({ kind: "accountStats" })).toBe("/account/stats");
+  });
+
   it("only ever goes back to a known list path", () => {
     expect(originBackPath({ kind: "all" })).toBe("/sessions");
     expect(originBackPath({ kind: "filter", value: "c1" })).toBe("/sessions?club=c1");

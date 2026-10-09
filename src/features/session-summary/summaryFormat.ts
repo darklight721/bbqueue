@@ -1,5 +1,15 @@
 import type { CSSProperties } from "react";
 
+/**
+ * Gold / silver / bronze discs for Top winners; the place number is always printed on them
+ * too. Other places get a plain base-200 disc.
+ */
+export const MEDAL: Record<number, { bg: string; ring: string }> = {
+  1: { bg: "#e9b949", ring: "#b8871c" },
+  2: { bg: "#c4ccd3", ring: "#8b959e" },
+  3: { bg: "#d39a6a", ring: "#9c6436" },
+};
+
 /** Hours rounded to the nearest half hour: "2.5 h", "1 h"; never less than "0.5 h". */
 export function formatSessionDuration(ms: number): string {
   const halfHours = Number.isFinite(ms) ? Math.round(ms / 1_800_000) : 0;

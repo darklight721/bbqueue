@@ -37,7 +37,12 @@ test.describe("Totals", () => {
       Array.from({ length: 7 }, () => ({ a: ["Ana", "Ben"], b: ["Cat", "Dan"], score: null })),
       { name: "Friday smash" },
     );
-    ended.players = names.map((name) => ({ id: name, name, skill: "intermediate" }));
+    ended.players = names.map((name) => ({
+      id: name,
+      name,
+      skill: "intermediate",
+      clubPlayerId: null,
+    }));
     await openSummary(page, ended);
 
     // The name is upper-cased by CSS only; the text keeps its case.

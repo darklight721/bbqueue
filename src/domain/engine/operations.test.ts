@@ -572,7 +572,11 @@ describe("endSession", () => {
     expect(ended.players).toHaveLength(4);
     const ids = new Set(current.matches[0]!.teams.flat());
     expect(new Set(ended.players.map((p) => p.id))).toEqual(ids);
-    expect(Object.keys(ended.players[0]!).sort()).toEqual(["id", "name", "skill"]);
+    expect(Object.keys(ended.players[0]!).sort()).toEqual(["clubPlayerId", "id", "name", "skill"]);
+    // The Club player id is kept (Club player → id, Guest → null); the Account ID is not.
+    for (const kept of ended.players) {
+      expect(kept.clubPlayerId).toBe(current.players.find((p) => p.id === kept.id)!.clubPlayerId);
+    }
     expect(Object.keys(ended.matches[0]!).sort()).toEqual([
       "courtNumber",
       "endedAt",

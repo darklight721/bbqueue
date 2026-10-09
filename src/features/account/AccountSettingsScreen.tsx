@@ -8,11 +8,14 @@ import {
   type ReactNode,
 } from "react";
 import { flushSync } from "react-dom";
+import { Link } from "wouter";
 import { BackendError, type Backend, type BackendErrorCode } from "../../backend/backend.ts";
 import { useOnline } from "../../backend/useOnline.ts";
 import { Avatar } from "../../components/Avatar.tsx";
 import {
+  ChartIcon,
   CheckIcon,
+  ChevronRightIcon,
   CloseIcon,
   CopyIcon,
   OfflineIcon,
@@ -31,6 +34,7 @@ import {
   useInstallHintDismissed,
 } from "../../storage/store.ts";
 import { CourtLines } from "../home/CourtLines.tsx";
+import { ACCOUNT_STATS_PATH } from "../play-record/paths.ts";
 import { CreateAccountForm } from "./CreateAccountForm.tsx";
 import { DeleteAccount } from "./DeleteAccount.tsx";
 import { currentBrowser, shouldOfferInstallHint } from "./installHint.ts";
@@ -94,6 +98,8 @@ function AccountDetails({
         {/* A court line between the two halves of the card. */}
         <hr className="my-5 border-0 border-t-2 border-dashed border-line/30" />
         <AccountIdSection accountId={account.accountId} announce={announce} />
+        <hr className="mt-5 mb-2 border-0 border-t-2 border-dashed border-line/30" />
+        <StatsRow />
       </CourtCard>
 
       <p className="animate-rise -mt-2 px-1 leading-snug text-base-content/75" style={delay(1)}>
@@ -408,6 +414,33 @@ function AccountIdSection({ accountId, announce }: { accountId: string; announce
         </p>
       ) : null}
     </div>
+  );
+}
+
+/** "Your stats": the last line on the card, opening the Account's Stats. */
+function StatsRow() {
+  const labelId = useId();
+  const detailId = useId();
+  return (
+    <Link
+      href={ACCOUNT_STATS_PATH}
+      aria-labelledby={labelId}
+      aria-describedby={detailId}
+      className="group -mx-2 -mb-2 flex min-h-16 items-center gap-3 rounded-field px-2 py-2 text-line transition-colors hover:bg-line/10 active:bg-line/15"
+    >
+      <span className="grid size-11 shrink-0 place-items-center rounded-full bg-line/15 shadow-[inset_0_0_0_1.5px_rgb(247_249_244/0.35)]">
+        <ChartIcon className="size-6" />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span id={labelId} className="font-display text-2xl leading-tight font-bold uppercase">
+          Your stats
+        </span>
+        <span id={detailId} className="truncate text-sm text-line/75">
+          Wins, Win rate and Partners
+        </span>
+      </span>
+      <ChevronRightIcon className="size-6 shrink-0 opacity-70 transition-transform group-hover:translate-x-0.5" />
+    </Link>
   );
 }
 

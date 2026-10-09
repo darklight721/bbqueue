@@ -23,7 +23,12 @@ function ended(
     pointSystem: 21,
     startedAt: endedAt - 3_600_000,
     endedAt,
-    players: ["a", "b", "c", "d"].map((p) => ({ id: p, name: p.toUpperCase(), skill: "beginner" })),
+    players: ["a", "b", "c", "d"].map((p) => ({
+      id: p,
+      name: p.toUpperCase(),
+      skill: "beginner",
+      clubPlayerId: null,
+    })),
     matches: [1, 2].map((number) => ({
       number,
       courtNumber: 1,
@@ -106,7 +111,7 @@ describe("past sessions routes", () => {
   it("shows the details: when, totals, Standings and matches oldest first", async () => {
     const session = ended("old", "Old night", 1_000_000_000_000);
     // E is in the Session but never played: left out of the Standings.
-    session.players.push({ id: "e", name: "E", skill: "beginner" });
+    session.players.push({ id: "e", name: "E", skill: "beginner", clubPlayerId: null });
     addEndedSession(session);
     const location = renderAt("/sessions/old");
     expect(screen.getByRole("heading", { level: 1, name: "Old night" })).toBeInTheDocument();

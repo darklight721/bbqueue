@@ -28,7 +28,12 @@ export function toEndedSession(session: Session, endedAt: number): EndedSession 
     endedAt,
     players: session.players
       .filter((player) => played.has(player.id))
-      .map((player) => ({ id: player.id, name: player.name, skill: player.skill })),
+      .map((player) => ({
+        id: player.id,
+        name: player.name,
+        skill: player.skill,
+        clubPlayerId: player.clubPlayerId,
+      })),
     matches: ended.map((match, index) => ({
       number: match.number ?? index + 1,
       courtNumber: match.courtNumber,

@@ -33,6 +33,8 @@ export function rankStandings(ended: EndedSession): StandingsEntry[] {
   const ranked = ended.players
     .filter((player) => (played.get(player.id) ?? 0) >= 1)
     .map((player) => ({
+      playerId: player.id,
+      clubPlayerId: player.clubPlayerId ?? null,
       name: player.name,
       skill: player.skill,
       wins: wins.get(player.id) ?? 0,

@@ -238,7 +238,7 @@ function SessionRow({
 }
 
 /** Calendar-style day block in court green; adds the year when it isn't this year. */
-function DateTile({ at }: { at: number }) {
+export function DateTile({ at }: { at: number }) {
   const date = new Date(at);
   const otherYear = date.getFullYear() !== new Date().getFullYear();
   return (

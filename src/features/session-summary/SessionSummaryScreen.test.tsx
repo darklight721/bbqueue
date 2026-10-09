@@ -53,6 +53,7 @@ function endedSession(
       id,
       name: id[0]!.toUpperCase() + id.slice(1),
       skill,
+      clubPlayerId: null,
     })),
     matches,
     ...overrides,

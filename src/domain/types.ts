@@ -166,6 +166,10 @@ export interface SessionRequest {
 /** One row of an Ended session's Standings: a player who played at least one match, with their place. */
 export interface StandingsEntry {
   place: number;
+  /** The Session player's id within the Ended session. */
+  playerId: string;
+  /** The Club player this row is, or null (Guest, no Club, or an Ended session from before the id was kept). */
+  clubPlayerId: string | null;
   name: string;
   skill: SkillLevel;
   wins: number;
@@ -181,6 +185,11 @@ export interface EndedSessionPlayer {
   id: string;
   name: string;
   skill: SkillLevel;
+  /**
+   * The Club player this Session player was copied from; null for Guests not saved to the Club
+   * and for Sessions with no Club. Ended sessions kept before this was added lack it and read as null.
+   */
+  clubPlayerId: string | null;
 }
 
 /** An Ended match kept in an Ended session (ADR-0005). */

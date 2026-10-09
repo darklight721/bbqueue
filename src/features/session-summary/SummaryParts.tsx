@@ -1,17 +1,9 @@
 import { useId, useState, type CSSProperties, type ReactNode } from "react";
+import { Link } from "wouter";
+import { ChevronRightIcon } from "../../components/icons.tsx";
 import { SkillBadge } from "../../components/SkillBadge.tsx";
 import type { SessionSummary, StandingsEntry, TopWinner } from "../../domain/types.ts";
-import { countLabel, formatSessionDuration, ordinal, rise } from "./summaryFormat.ts";
-
-/**
- * Gold / silver / bronze discs for Top winners; the place number is always printed on them
- * too. Other places get a plain base-200 disc.
- */
-const MEDAL: Record<number, { bg: string; ring: string }> = {
-  1: { bg: "#e9b949", ring: "#b8871c" },
-  2: { bg: "#c4ccd3", ring: "#8b959e" },
-  3: { bg: "#d39a6a", ring: "#9c6436" },
-};
+import { countLabel, formatSessionDuration, MEDAL, ordinal, rise } from "./summaryFormat.ts";
 
 /**
  * Matches, Players, Courts and Duration as number tiles in a 2×2 grid at every width
@@ -122,14 +114,21 @@ export function TopWinners({ winners }: { winners: readonly TopWinner[] }) {
 /**
  * Every player who played, in place order (Ended session details). Open by default.
  * Only Top winners (3rd or better with a win) get a medal; everyone else a plain disc.
+ * With `statsHref`, rows it gives a path for open that player's Stats; the rest stay plain
+ * (Guests, older Ended sessions).
  */
 export function Standings({
   standings,
+  statsHref,
   style,
 }: {
   standings: readonly StandingsEntry[];
+  statsHref?: (entry: StandingsEntry) => string | null;
   style?: CSSProperties;
 }) {
+  const hrefs = standings.map((entry) => statsHref?.(entry) ?? null);
+  // Once any row links, plain rows keep the chevron's space so the wins stay in one column.
+  const linkColumn = hrefs.some((href) => href !== null);
   return (
     <CollapsibleSection
       title="Standings"
@@ -146,6 +145,8 @@ export function Standings({
               key={`${entry.place}-${entry.name}`}
               entry={entry}
               showLosses
+              href={hrefs[index] ?? undefined}
+              linkColumn={linkColumn}
               // Stagger the first few rows on page load; a reopened list comes in quickly.
               style={
                 reopened
@@ -232,28 +233,34 @@ export function CollapsibleSection({
 /**
  * One placed player: place disc, name with Skill, matches played (plus losses when
  * `showLosses`) and wins. Medal colours only for 1st–3rd with at least one win.
+ * With `href` the whole row is a link ("Stats for <name>") with a chevron at the end; the
+ * summary and the shared image never pass one, so they look as before.
  */
 function PlaceRow({
   entry,
   showLosses = false,
+  href,
+  linkColumn = false,
   style,
 }: {
   entry: StandingsEntry;
   showLosses?: boolean;
+  href?: string;
+  /** Some row in the list links: keep room for the chevron even on plain rows. */
+  linkColumn?: boolean;
   style: CSSProperties;
 }) {
+  const nameId = useId();
+  const detailId = useId();
   const medal = entry.wins >= 1 ? MEDAL[entry.place] : undefined;
   const first = medal !== undefined && entry.place === 1;
-  return (
-    <li
-      className={`animate-rise flex items-center gap-3 rounded-box border-[1.5px] bg-base-100 p-3 pr-4 ${
-        first ? "border-transparent shadow-lg ring-2" : "border-base-300"
-      }`}
-      style={{
-        ...style,
-        ...(first && medal ? ({ "--tw-ring-color": medal.bg } as CSSProperties) : {}),
-      }}
-    >
+  const card = `flex items-center gap-3 rounded-box border-[1.5px] bg-base-100 p-3 ${
+    linkColumn ? "pr-2" : "pr-4"
+  } ${first ? "border-transparent shadow-lg ring-2" : "border-base-300"}`;
+  const ring = first && medal ? ({ "--tw-ring-color": medal.bg } as CSSProperties) : {};
+
+  const content = (
+    <>
       <span
         className={`grid shrink-0 place-items-center rounded-full font-display leading-none font-bold ${
           first ? "size-14 text-2xl" : "size-12 text-xl"
@@ -276,7 +283,7 @@ function PlaceRow({
           </span>
           <SkillBadge skill={entry.skill} compact />
         </span>
-        <span className="text-sm text-base-content/65">
+        <span id={href ? detailId : undefined} className="text-sm text-base-content/65">
           {/* Each part stays on one line, so a narrow row breaks between parts, not inside. */}
           <span className="whitespace-nowrap">
             {countLabel(entry.played, "match", "matches")} played{showLosses ? " ·" : null}
@@ -300,6 +307,35 @@ function PlaceRow({
           {entry.wins === 1 ? "win" : "wins"}
         </span>
       </span>
+      {href ? (
+        <ChevronRightIcon className="size-6 shrink-0 opacity-50 transition-transform group-hover:translate-x-0.5" />
+      ) : linkColumn ? (
+        <span aria-hidden="true" className="size-6 shrink-0" />
+      ) : null}
+    </>
+  );
+
+  if (!href) {
+    return (
+      <li className={`animate-rise ${card}`} style={{ ...style, ...ring }}>
+        {content}
+      </li>
+    );
+  }
+  return (
+    <li className="animate-rise" style={style}>
+      <span id={nameId} hidden>
+        Stats for {entry.name}
+      </span>
+      <Link
+        href={href}
+        aria-labelledby={nameId}
+        aria-describedby={detailId}
+        className={`group ${card} transition-transform active:scale-[0.98]`}
+        style={ring}
+      >
+        {content}
+      </Link>
     </li>
   );
 }

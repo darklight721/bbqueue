@@ -215,3 +215,14 @@ export function CheckIcon(props: IconProps) {
     </Icon>
   );
 }
+
+/** A rising line with dots on a baseline: Stats. */
+export function ChartIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 20h16" />
+      <path d="m5.5 15.5 4-4.5 3.5 2.5 5.5-7" />
+      <circle cx="18.5" cy="6.5" r="1" fill="currentColor" />
+    </Icon>
+  );
+}

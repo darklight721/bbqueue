@@ -30,7 +30,12 @@ function ended(
     pointSystem: 21,
     startedAt: endedAt - 3_600_000,
     endedAt,
-    players: ["a", "b", "c", "d"].map((p) => ({ id: p, name: p.toUpperCase(), skill: "beginner" })),
+    players: ["a", "b", "c", "d"].map((p) => ({
+      id: p,
+      name: p.toUpperCase(),
+      skill: "beginner",
+      clubPlayerId: null,
+    })),
     matches: [
       {
         number: 1,

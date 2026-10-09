@@ -190,7 +190,12 @@ export function makeEndedSessionFromMatches(
   }));
   const names = [...new Set(rows.flatMap((row) => [...row.a, ...row.b]))];
   return makeEndedSession({
-    players: names.map((name) => ({ id: name, name, skill: skills[name] ?? "intermediate" })),
+    players: names.map((name) => ({
+      id: name,
+      name,
+      skill: skills[name] ?? "intermediate",
+      clubPlayerId: null,
+    })),
     matches,
     ...rest,
   });

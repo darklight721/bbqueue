@@ -27,6 +27,7 @@ function ended(rows: Row[], playerCount = 8, courts: number[] = []): EndedSessio
       id: `p${i + 1}`,
       name: `p${i + 1}`,
       skill: "intermediate" as const,
+      clubPlayerId: null,
     })),
     matches,
   };

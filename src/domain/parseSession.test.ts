@@ -181,6 +181,28 @@ describe("parseEndedSession", () => {
     expect(parseEndedSession(old)?.clubName).toBeNull();
   });
 
+  it("keeps the Club player id when slimming (Club player → id, Guest → null) and when reading", () => {
+    const base = played();
+    base.players[0] = { ...base.players[0]!, clubPlayerId: "cp-a", accountId: "ann-1234" };
+    const ended = toEndedSession(base, T + 5000)!;
+    expect(ended.players.map((p) => p.clubPlayerId)).toEqual(["cp-a", null, null, null]);
+    expect(ended.players[0]).not.toHaveProperty("accountId");
+    expect(parseEndedSession(viaJson(ended))).toEqual(ended);
+  });
+
+  it("reads players of older Ended sessions without a Club player id as null", () => {
+    const old = viaJson(real()) as { players: Record<string, unknown>[] };
+    for (const p of old.players) delete p.clubPlayerId;
+    const parsed = parseEndedSession(old);
+    expect(parsed?.players.map((p) => p.clubPlayerId)).toEqual([null, null, null, null]);
+  });
+
+  it("returns null for a Club player id that isn't an id", () => {
+    const data = viaJson(real()) as { players: Record<string, unknown>[] };
+    data.players[0]!.clubPlayerId = 5;
+    expect(parseEndedSession(data)).toBeNull();
+  });
+
   it("cuts names that are too long", () => {
     const data = viaJson(real()) as { players: { name: string }[] };
     data.players[0]!.name = "y".repeat(500);

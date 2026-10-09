@@ -41,7 +41,12 @@ export function makeClubEnded(session: Session, endedAt: number): EndedSession {
     pointSystem: 21,
     startedAt: endedAt - 3_600_000,
     endedAt,
-    players: [a!, b!, c!, d!].map((p) => ({ id: p.id, name: p.name, skill: p.skill })),
+    players: [a!, b!, c!, d!].map((p) => ({
+      id: p.id,
+      name: p.name,
+      skill: p.skill,
+      clubPlayerId: p.clubPlayerId,
+    })),
     matches: [
       {
         number: 1,
@@ -600,6 +605,29 @@ export function runSessionsContract(name: string, createWorld: () => RolesContra
         // Not on the Club: nothing.
         expect(benWatches().sessions).toEqual([]);
         expect(benWatches().clubIds).toEqual([]);
+      });
+
+      it("keeps each player's Club player id on the server copy", async () => {
+        const { roy, ana } = await setup();
+        const watches = watchEnded(ana);
+        const session = makeClubSession();
+        await roy.backend.startSharedSession("c1", session);
+        await eventually(() => expect(ana.session("c1")).toBeDefined());
+        const base = makeClubEnded(session, 1_700_000_000_000);
+        const ended: EndedSession = {
+          ...base,
+          players: base.players.map((p, i) => ({ ...p, clubPlayerId: i < 2 ? `cp-${i}` : null })),
+        };
+
+        await roy.backend.endSharedSession("c1", ended);
+
+        await eventually(() => expect(watches().sessions).toEqual([ended]));
+        expect(watches().sessions[0]!.players.map((p) => p.clubPlayerId)).toEqual([
+          "cp-0",
+          "cp-1",
+          null,
+          null,
+        ]);
       });
 
       it("publishes nothing when the Session had no Ended match, and still clears the Active session", async () => {

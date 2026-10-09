@@ -14,6 +14,7 @@ import { displayClubName } from "../../domain/clubName.ts";
 import { canDeleteEndedSession } from "../../domain/permissions.ts";
 import { useAccount, useClubs, useEndedSessions } from "../../storage/store.ts";
 import { CourtLines } from "../home/CourtLines.tsx";
+import { clubStatsFromSessionPath } from "../play-record/statsOrigin.ts";
 import { formatDuration } from "../session/clock.ts";
 import { countLabel, rise, sessionDay, sessionTimes } from "../session-summary/summaryFormat.ts";
 import {
@@ -59,7 +60,16 @@ function Details({ ended }: { ended: EndedSession }) {
       <WhenBanner ended={ended} clubName={clubName} />
       <SummaryLink href={summaryPath(ended.id, origin)} />
       <Totals summary={summary} />
-      <Standings standings={standings} style={rise(3.5)} />
+      <Standings
+        standings={standings}
+        // Club players open their Stats in this Club; Guests and Club-less Sessions stay plain.
+        statsHref={(entry) =>
+          ended.clubId !== null && entry.clubPlayerId !== null
+            ? clubStatsFromSessionPath(ended.clubId, entry.clubPlayerId, ended.id, origin)
+            : null
+        }
+        style={rise(3.5)}
+      />
 
       <CollapsibleSection
         title="Matches"

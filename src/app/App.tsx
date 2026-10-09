@@ -10,6 +10,7 @@ import {
   ClubSessionsScreen,
   PastSessionsScreen,
 } from "../features/past-sessions/PastSessionsScreen.tsx";
+import { AccountStatsScreen, ClubStatsScreen } from "../features/play-record/PlayRecordScreen.tsx";
 import { SessionRoute } from "../features/session/SessionRoute.tsx";
 import { SessionSummaryScreen } from "../features/session-summary/SessionSummaryScreen.tsx";
 import { WelcomeScreen } from "../features/welcome/WelcomeScreen.tsx";
@@ -63,6 +64,9 @@ function Routes() {
   return (
     <Switch>
       <Route path="/" component={HomeScreen} />
+      <Route path="/account/stats">
+        {backend ? <AccountStatsScreen /> : <Redirect to="/" replace />}
+      </Route>
       <Route path="/account">
         {/* No Backend, no Accounts: nothing to show here. */}
         {backend ? <AccountSettingsScreen backend={backend} /> : <Redirect to="/" replace />}
@@ -70,6 +74,9 @@ function Routes() {
       <Route path="/clubs" component={ClubsScreen} />
       <Route path="/clubs/new">
         <ClubEditScreen />
+      </Route>
+      <Route path="/clubs/:clubId/players/:clubPlayerId/stats">
+        {(params) => <ClubStatsScreen clubId={params.clubId} clubPlayerId={params.clubPlayerId} />}
       </Route>
       <Route path="/clubs/:clubId/sessions">
         {(params) => <ClubSessionsScreen clubId={params.clubId} />}
