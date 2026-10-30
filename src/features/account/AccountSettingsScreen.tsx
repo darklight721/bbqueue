@@ -8,14 +8,12 @@ import {
   type ReactNode,
 } from "react";
 import { flushSync } from "react-dom";
-import { Link } from "wouter";
 import { BackendError, type Backend, type BackendErrorCode } from "../../backend/backend.ts";
 import { useOnline } from "../../backend/useOnline.ts";
 import { Avatar } from "../../components/Avatar.tsx";
 import {
   ChartIcon,
   CheckIcon,
-  ChevronRightIcon,
   CloseIcon,
   CopyIcon,
   OfflineIcon,
@@ -33,6 +31,7 @@ import {
   useAccount,
   useInstallHintDismissed,
 } from "../../storage/store.ts";
+import { ClubCardLink } from "../club-edit/ClubCardLink.tsx";
 import { CourtLines } from "../home/CourtLines.tsx";
 import { ACCOUNT_STATS_PATH } from "../play-record/paths.ts";
 import { CreateAccountForm } from "./CreateAccountForm.tsx";
@@ -98,14 +97,23 @@ function AccountDetails({
         {/* A court line between the two halves of the card. */}
         <hr className="my-5 border-0 border-t-2 border-dashed border-line/30" />
         <AccountIdSection accountId={account.accountId} announce={announce} />
-        <hr className="mt-5 mb-2 border-0 border-t-2 border-dashed border-line/30" />
-        <StatsRow />
       </CourtCard>
 
       <p className="animate-rise -mt-2 px-1 leading-snug text-base-content/75" style={delay(1)}>
         Give your Account ID to an Organizer, so they can add you to their Club. It never changes,
         even if you change your name.
       </p>
+
+      {/* The same card link as Sessions on the Club screen. */}
+      <div className="animate-rise" style={delay(2)}>
+        <ClubCardLink
+          href={ACCOUNT_STATS_PATH}
+          tone="plain"
+          icon={<ChartIcon className="size-6" />}
+          label="Your stats"
+          detail="Wins, Win rate and Partners"
+        />
+      </div>
 
       {offerInstallHint && !installHintDismissed ? <InstallHint /> : null}
 
@@ -417,40 +425,13 @@ function AccountIdSection({ accountId, announce }: { accountId: string; announce
   );
 }
 
-/** "Your stats": the last line on the card, opening the Account's Stats. */
-function StatsRow() {
-  const labelId = useId();
-  const detailId = useId();
-  return (
-    <Link
-      href={ACCOUNT_STATS_PATH}
-      aria-labelledby={labelId}
-      aria-describedby={detailId}
-      className="group -mx-2 -mb-2 flex min-h-16 items-center gap-3 rounded-field px-2 py-2 text-line transition-colors hover:bg-line/10 active:bg-line/15"
-    >
-      <span className="grid size-11 shrink-0 place-items-center rounded-full bg-line/15 shadow-[inset_0_0_0_1.5px_rgb(247_249_244/0.35)]">
-        <ChartIcon className="size-6" />
-      </span>
-      <span className="flex min-w-0 flex-1 flex-col">
-        <span id={labelId} className="font-display text-2xl leading-tight font-bold uppercase">
-          Your stats
-        </span>
-        <span id={detailId} className="truncate text-sm text-line/75">
-          Wins, Win rate and Partners
-        </span>
-      </span>
-      <ChevronRightIcon className="size-6 shrink-0 opacity-70 transition-transform group-hover:translate-x-0.5" />
-    </Link>
-  );
-}
-
 function InstallHint() {
   const titleId = useId();
   return (
     <section
       aria-labelledby={titleId}
       className="animate-rise relative flex gap-3 rounded-box border-[1.5px] border-base-300 bg-base-100 p-4 pr-12 shadow-sm"
-      style={delay(2)}
+      style={delay(3)}
     >
       <span className="grid size-11 shrink-0 place-items-center rounded-full bg-volt text-[#14201a]">
         <PlusIcon className="size-5" />

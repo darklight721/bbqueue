@@ -313,7 +313,10 @@ describe("Account view", () => {
       ],
     });
     const { user, current } = renderAt("/account");
-    await user.click(screen.getByRole("link", { name: "Your stats" }));
+    const statsLink = screen.getByRole("link", { name: "Your stats" });
+    // Below the green Account card, not on it.
+    expect(screen.getByRole("region", { name: "Your Account" })).not.toContainElement(statsLink);
+    await user.click(statsLink);
     expect(current()).toBe("/account/stats");
 
     expect(sectionHeadings()[0]).toBe("Roy Smith");
