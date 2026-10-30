@@ -195,7 +195,7 @@ describe("restCut", () => {
     expect([...cut.inn, ...cut.field]).not.toContain("p1");
   });
 
-  it("uses a limit of 2 × Courts from the Session", () => {
+  it("uses a limit of max(2 × Courts, floor(players / 4)) from the Session", () => {
     const base = session({
       players: playersNamed(6),
       courts: 2,
@@ -219,6 +219,60 @@ describe("restCut", () => {
     expect(one.restsLimit).toBe(2);
     expect(restsTier(one, "p5")).toBe(4);
     expect(restsTier(one, "p6")).toBe(0);
+  });
+
+  it("floor(players / 4) wins over 2 × Courts when there are many players per Court", () => {
+    const limitOf = (players: number, courts: number) =>
+      makeEnv(session({ players: playersNamed(players), courts }), makeCtx()).restsLimit;
+    expect(limitOf(11, 1)).toBe(2); // floor(11 / 4) = 2 ties with 2 × 1
+    expect(limitOf(12, 1)).toBe(3);
+    expect(limitOf(16, 1)).toBe(4);
+    expect(limitOf(20, 1)).toBe(5);
+    expect(limitOf(24, 2)).toBe(6); // 2 × 2 = 4 < 6
+    expect(limitOf(16, 2)).toBe(4); // 2 × Courts still wins
+    expect(limitOf(24, 3)).toBe(6); // tie
+  });
+
+  it("is recomputed from the players who are not Sitting out or removed", () => {
+    const players = playersNamed(20);
+    const limitWith = (changed: (index: number) => Partial<(typeof players)[number]>) =>
+      makeEnv(
+        session({ players: players.map((p, i) => ({ ...p, ...changed(i) })), courts: 1 }),
+        makeCtx(),
+      ).restsLimit;
+    expect(limitWith(() => ({}))).toBe(5);
+    expect(limitWith((i) => ({ sittingOut: i < 4 }))).toBe(4); // 16 players
+    expect(limitWith((i) => ({ sittingOut: i < 8 }))).toBe(3); // 12 players
+    expect(limitWith((i) => ({ sittingOut: i < 12 }))).toBe(2); // 8 players: 2 × Courts again
+    expect(limitWith((i) => ({ removed: i < 4 }))).toBe(4);
+  });
+
+  it("a Rests in a row count between 2 × Courts and floor(players / 4) is not at the limit yet", () => {
+    const base = session({
+      players: playersNamed(20),
+      courts: 1,
+      matches: [1, 2, 3].map((n) =>
+        match({
+          id: `m${n}`,
+          teams: [
+            ["p1", "p2"],
+            ["p3", "p4"],
+          ],
+          startedAt: T0 - (60 - n * 10) * MIN,
+          endedAt: T0 - (55 - n * 10) * MIN,
+          freeAtStart: ["p5"],
+        }),
+      ),
+    });
+    const env = makeEnv(base, makeCtx());
+    expect(env.restsLimit).toBe(5);
+    expect(restsTier(env, "p5")).toBe(0); // 3 rests: past 2 × Courts but below 5
+    const fewer = makeEnv(
+      { ...base, players: base.players.map((p, i) => ({ ...p, sittingOut: i >= 12 })) },
+      makeCtx(),
+    );
+    expect(fewer.restsLimit).toBe(3); // 12 players
+    expect(restsTier(fewer, "p5")).toBe(1);
   });
 });
 

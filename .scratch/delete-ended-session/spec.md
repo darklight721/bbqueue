@@ -1,6 +1,6 @@
 # Delete an Ended session; show which Clubs you can start a Session on
 
-Status: ready-for-agent
+Status: done (d30d90c)
 
 Decided in a grilling session. Glossary updated (Ended session, Organizer); ADR-0005 amended (manual delete, Consequences).
 

@@ -1,0 +1,109 @@
+COMPACT (cell = pairs% range / max sit-out run / max spread at pick / max Streak at pick); columns CUR | B | C | D
+1C N=8 | 100% / 2 / 2 / 2 | 100% / 2 / 2 / 2 | 100% / 3 / 2 / 2 | 100% / 2 / 2 / 2
+1C N=9 | 100% / 2 / 2 / 2 | 100% / 2 / 2 / 2 | 100% / 3 / 2 / 2 | 100% / 2 / 2 / 2
+1C N=10 | 100% / 2 / 2 / 2 | 100% / 2 / 2 / 2 | 100% / 3 / 2 / 2 | 100% / 3 / 2 / 2
+1C N=11 | 93–98% / 2 / 2 / 2 | 93–98% / 2 / 2 / 2 | 100% / 4 / 2 / 2 | 98–100% / 5 / 2 / 2
+1C N=12 | 27% / 2 / 1 / 1 | 100% / 3 / 2 / 2 | 100% / 5 / 2 / 2 | 100% / 6 / 2 / 2
+1C N=13 | 82–90% / 3 / 2 / 1 | 100% / 3 / 2 / 2 | 100% / 5 / 2 / 2 | 100% / 6 / 2 / 2
+1C N=14 | 91–99% / 3 / 2 / 1 | 96–100% / 3 / 2 / 2 | 100% / 6 / 2 / 2 | 100% / 7 / 2 / 2
+1C N=16 | 20% / 3 / 1 / 1 | 100% / 4 / 2 / 2 | 100% / 6 / 2 / 2 | 100% / 8 / 2 / 1
+1C N=20 | 16% / 4 / 1 / 1 | 97–100% / 5 / 2 / 1 | 99–100% / 8 / 2 / 1 | 100% / 10 / 2 / 1
+2C N=12 | 100% / 4 / 2 / 2 | 100% / 4 / 2 / 2 | 100% / 4 / 2 / 2 | 100% / 4 / 2 / 2
+2C N=16 | 100% / 4 / 2 / 2 | 100% / 4 / 2 / 2 | 100% / 5 / 2 / 2 | 100% / 4 / 2 / 2
+2C N=20 | 99–100% / 4 / 2 / 2 | 100% / 5 / 2 / 2 | 100% / 7 / 2 / 2 | 99–100% / 6 / 2 / 2
+2C N=21 | 96–99% / 5 / 2 / 2 | 100–100% / 5 / 2 / 2 | 100% / 7 / 2 / 1 | 97–100% / 10 / 2 / 2
+2C N=24 | 13% / 5 / 1 / 1 | 99–100% / 6 / 2 / 1 | 100–100% / 8 / 2 / 1 | 100–100% / 10 / 2 / 1
+3C N=16 | 98–100% / 4 / 2 / 2 | 98–100% / 4 / 2 / 2 | 98–100% / 4 / 2 / 2 | 98–100% / 4 / 2 / 2
+3C N=24 | 100–100% / 6 / 2 / 2 | 100–100% / 6 / 2 / 2 | 100–100% / 7 / 2 / 2 | 100–100% / 6 / 2 / 2
+3C N=28 | 97–99% / 6 / 2 / 1 | 98–100% / 7 / 2 / 1 | 98–100% / 8 / 2 / 1 | 97–99% / 6 / 2 / 1
+
+DETAIL
+1C N=8 CUR: pairs 28/28 (100%) sets 14–19 finalSpread 0 maxSpreadAtPick 1–2 maxStreak 2 maxSitRun 2 maxRestsAtPick 2 maxGapRounds 2.0 sit<=floor(N/4)=2: yes (matches=20, runs=20)
+1C N=8 B: pairs 28/28 (100%) sets 14–19 finalSpread 0 maxSpreadAtPick 1–2 maxStreak 2 maxSitRun 2 maxRestsAtPick 2 maxGapRounds 2.0 sit<=floor(N/4)=2: yes (matches=20, runs=20)
+1C N=8 C: pairs 28/28 (100%) sets 14–18 finalSpread 0 maxSpreadAtPick 1–2 maxStreak 2 maxSitRun 2–3 maxRestsAtPick 2–3 maxGapRounds 2.0–3.0 sit<=floor(N/4)=2: NO (matches=20, runs=20)
+1C N=8 D: pairs 28/28 (100%) sets 14–19 finalSpread 0 maxSpreadAtPick 1–2 maxStreak 2 maxSitRun 2 maxRestsAtPick 2 maxGapRounds 2.0 sit<=floor(N/4)=2: yes (matches=20, runs=20)
+1C N=9 CUR: pairs 36/36 (100%) sets 20–23 finalSpread 1 maxSpreadAtPick 1–2 maxStreak 2 maxSitRun 2 maxRestsAtPick 2 maxGapRounds 2.0 sit<=floor(N/4)=2: yes (matches=23, runs=20)
+1C N=9 B: pairs 36/36 (100%) sets 20–23 finalSpread 1 maxSpreadAtPick 1–2 maxStreak 2 maxSitRun 2 maxRestsAtPick 2 maxGapRounds 2.0 sit<=floor(N/4)=2: yes (matches=23, runs=20)
+1C N=9 C: pairs 36/36 (100%) sets 21–23 finalSpread 1 maxSpreadAtPick 1–2 maxStreak 2 maxSitRun 2–3 maxRestsAtPick 2–3 maxGapRounds 2.0–3.0 sit<=floor(N/4)=2: NO (matches=23, runs=20)
+1C N=9 D: pairs 36/36 (100%) sets 20–23 finalSpread 1 maxSpreadAtPick 1–2 maxStreak 2 maxSitRun 2 maxRestsAtPick 2 maxGapRounds 2.0 sit<=floor(N/4)=2: yes (matches=23, runs=20)
+1C N=10 CUR: pairs 45/45 (100%) sets 24–25 finalSpread 0–2 maxSpreadAtPick 2 maxStreak 2 maxSitRun 2 maxRestsAtPick 2 maxGapRounds 2.0 sit<=floor(N/4)=2: yes (matches=25, runs=20)
+1C N=10 B: pairs 45/45 (100%) sets 24–25 finalSpread 0–2 maxSpreadAtPick 2 maxStreak 2 maxSitRun 2 maxRestsAtPick 2 maxGapRounds 2.0 sit<=floor(N/4)=2: yes (matches=25, runs=20)
+1C N=10 C: pairs 45/45 (100%) sets 24–25 finalSpread 0–2 maxSpreadAtPick 1–2 maxStreak 2 maxSitRun 3 maxRestsAtPick 3 maxGapRounds 3.0 sit<=floor(N/4)=2: NO (matches=25, runs=20)
+1C N=10 D: pairs 45/45 (100%) sets 25 finalSpread 0–2 maxSpreadAtPick 2 maxStreak 2 maxSitRun 2–3 maxRestsAtPick 2–3 maxGapRounds 2.0–3.0 sit<=floor(N/4)=2: NO (matches=25, runs=20)
+1C N=11 CUR: pairs 51–54/55 (93–98%) sets 21–24 finalSpread 1–2 maxSpreadAtPick 2 maxStreak 2 maxSitRun 2 maxRestsAtPick 2 maxGapRounds 2.0 sit<=floor(N/4)=2: yes (matches=28, runs=20)
+1C N=11 B: pairs 51–54/55 (93–98%) sets 21–24 finalSpread 1–2 maxSpreadAtPick 2 maxStreak 2 maxSitRun 2 maxRestsAtPick 2 maxGapRounds 2.0 sit<=floor(N/4)=2: yes (matches=28, runs=20)
+1C N=11 C: pairs 55/55 (100%) sets 27–28 finalSpread 1–2 maxSpreadAtPick 1–2 maxStreak 2 maxSitRun 3–4 maxRestsAtPick 3–4 maxGapRounds 3.0–4.0 sit<=floor(N/4)=2: NO (matches=28, runs=20)
+1C N=11 D: pairs 54–55/55 (98–100%) sets 27–28 finalSpread 1–2 maxSpreadAtPick 2 maxStreak 2 maxSitRun 3–5 maxRestsAtPick 3–5 maxGapRounds 3.0–5.0 sit<=floor(N/4)=2: NO (matches=28, runs=20)
+1C N=12 CUR: pairs 18/66 (27%) sets 3 finalSpread 0 maxSpreadAtPick 1 maxStreak 1 maxSitRun 2 maxRestsAtPick 2 maxGapRounds 2.0 sit<=floor(N/4)=3: yes (matches=30, runs=20)
+1C N=12 B: pairs 66/66 (100%) sets 29–30 finalSpread 0–2 maxSpreadAtPick 2 maxStreak 2 maxSitRun 3 maxRestsAtPick 3 maxGapRounds 3.0 sit<=floor(N/4)=3: yes (matches=30, runs=20)
+1C N=12 C: pairs 66/66 (100%) sets 29–30 finalSpread 0–2 maxSpreadAtPick 2 maxStreak 2 maxSitRun 4–5 maxRestsAtPick 4–5 maxGapRounds 4.0–5.0 sit<=floor(N/4)=3: NO (matches=30, runs=20)
+1C N=12 D: pairs 66/66 (100%) sets 29–30 finalSpread 0–2 maxSpreadAtPick 2 maxStreak 2 maxSitRun 4–6 maxRestsAtPick 4–6 maxGapRounds 4.0–6.0 sit<=floor(N/4)=3: NO (matches=30, runs=20)
+1C N=13 CUR: pairs 64–70/78 (82–90%) sets 33 finalSpread 1–2 maxSpreadAtPick 2 maxStreak 1 maxSitRun 3 maxRestsAtPick 3 maxGapRounds 3.0 sit<=floor(N/4)=3: yes (matches=33, runs=20)
+1C N=13 B: pairs 78/78 (100%) sets 31–33 finalSpread 1–2 maxSpreadAtPick 2 maxStreak 2 maxSitRun 3 maxRestsAtPick 3 maxGapRounds 3.0 sit<=floor(N/4)=3: yes (matches=33, runs=20)
+1C N=13 C: pairs 78/78 (100%) sets 32–33 finalSpread 1–2 maxSpreadAtPick 2 maxStreak 2 maxSitRun 5 maxRestsAtPick 5 maxGapRounds 5.0 sit<=floor(N/4)=3: NO (matches=33, runs=20)
+1C N=13 D: pairs 78/78 (100%) sets 32–33 finalSpread 1–2 maxSpreadAtPick 2 maxStreak 2 maxSitRun 5–6 maxRestsAtPick 5–6 maxGapRounds 5.0–6.0 sit<=floor(N/4)=3: NO (matches=33, runs=20)
+1C N=14 CUR: pairs 83–90/91 (91–99%) sets 35 finalSpread 0–2 maxSpreadAtPick 2 maxStreak 1 maxSitRun 3 maxRestsAtPick 3 maxGapRounds 3.0 sit<=floor(N/4)=3: yes (matches=35, runs=20)
+1C N=14 B: pairs 87–91/91 (96–100%) sets 31–35 finalSpread 0–2 maxSpreadAtPick 2 maxStreak 2 maxSitRun 3 maxRestsAtPick 3 maxGapRounds 3.0 sit<=floor(N/4)=3: yes (matches=35, runs=20)
+1C N=14 C: pairs 91/91 (100%) sets 34–35 finalSpread 0–2 maxSpreadAtPick 2 maxStreak 2 maxSitRun 5–6 maxRestsAtPick 5–6 maxGapRounds 5.0–6.0 sit<=floor(N/4)=3: NO (matches=35, runs=20)
+1C N=14 D: pairs 91/91 (100%) sets 34–35 finalSpread 0–2 maxSpreadAtPick 2 maxStreak 2 maxSitRun 5–7 maxRestsAtPick 5–7 maxGapRounds 5.0–7.0 sit<=floor(N/4)=3: NO (matches=35, runs=20)
+1C N=16 CUR: pairs 24/120 (20%) sets 4 finalSpread 0 maxSpreadAtPick 1 maxStreak 1 maxSitRun 3 maxRestsAtPick 3 maxGapRounds 3.0 sit<=floor(N/4)=4: yes (matches=40, runs=20)
+1C N=16 B: pairs 120/120 (100%) sets 39–40 finalSpread 0–2 maxSpreadAtPick 2 maxStreak 1–2 maxSitRun 4 maxRestsAtPick 4 maxGapRounds 4.0 sit<=floor(N/4)=4: yes (matches=40, runs=20)
+1C N=16 C: pairs 120/120 (100%) sets 38–40 finalSpread 0–2 maxSpreadAtPick 2 maxStreak 2 maxSitRun 6 maxRestsAtPick 6 maxGapRounds 6.0 sit<=floor(N/4)=4: NO (matches=40, runs=20)
+1C N=16 D: pairs 120/120 (100%) sets 38–40 finalSpread 0–2 maxSpreadAtPick 2 maxStreak 1 maxSitRun 5–8 maxRestsAtPick 5–8 maxGapRounds 5.0–8.0 sit<=floor(N/4)=4: NO (matches=40, runs=20)
+1C N=20 CUR: pairs 30/190 (16%) sets 5 finalSpread 0 maxSpreadAtPick 1 maxStreak 1 maxSitRun 4 maxRestsAtPick 4 maxGapRounds 4.0 sit<=floor(N/4)=5: yes (matches=50, runs=20)
+1C N=20 B: pairs 185–190/190 (97–100%) sets 49–50 finalSpread 2 maxSpreadAtPick 2 maxStreak 1 maxSitRun 5 maxRestsAtPick 5 maxGapRounds 5.0 sit<=floor(N/4)=5: yes (matches=50, runs=20)
+1C N=20 C: pairs 189–190/190 (99–100%) sets 50 finalSpread 0–2 maxSpreadAtPick 2 maxStreak 1 maxSitRun 7–8 maxRestsAtPick 7–8 maxGapRounds 7.0–8.0 sit<=floor(N/4)=5: NO (matches=50, runs=20)
+1C N=20 D: pairs 190/190 (100%) sets 49–50 finalSpread 2 maxSpreadAtPick 2 maxStreak 1 maxSitRun 7–10 maxRestsAtPick 7–10 maxGapRounds 7.0–10.0 sit<=floor(N/4)=5: NO (matches=50, runs=20)
+2C N=12 CUR: pairs 66/66 (100%) sets 35–36 finalSpread 0–2 maxSpreadAtPick 2 maxStreak 2 maxSitRun 2–4 maxRestsAtPick 2–4 maxGapRounds 1.0–2.0 (matches=36, runs=20)
+2C N=12 B: pairs 66/66 (100%) sets 35–36 finalSpread 0–2 maxSpreadAtPick 2 maxStreak 2 maxSitRun 2–4 maxRestsAtPick 2–4 maxGapRounds 1.0–2.0 (matches=36, runs=20)
+2C N=12 C: pairs 66/66 (100%) sets 35–36 finalSpread 0–2 maxSpreadAtPick 2 maxStreak 2 maxSitRun 2–4 maxRestsAtPick 2–4 maxGapRounds 1.0–2.0 (matches=36, runs=20)
+2C N=12 D: pairs 66/66 (100%) sets 35–36 finalSpread 0–2 maxSpreadAtPick 2 maxStreak 2 maxSitRun 2–4 maxRestsAtPick 2–4 maxGapRounds 1.0–2.0 (matches=36, runs=20)
+2C N=16 CUR: pairs 120/120 (100%) sets 47–48 finalSpread 0–2 maxSpreadAtPick 2 maxStreak 2 maxSitRun 4 maxRestsAtPick 4 maxGapRounds 2.0 (matches=48, runs=20)
+2C N=16 B: pairs 120/120 (100%) sets 47–48 finalSpread 0–2 maxSpreadAtPick 2 maxStreak 2 maxSitRun 4 maxRestsAtPick 4 maxGapRounds 2.0 (matches=48, runs=20)
+2C N=16 C: pairs 120/120 (100%) sets 47–48 finalSpread 0–2 maxSpreadAtPick 2 maxStreak 2 maxSitRun 4–5 maxRestsAtPick 4–5 maxGapRounds 2.0–2.5 (matches=48, runs=20)
+2C N=16 D: pairs 120/120 (100%) sets 47–48 finalSpread 0–2 maxSpreadAtPick 2 maxStreak 2 maxSitRun 4 maxRestsAtPick 4 maxGapRounds 2.0 (matches=48, runs=20)
+2C N=20 CUR: pairs 188–190/190 (99–100%) sets 57–60 finalSpread 2 maxSpreadAtPick 2 maxStreak 2 maxSitRun 4 maxRestsAtPick 4 maxGapRounds 2.0 (matches=60, runs=20)
+2C N=20 B: pairs 190/190 (100%) sets 59–60 finalSpread 0–2 maxSpreadAtPick 2 maxStreak 1–2 maxSitRun 5 maxRestsAtPick 5 maxGapRounds 2.5 (matches=60, runs=20)
+2C N=20 C: pairs 190/190 (100%) sets 60 finalSpread 2 maxSpreadAtPick 2 maxStreak 2 maxSitRun 5–7 maxRestsAtPick 5–7 maxGapRounds 2.5–3.5 (matches=60, runs=20)
+2C N=20 D: pairs 188–190/190 (99–100%) sets 59–60 finalSpread 2 maxSpreadAtPick 2 maxStreak 2 maxSitRun 4–6 maxRestsAtPick 4–6 maxGapRounds 2.0–3.0 (matches=60, runs=20)
+2C N=21 CUR: pairs 202–208/210 (96–99%) sets 59–63 finalSpread 2 maxSpreadAtPick 2 maxStreak 2 maxSitRun 5 maxRestsAtPick 5 maxGapRounds 2.5 (matches=63, runs=20)
+2C N=21 B: pairs 209–210/210 (100–100%) sets 62–63 finalSpread 0–2 maxSpreadAtPick 2 maxStreak 1–2 maxSitRun 5 maxRestsAtPick 5 maxGapRounds 2.5 (matches=63, runs=20)
+2C N=21 C: pairs 210/210 (100%) sets 61–63 finalSpread 0–2 maxSpreadAtPick 2 maxStreak 1 maxSitRun 6–7 maxRestsAtPick 6–7 maxGapRounds 3.0–3.5 (matches=63, runs=20)
+2C N=21 D: pairs 204–210/210 (97–100%) sets 63 finalSpread 2 maxSpreadAtPick 2 maxStreak 2 maxSitRun 5–10 maxRestsAtPick 5–10 maxGapRounds 2.5–5.0 (matches=63, runs=20)
+2C N=24 CUR: pairs 36/276 (13%) sets 6 finalSpread 0 maxSpreadAtPick 1 maxStreak 1 maxSitRun 5 maxRestsAtPick 5 maxGapRounds 2.5 (matches=72, runs=20)
+2C N=24 B: pairs 274–276/276 (99–100%) sets 71–72 finalSpread 2 maxSpreadAtPick 2 maxStreak 1 maxSitRun 6 maxRestsAtPick 6 maxGapRounds 3.0 (matches=72, runs=20)
+2C N=24 C: pairs 275–276/276 (100–100%) sets 72 finalSpread 2 maxSpreadAtPick 2 maxStreak 1 maxSitRun 7–8 maxRestsAtPick 7–8 maxGapRounds 3.5–4.0 (matches=72, runs=20)
+2C N=24 D: pairs 275–276/276 (100–100%) sets 72 finalSpread 2 maxSpreadAtPick 2 maxStreak 1 maxSitRun 7–10 maxRestsAtPick 7–10 maxGapRounds 3.5–5.0 (matches=72, runs=20)
+3C N=16 CUR: pairs 118–120/120 (98–100%) sets 48 finalSpread 2 maxSpreadAtPick 2 maxStreak 2 maxSitRun 3–4 maxRestsAtPick 3–4 maxGapRounds 1.0–1.3 (matches=48, runs=20)
+3C N=16 B: pairs 118–120/120 (98–100%) sets 48 finalSpread 2 maxSpreadAtPick 2 maxStreak 2 maxSitRun 3–4 maxRestsAtPick 3–4 maxGapRounds 1.0–1.3 (matches=48, runs=20)
+3C N=16 C: pairs 118–120/120 (98–100%) sets 48 finalSpread 2 maxSpreadAtPick 2 maxStreak 2 maxSitRun 3–4 maxRestsAtPick 3–4 maxGapRounds 1.0–1.3 (matches=48, runs=20)
+3C N=16 D: pairs 118–120/120 (98–100%) sets 48 finalSpread 2 maxSpreadAtPick 2 maxStreak 2 maxSitRun 3–4 maxRestsAtPick 3–4 maxGapRounds 1.0–1.3 (matches=48, runs=20)
+3C N=24 CUR: pairs 275–276/276 (100–100%) sets 72 finalSpread 2 maxSpreadAtPick 2 maxStreak 1–2 maxSitRun 6 maxRestsAtPick 6 maxGapRounds 2.0 (matches=72, runs=20)
+3C N=24 B: pairs 275–276/276 (100–100%) sets 72 finalSpread 2 maxSpreadAtPick 2 maxStreak 1–2 maxSitRun 6 maxRestsAtPick 6 maxGapRounds 2.0 (matches=72, runs=20)
+3C N=24 C: pairs 275–276/276 (100–100%) sets 72 finalSpread 2 maxSpreadAtPick 2 maxStreak 1–2 maxSitRun 6–7 maxRestsAtPick 6–7 maxGapRounds 2.0–2.3 (matches=72, runs=20)
+3C N=24 D: pairs 275–276/276 (100–100%) sets 72 finalSpread 2 maxSpreadAtPick 2 maxStreak 1–2 maxSitRun 6 maxRestsAtPick 6 maxGapRounds 2.0 (matches=72, runs=20)
+3C N=28 CUR: pairs 366–375/378 (97–99%) sets 84 finalSpread 2 maxSpreadAtPick 2 maxStreak 1 maxSitRun 6 maxRestsAtPick 6 maxGapRounds 2.0 (matches=84, runs=20)
+3C N=28 B: pairs 370–377/378 (98–100%) sets 84 finalSpread 2 maxSpreadAtPick 2 maxStreak 1 maxSitRun 7 maxRestsAtPick 7 maxGapRounds 2.3 (matches=84, runs=20)
+3C N=28 C: pairs 370–377/378 (98–100%) sets 84 finalSpread 0–2 maxSpreadAtPick 2 maxStreak 1 maxSitRun 7–8 maxRestsAtPick 7–8 maxGapRounds 2.3–2.7 (matches=84, runs=20)
+3C N=28 D: pairs 366–375/378 (97–99%) sets 84 finalSpread 0–2 maxSpreadAtPick 2 maxStreak 1 maxSitRun 6 maxRestsAtPick 6 maxGapRounds 2.0 (matches=84, runs=20)
+
+
+===== Follow-up run: 1 Court, stagger 0, N = 5, 6, 7 (SWEEP_FILTER=^1C N=[567]$; 20 runs per cell, matches = ceil(2.5N)) =====
+COMPACT (cell = pairs% range / max sit-out run / max spread at pick / max Streak at pick); columns CUR | B | C | D
+1C N=5 | 100% / 1 / 1 / 4 | 100% / 1 / 1 / 4 | 100% / 1 / 1 / 4 | 100% / 1 / 1 / 4
+1C N=6 | 100% / 1 / 1 / 2 | 100% / 1 / 1 / 2 | 100% / 1 / 1 / 2 | 100% / 1 / 1 / 2
+1C N=7 | 100% / 2 / 2 / 2 | 100% / 2 / 2 / 2 | 100% / 2 / 2 / 2 | 100% / 2 / 2 / 2
+
+DETAIL
+1C N=5 CUR: pairs 10/10 (100%) sets 5 finalSpread 1 maxSpreadAtPick 1 maxStreak 4 maxSitRun 1 maxRestsAtPick 1 maxGapRounds 1.0 sit<=floor(N/4)=1: yes (matches=13, runs=20)
+1C N=5 B: pairs 10/10 (100%) sets 5 finalSpread 1 maxSpreadAtPick 1 maxStreak 4 maxSitRun 1 maxRestsAtPick 1 maxGapRounds 1.0 sit<=floor(N/4)=1: yes (matches=13, runs=20)
+1C N=5 C: pairs 10/10 (100%) sets 5 finalSpread 1 maxSpreadAtPick 1 maxStreak 4 maxSitRun 1 maxRestsAtPick 1 maxGapRounds 1.0 sit<=floor(N/4)=1: yes (matches=13, runs=20)
+1C N=5 D: pairs 10/10 (100%) sets 5 finalSpread 1 maxSpreadAtPick 1 maxStreak 4 maxSitRun 1 maxRestsAtPick 1 maxGapRounds 1.0 sit<=floor(N/4)=1: yes (matches=13, runs=20)
+1C N=6 CUR: pairs 15/15 (100%) sets 3 finalSpread 0 maxSpreadAtPick 1 maxStreak 2 maxSitRun 1 maxRestsAtPick 1 maxGapRounds 1.0 sit<=floor(N/4)=1: yes (matches=15, runs=20)
+1C N=6 B: pairs 15/15 (100%) sets 3 finalSpread 0 maxSpreadAtPick 1 maxStreak 2 maxSitRun 1 maxRestsAtPick 1 maxGapRounds 1.0 sit<=floor(N/4)=1: yes (matches=15, runs=20)
+1C N=6 C: pairs 15/15 (100%) sets 3 finalSpread 0 maxSpreadAtPick 1 maxStreak 2 maxSitRun 1 maxRestsAtPick 1 maxGapRounds 1.0 sit<=floor(N/4)=1: yes (matches=15, runs=20)
+1C N=6 D: pairs 15/15 (100%) sets 3 finalSpread 0 maxSpreadAtPick 1 maxStreak 2 maxSitRun 1 maxRestsAtPick 1 maxGapRounds 1.0 sit<=floor(N/4)=1: yes (matches=15, runs=20)
+1C N=7 CUR: pairs 21/21 (100%) sets 17–18 finalSpread 1 maxSpreadAtPick 1–2 maxStreak 2 maxSitRun 2 maxRestsAtPick 2 maxGapRounds 2.0 sit<=floor(N/4)=1: NO (matches=18, runs=20)
+1C N=7 B: pairs 21/21 (100%) sets 17–18 finalSpread 1 maxSpreadAtPick 1–2 maxStreak 2 maxSitRun 2 maxRestsAtPick 2 maxGapRounds 2.0 sit<=floor(N/4)=1: NO (matches=18, runs=20)
+1C N=7 C: pairs 21/21 (100%) sets 17–18 finalSpread 1 maxSpreadAtPick 1–2 maxStreak 2 maxSitRun 2 maxRestsAtPick 2 maxGapRounds 2.0 sit<=floor(N/4)=1: NO (matches=18, runs=20)
+1C N=7 D: pairs 21/21 (100%) sets 17–18 finalSpread 1 maxSpreadAtPick 1–2 maxStreak 2 maxSitRun 2 maxRestsAtPick 2 maxGapRounds 2.0 sit<=floor(N/4)=1: NO (matches=18, runs=20)

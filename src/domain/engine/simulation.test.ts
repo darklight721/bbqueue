@@ -274,7 +274,7 @@ interface StaggeredResult {
   maxStreakAtPick: number;
   /** Longest run of Match starts a player was free and sat out (originals). */
   maxSitRun: number;
-  /** Picks at which some free player's Rests in a row had reached 2 × Courts. */
+  /** Picks at which some free player's Rests in a row had reached the limit (max(2 × Courts, floor(players / 4))). */
   restsTriggers: number;
   /** Times a set at index i equals the set at index i + 2, in total (8 players, 1 Court). */
   returnsAfterTwo: number;
@@ -319,7 +319,6 @@ function playStaggered(o: StaggeredOptions): StaggeredResult {
   let maxSpreadAtPick = 0;
   let maxStreakAtPick = 0;
   let restsTriggers = 0;
-  const limit = 2 * o.courts;
 
   const inspect = () => {
     const history = buildHistory(s, now);
@@ -338,6 +337,7 @@ function playStaggered(o: StaggeredOptions): StaggeredResult {
       if (court.activeMatchId !== null || !court.lineup) continue;
       if (now < (firstStart.get(court.id) ?? T0)) continue;
       const history = buildHistory(s, now);
+      const limit = makeEnv(s, at(ctx, now)).restsLimit;
       if ([...history.byPlayer.values()].some((h) => h.rests >= limit)) restsTriggers += 1;
       s = unwrap(startMatch(s, court.id, at(ctx, now)));
     }
@@ -431,15 +431,33 @@ interface Scenario {
 const EIGHT: Scenario = { label: "8p/1c", players: 8, courts: 1, matches: 16, stagger: 0 };
 const NINE: Scenario = { label: "9p/1c", players: 9, courts: 1, matches: 24, stagger: 0 };
 const TEN: Scenario = { label: "10p/1c", players: 10, courts: 1, matches: 24, stagger: 0 };
+const TWELVE_1C: Scenario = { label: "12p/1c", players: 12, courts: 1, matches: 30, stagger: 0 };
+const SIXTEEN_1C: Scenario = { label: "16p/1c", players: 16, courts: 1, matches: 40, stagger: 0 };
+const TWENTY_1C: Scenario = { label: "20p/1c", players: 20, courts: 1, matches: 50, stagger: 0 };
+const TWENTY_FOUR_2C: Scenario = {
+  label: "24p/2c",
+  players: 24,
+  courts: 2,
+  matches: 72,
+  stagger: 7,
+};
 const TWELVE: Scenario = { label: "12p/2c", players: 12, courts: 2, matches: 36, stagger: 7 };
 const SIXTEEN: Scenario = { label: "16p/3c", players: 16, courts: 3, matches: 48, stagger: 5 };
 
-/** Every scenario twice (same Skill, mixed Skill) over 10 seeds. */
+const runAllCache = new Map<string, { mixedSkill: boolean; runs: StaggeredResult[] }[]>();
+
+/** Every scenario twice (same Skill, mixed Skill) over 10 seeds. Cached: several tests share them. */
 function runAll(sc: Scenario): { mixedSkill: boolean; runs: StaggeredResult[] }[] {
-  return [false, true].map((mixedSkill) => ({
-    mixedSkill,
-    runs: MIXING_SEEDS.map((seed) => playStaggered({ ...sc, seed, mixedSkill })),
-  }));
+  const key = JSON.stringify(sc);
+  let all = runAllCache.get(key);
+  if (!all) {
+    all = [false, true].map((mixedSkill) => ({
+      mixedSkill,
+      runs: MIXING_SEEDS.map((seed) => playStaggered({ ...sc, seed, mixedSkill })),
+    }));
+    runAllCache.set(key, all);
+  }
+  return all;
 }
 
 const lowest = (xs: number[]) => Math.min(...xs);
@@ -478,8 +496,32 @@ describe("mixing over whole evenings", () => {
     }
   });
 
+  // Without the limit growing with the number of players, 12/16/20 on 1 Court and 24 on 2 Courts
+  // locked into fixed groups: 13–27% of pairs ever shared a Match (ADR-0009, amended).
+  it("12, 16 and 20 players on 1 Court and 24 on 2 Courts do not lock into fixed groups", () => {
+    for (const sc of [TWELVE_1C, SIXTEEN_1C, TWENTY_1C, TWENTY_FOUR_2C]) {
+      const totalPairs = (sc.players * (sc.players - 1)) / 2;
+      for (const { runs } of runAll(sc)) {
+        expect([sc.label, lowest(runs.map((r) => r.pairsShared))]).toEqual([
+          sc.label,
+          expect.toSatisfy((n: number) => n >= Math.ceil(0.95 * totalPairs)),
+        ]);
+      }
+    }
+  });
+
   it("keeps play counts within 2 and Streaks within 2 at every pick", () => {
-    for (const sc of [EIGHT, NINE, TEN, TWELVE, SIXTEEN]) {
+    for (const sc of [
+      EIGHT,
+      NINE,
+      TEN,
+      TWELVE,
+      SIXTEEN,
+      TWELVE_1C,
+      SIXTEEN_1C,
+      TWENTY_1C,
+      TWENTY_FOUR_2C,
+    ]) {
       for (const { runs } of runAll(sc)) {
         expect(highest(runs.map((r) => r.maxSpreadAtPick))).toBeLessThanOrEqual(2);
         expect(highest(runs.map((r) => r.maxStreakAtPick))).toBeLessThanOrEqual(2);
@@ -487,10 +529,20 @@ describe("mixing over whole evenings", () => {
     }
   });
 
-  it("nobody sits out more than 2 rounds in a row on 1 Court", () => {
-    for (const sc of [EIGHT, NINE, TEN]) {
+  it("on 1 Court nobody sits out more than max(2, floor(players / 4)) rounds in a row", () => {
+    for (const players of [5, 6, 7, 8, 9, 10, 11, 12, 13, 16, 20]) {
+      const sc: Scenario = {
+        label: `${players}p/1c`,
+        players,
+        courts: 1,
+        matches: Math.ceil(2.5 * players),
+        stagger: 0,
+      };
       for (const { runs } of runAll(sc)) {
-        expect(highest(runs.map((r) => r.maxSitRun))).toBeLessThanOrEqual(2);
+        expect([sc.label, highest(runs.map((r) => r.maxSitRun))]).toEqual([
+          sc.label,
+          expect.toSatisfy((n: number) => n <= Math.max(2, Math.floor(players / 4))),
+        ]);
       }
     }
   });
@@ -498,18 +550,28 @@ describe("mixing over whole evenings", () => {
   it("reports the observed numbers, including how often Rests in a row can trigger", () => {
     const lines: string[] = [];
     const range = (xs: number[]) => `${lowest(xs)}–${highest(xs)}`;
-    for (const sc of [EIGHT, NINE, TEN, TWELVE, SIXTEEN]) {
+    for (const sc of [
+      EIGHT,
+      NINE,
+      TEN,
+      TWELVE_1C,
+      SIXTEEN_1C,
+      TWENTY_1C,
+      TWELVE,
+      TWENTY_FOUR_2C,
+      SIXTEEN,
+    ]) {
       for (const { mixedSkill, runs } of runAll(sc)) {
         lines.push(
           `${sc.label} ${mixedSkill ? "mixed" : "same "}: pairs ${range(runs.map((r) => r.pairsShared))}` +
             ` sets ${range(runs.map((r) => r.distinctSets))} spread ${range(runs.map((r) => r.finalSpread))}` +
-            ` sitRun ${range(runs.map((r) => r.maxSitRun))} (limit ${2 * sc.courts})` +
+            ` sitRun ${range(runs.map((r) => r.maxSitRun))} (limit ${Math.max(2 * sc.courts, Math.floor(sc.players / 4))})` +
             ` restsTriggers ${range(runs.map((r) => r.restsTriggers))}`,
         );
       }
     }
     console.info("\n" + lines.join("\n"));
-    expect(lines).toHaveLength(10);
+    expect(lines).toHaveLength(18);
   });
 });
 

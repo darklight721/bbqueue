@@ -1,6 +1,6 @@
 # Account feature feedback
 
-Status: ready-for-agent
+Status: done (6d746f9)
 
 Follow-ups to the Account feature after a hands-on review. Decided in a grilling session; see ADR-0008 for the Security Rules change.
 

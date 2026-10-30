@@ -186,7 +186,7 @@ describe("rehash all with Mixing", () => {
     }
   });
 
-  it("keeps the players whose Rests in a row reached the limit (2 × Courts)", () => {
+  it("keeps the players whose Rests in a row reached the limit (max(2 × Courts, floor(players / 4)))", () => {
     // Four starts passed while p9–p12 were free and sat out (limit is 4 on two Courts).
     const g1: Pairs = [
       ["p1", "p2"],

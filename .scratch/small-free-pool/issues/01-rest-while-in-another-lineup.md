@@ -1,6 +1,6 @@
 # Bug: players in another Court's Lineup get a false Rest
 
-Status: ready-for-agent
+Status: done (7406169)
 Type: task
 Blocks: `../spec.md` (Streak numbers are wrong until this lands)
 

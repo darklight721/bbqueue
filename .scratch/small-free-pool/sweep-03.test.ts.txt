@@ -1,0 +1,209 @@
+/*
+ * Throwaway measurement sweep for .scratch/small-free-pool issue 03 (rule 2 "Rests in a row" variants).
+ * Not a real test: it prints numbers. Needs a TEMPORARY hook in src/domain/engine/select.ts:
+ *   export const SWEEP = { variant: "CUR" as "CUR" | "B" | "C" | "D" };
+ *   - makeEnv: restsLimit = variant B ? max(2×Courts, floor(N/4)) : 2×Courts, N = players not removed/sitting out
+ *   - restCut: variant C forces only the single most-rested at-limit player (ties via env.rng), others go
+ *     back into the field (tierKey = id === chosen ? -1 : 0, or all 0 when nobody is at the limit);
+ *     variant D skips the tier cut (tierKey = 0) unless atLimit.length < byRest.slots.
+ * Re-run: apply that hook, copy this file to src/domain/engine/sweep03.test.ts, then
+ *   SWEEP_OUT=/some/dir/sweep03.txt pnpm exec vp test run src/domain/engine/sweep03.test.ts
+ * Optional SWEEP_FILTER=regex limits scenarios, e.g. SWEEP_FILTER='^1C N=[567]$'.
+ * Delete the test and revert the hook afterwards. Driver = playStaggered from simulation.test.ts
+ * (15-min Matches, a Court restarts the moment its Match ends, Court i starts i×stagger min later).
+ * 10 seeds × (same skill, mixed skill) = 20 runs per cell. Matches: 1 Court ceil(2.5N), multi-Court 3N
+ * (every player plays ≥ 8 Matches).
+ */
+import { appendFileSync, writeFileSync } from "node:fs";
+import { describe, it } from "vite-plus/test";
+import type { Session } from "../types.ts";
+import { createSession, endMatch, startMatch } from "./operations.ts";
+import { SWEEP } from "./select.ts";
+import { buildHistory } from "./stats.ts";
+import { MIN, T0, at, makeCtx, unwrap } from "./test-utils.ts";
+
+const OUT = process.env.SWEEP_OUT ?? "/tmp/sweep03.txt";
+writeFileSync(OUT, "");
+const log = (s: string) => {
+  appendFileSync(OUT, s + "\n");
+  console.log(s);
+};
+const SKILL_CYCLE = ["beginner", "intermediate", "advanced"] as const;
+
+interface Opt {
+  players: number;
+  courts: number;
+  matches: number;
+  stagger: number;
+  seed: number;
+  mixedSkill: boolean;
+}
+
+interface Res {
+  pairsShared: number;
+  totalPairs: number;
+  distinctSets: number;
+  finalSpread: number;
+  maxSpreadAtPick: number;
+  maxStreakAtPick: number;
+  maxSitRun: number;
+  maxRestsAtPick: number;
+  /** longest gap between a player's Match end and next start (or T0 → first start), in 15-min rounds */
+  maxGapRounds: number;
+}
+
+function play(o: Opt): Res {
+  const length = 15 * MIN;
+  const ctx = makeCtx(o.seed);
+  let s: Session = createSession(
+    {
+      name: "Sweep",
+      clubId: null,
+      clubName: null,
+      pointSystem: 21,
+      plannedHours: 3,
+      courts: o.courts,
+      players: Array.from({ length: o.players }, (_, i) => ({
+        name: `P${i + 1}`,
+        skill: o.mixedSkill ? SKILL_CYCLE[i % 3]! : "intermediate",
+      })),
+    },
+    ctx,
+  );
+  const originals = s.players.map((p) => p.id);
+  const courtIds = s.courts.map((c) => c.id);
+  const firstStart = new Map(courtIds.map((id, i) => [id, T0 + i * o.stagger * MIN]));
+  let ended = 0;
+  let now = T0;
+  let maxSpreadAtPick = 0;
+  let maxStreakAtPick = 0;
+  let maxRestsAtPick = 0;
+
+  const inspect = () => {
+    const history = buildHistory(s, now);
+    const totals = originals.map((id) => history.byPlayer.get(id)!.total);
+    maxSpreadAtPick = Math.max(maxSpreadAtPick, Math.max(...totals) - Math.min(...totals));
+    for (const h of history.byPlayer.values()) maxStreakAtPick = Math.max(maxStreakAtPick, h.streak);
+  };
+
+  for (let guard = 0; guard < 20_000 && ended < o.matches; guard++) {
+    for (const court of s.courts) {
+      if (court.activeMatchId !== null || !court.lineup) continue;
+      if (now < (firstStart.get(court.id) ?? T0)) continue;
+      const history = buildHistory(s, now);
+      for (const h of history.byPlayer.values()) maxRestsAtPick = Math.max(maxRestsAtPick, h.rests);
+      s = unwrap(startMatch(s, court.id, at(ctx, now)));
+    }
+    const active = s.matches.filter((m) => m.status === "active");
+    const waiting = courtIds
+      .map((id) => firstStart.get(id)!)
+      .filter((t) => t > now && s.courts.some((c) => c.lineup));
+    const nextEnd = active.map((m) => m.startedAt + length);
+    const t = Math.min(...waiting, ...nextEnd);
+    if (!Number.isFinite(t)) break;
+    now = t;
+    for (const m of active.filter((x) => x.startedAt + length === now)) {
+      s = unwrap(endMatch(s, m.id, null, at(ctx, now)));
+      ended += 1;
+      inspect();
+    }
+  }
+
+  const sorted = [...s.matches].sort((a, b) => a.startedAt - b.startedAt);
+  const endedMatches = sorted.filter((m) => m.status === "ended");
+  const sets = endedMatches.map((m) => [...m.teams[0], ...m.teams[1]].sort());
+  const key = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+  const shared = new Set<string>();
+  for (const set of sets) for (const a of set) for (const b of set) if (a < b) shared.add(key(a, b));
+  const played = new Map(originals.map((id) => [id, 0]));
+  for (const set of sets) for (const id of set) played.set(id, (played.get(id) ?? 0) + 1);
+  const counts = originals.map((id) => played.get(id)!);
+
+  let maxSitRun = 0;
+  let maxGap = 0;
+  for (const id of originals) {
+    let run = 0;
+    for (const m of sorted) {
+      if ([...m.teams[0], ...m.teams[1]].includes(id)) run = 0;
+      else if (m.freeAtStart.includes(id)) maxSitRun = Math.max(maxSitRun, ++run);
+    }
+    let lastEnd = T0;
+    for (const m of endedMatches) {
+      if (![...m.teams[0], ...m.teams[1]].includes(id)) continue;
+      maxGap = Math.max(maxGap, m.startedAt - lastEnd);
+      lastEnd = m.endedAt!;
+    }
+  }
+  return {
+    pairsShared: shared.size,
+    totalPairs: (o.players * (o.players - 1)) / 2,
+    distinctSets: new Set(sets.map((set) => set.join(","))).size,
+    finalSpread: Math.max(...counts) - Math.min(...counts),
+    maxSpreadAtPick,
+    maxStreakAtPick,
+    maxSitRun,
+    maxRestsAtPick,
+    maxGapRounds: maxGap / length,
+  };
+}
+
+const SEEDS = Array.from({ length: 10 }, (_, i) => i + 1);
+const VARIANTS = ["CUR", "B", "C", "D"] as const;
+const range = (xs: number[], d = 0) => {
+  const lo = Math.min(...xs);
+  const hi = Math.max(...xs);
+  return lo === hi ? lo.toFixed(d) : `${lo.toFixed(d)}–${hi.toFixed(d)}`;
+};
+
+interface Sc {
+  group: string;
+  players: number;
+  courts: number;
+  stagger: number;
+}
+const scenarios: Sc[] = [
+  ...[5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16, 20].map((p) => ({ group: "1C", players: p, courts: 1, stagger: 0 })),
+  ...[12, 16, 20, 21, 24].map((p) => ({ group: "2C", players: p, courts: 2, stagger: 7 })),
+  ...[16, 24, 28].map((p) => ({ group: "3C", players: p, courts: 3, stagger: 5 })),
+];
+
+const FILTER = process.env.SWEEP_FILTER ? new RegExp(process.env.SWEEP_FILTER) : null;
+
+describe("sweep 03", () => {
+  it("prints", { timeout: 3_600_000 }, () => {
+    const compact: string[] = [];
+    const detail: string[] = [];
+    for (const sc of scenarios) {
+      if (FILTER && !FILTER.test(`${sc.group} N=${sc.players}`)) continue;
+      const matches = sc.courts === 1 ? Math.ceil(2.5 * sc.players) : 3 * sc.players;
+      const cells: string[] = [];
+      for (const v of VARIANTS) {
+        SWEEP.variant = v;
+        const runs = SEEDS.flatMap((seed) =>
+          [false, true].map((mixedSkill) =>
+            play({ players: sc.players, courts: sc.courts, matches, stagger: sc.stagger, seed, mixedSkill }),
+          ),
+        );
+        const pct = runs.map((r) => (100 * r.pairsShared) / r.totalPairs);
+        cells.push(
+          `${range(pct)}% / ${Math.max(...runs.map((r) => r.maxSitRun))} / ${Math.max(...runs.map((r) => r.maxSpreadAtPick))} / ${Math.max(...runs.map((r) => r.maxStreakAtPick))}`,
+        );
+        detail.push(
+          `${sc.group} N=${sc.players} ${v}: pairs ${range(runs.map((r) => r.pairsShared))}/${runs[0]!.totalPairs} (${range(pct)}%)` +
+            ` sets ${range(runs.map((r) => r.distinctSets))} finalSpread ${range(runs.map((r) => r.finalSpread))}` +
+            ` maxSpreadAtPick ${range(runs.map((r) => r.maxSpreadAtPick))} maxStreak ${range(runs.map((r) => r.maxStreakAtPick))}` +
+            ` maxSitRun ${range(runs.map((r) => r.maxSitRun))} maxRestsAtPick ${range(runs.map((r) => r.maxRestsAtPick))}` +
+            ` maxGapRounds ${range(runs.map((r) => r.maxGapRounds), 1)}` +
+            (sc.courts === 1
+              ? ` sit<=floor(N/4)=${Math.floor(sc.players / 4)}: ${runs.every((r) => r.maxSitRun <= Math.floor(sc.players / 4)) ? "yes" : "NO"}`
+              : "") +
+            ` (matches=${matches}, runs=${runs.length})`,
+        );
+      }
+      compact.push(`${sc.group} N=${sc.players} | ${cells.join(" | ")}`);
+    }
+    SWEEP.variant = "CUR";
+    log("COMPACT (cell = pairs% range / max sit-out run / max spread at pick / max Streak at pick); columns CUR | B | C | D\n" + compact.join("\n"));
+    log("\nDETAIL\n" + detail.join("\n"));
+  });
+});

@@ -1,6 +1,6 @@
 # Spec: Accounts and Shared clubs
 
-Status: ready-for-agent
+Status: done (all tickets in issues/ done)
 
 ADRs: 0006 (Anonymous Accounts and Shared clubs on Firebase), 0007 (One Session host per Active session). ADR-0001 still holds for everything that is not a Shared club. Vocabulary: `GLOSSARY.md` (Account, Account ID, Role, Organizer, Player, Local club, Shared club, Session host).
 

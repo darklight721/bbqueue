@@ -22,7 +22,8 @@ export function sparePlayers(session: Session): number {
   return countPlayers(session) - 4 * session.courts.length;
 }
 
-function countPlayers(session: Session): number {
+/** Session players not removed and not Sitting out. */
+export function countPlayers(session: Session): number {
   return session.players.filter((player) => !player.removed && !player.sittingOut).length;
 }
 

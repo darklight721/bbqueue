@@ -1,6 +1,6 @@
 # Install hint on Welcome
 
-Status: ready-for-agent
+Status: done (825005a)
 
 On iPhone and iPad, an app added to the Home Screen has its own storage, separate from the browser it was added from. An Account, its sign-in, Local clubs and Ended sessions created in the browser do not show up in the installed app (see the Account and Local club entries in `GLOSSARY.md`). On Android the installed app shares storage with the browser, so nothing is lost; installing there only gives full screen and less risk of the browser clearing the data.
 

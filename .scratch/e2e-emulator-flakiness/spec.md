@@ -34,3 +34,9 @@ The full `pnpm e2e` passes 3 runs in a row locally with default settings.
 ## E2E workflows
 
 None — this is about test infrastructure; no new workflows.
+
+## Comments
+
+### 2026-10-30 — still open, worse at 6 workers
+
+Full `pnpm e2e` on `97c24ee` (default workers, 6 on this machine): 512 passed, 1 skipped, 63 failed. Every emulator spec on both emulator projects failed at the 15 s expect timeout in `signUp` (`e2e/emulator/emulator.ts:34`): the Welcome sheet showed "You're offline. Connect and try again", so the app couldn't reach the Auth emulator. Also `welcome.spec.ts:334` failed with "browser.newContext: Target page, context or browser has been closed", and the log shows `Killed: 9 … vp preview --port 4173`, which looks like processes killed under memory pressure. Run on its own right after, `e2e/emulator/account.spec.ts` on chromium-mobile-emulator passed 3/3. Not addressed by any commit since the ticket was written (`playwright.config.ts` and `e2e/emulator/` are unchanged apart from spec edits).

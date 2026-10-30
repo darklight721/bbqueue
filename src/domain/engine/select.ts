@@ -1,6 +1,7 @@
 import type { Court, Lineup, Session, Team } from "../types.ts";
 import { SKILL_VALUE } from "../types.ts";
 import type { EngineContext } from "./context.ts";
+import { countPlayers } from "./spare.ts";
 import { buildHistory, matchPlayerIds, type History } from "./stats.ts";
 
 /** The field is cut to this many best-placed players before enumerating combinations. */
@@ -14,7 +15,10 @@ export interface Env {
   history: History;
   skill: ReadonlyMap<string, number>;
   rng: () => number;
-  /** Rests in a row at which a player is picked before Mixing gets a say: 2 × Courts. */
+  /**
+   * Rests in a row at which a player is picked before Mixing gets a say:
+   * max(2 × Courts, floor(players / 4)), players = Session players not removed and not Sitting out.
+   */
   restsLimit: number;
 }
 
@@ -23,7 +27,7 @@ export function makeEnv(session: Session, ctx: EngineContext): Env {
     history: buildHistory(session, ctx.now),
     skill: new Map(session.players.map((player) => [player.id, SKILL_VALUE[player.skill]])),
     rng: ctx.rng,
-    restsLimit: 2 * session.courts.length,
+    restsLimit: Math.max(2 * session.courts.length, Math.floor(countPlayers(session) / 4)),
   };
 }
 
@@ -67,16 +71,16 @@ export function candidatesFor(session: Session, courtId: string): string[] {
 
 // --------------------------------------------------------------------- ranking
 //
-// Soft rules in strict priority (ADR-0009): Rest, Rests in a row, Fairness with a one-Match
-// tolerance ("owed a place"), Team balance exists, Mixing, exact Fairness counts, Wait,
-// new partners, exact balance, random.
+// Soft rules in strict priority (ADR-0009): Rest, Rests in a row (limit max(2 × Courts,
+// floor(players / 4))), Fairness with a one-Match tolerance ("owed a place"), Team balance
+// exists, Mixing, exact Fairness counts, Wait, new partners, exact balance, random.
 
 /** Graded Rest: a Streak of 1 is fine, longer Streaks are progressively rested first. */
 export function restKey(env: Env, id: string): number {
   return Math.max(0, env.history.byPlayer.get(id)!.streak - 1);
 }
 
-/** Rests in a row beyond the limit: 0 until `rests` reaches 2 × Courts, then 1, 2, … */
+/** Rests in a row beyond the limit: 0 until `rests` reaches `restsLimit`, then 1, 2, … */
 export function restsTier(env: Env, id: string): number {
   return Math.max(0, env.history.byPlayer.get(id)!.rests - env.restsLimit + 1);
 }
