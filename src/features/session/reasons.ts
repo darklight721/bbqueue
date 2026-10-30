@@ -3,6 +3,8 @@ const REASON_MESSAGES: Record<string, string> = {
   "court-not-found": "That court no longer exists.",
   "court-busy": "That court is in use. End or remove the match first.",
   "no-lineup": "Not enough free players for this court yet.",
+  "no-other-balanced-teams": "No other balanced Teams for these four.",
+  "nobody-to-swap": "There is nobody else to bring in.",
   "not-enough-idle-courts": "Rehash all needs at least 2 idle courts.",
   "match-not-found": "That match no longer exists.",
   "match-not-active": "That match has already ended.",

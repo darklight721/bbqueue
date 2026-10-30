@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
-import { fill, rehashCourt } from "./operations.ts";
+import { fill, rehashBlock, rehashCourt, swapIntoLineup } from "./operations.ts";
 import { allPlayerStats } from "./playerStats.ts";
 import { lineupPlayerIds } from "./select.ts";
+import type { Session } from "../types.ts";
 import {
   MIN,
   T0,
@@ -344,6 +345,22 @@ describe("rehash", () => {
     }
   });
 
+  it("fails with no-other-balanced-teams when four Candidates have no other balanced split", () => {
+    // Skills 3, 2, 2, 1: [p1,p4] v [p2,p3] is the only balanced split.
+    const players = playersNamed(4).map((p, i) => ({
+      ...p,
+      skill: (["advanced", "intermediate", "intermediate", "beginner"] as const)[i]!,
+    }));
+    for (const seed of seeds) {
+      const ctx = makeCtx(seed);
+      const s = fill(session({ players }), ctx);
+      const before = s.courts[0]!.lineup;
+      expect(rehashBlock(s, "c1", ctx)).toBeNull();
+      expect(rehashCourt(s, "c1", ctx)).toEqual({ ok: false, reason: "no-other-balanced-teams" });
+      expect(s.courts[0]!.lineup).toEqual(before);
+    }
+  });
+
   it("is rejected for unknown or busy Courts", () => {
     const busy = session({
       players: playersNamed(4),
@@ -360,5 +377,174 @@ describe("rehash", () => {
     });
     expect(rehashCourt(busy, "c1", makeCtx())).toEqual({ ok: false, reason: "court-busy" });
     expect(rehashCourt(busy, "nope", makeCtx())).toEqual({ ok: false, reason: "court-not-found" });
+  });
+});
+
+// ----------------------------------------- Rehash blocked: rehashBlock / swapIntoLineup
+
+/**
+ * One Court, nine players of whom p6–p9 are Sitting out, so p1–p5 are the five Candidates and
+ * p1–p4 get the Lineup. p5 played the last two Matches (with p6–p9); nobody else has played, and
+ * p1–p4 were not free at those starts, so they have no Rests in a row.
+ * `streakReset` sets whether p5's Streak was reset after those (it isn't "resting" then).
+ */
+function fiveCandidates(
+  streakReset: boolean,
+  ctxSeed = 1,
+  skills: Partial<Record<string, "beginner" | "intermediate" | "advanced">> = {},
+) {
+  const players = playersNamed(9).map((p, i) => ({
+    ...p,
+    skill: skills[p.id] ?? p.skill,
+    sittingOut: i >= 5,
+  }));
+  const ctx = makeCtx(ctxSeed);
+  const s: Session = fill(
+    session({
+      players,
+      matches: [
+        match({
+          id: "m1",
+          teams: [
+            ["p5", "p6"],
+            ["p7", "p8"],
+          ],
+          startedAt: T0 - 12 * MIN,
+          endedAt: T0 - 9 * MIN,
+          freeAtStart: [],
+        }),
+        match({
+          id: "m2",
+          teams: [
+            ["p5", "p6"],
+            ["p7", "p9"],
+          ],
+          startedAt: T0 - 6 * MIN,
+          endedAt: T0 - 3 * MIN,
+          freeAtStart: [],
+        }),
+      ],
+      streakResetAt: streakReset ? { p5: T0 - 2 * MIN } : {},
+    }),
+    ctx,
+  );
+  return { s, ctx };
+}
+
+describe("rehashBlock", () => {
+  it('says "rest" when anyone else would play a third Match in a row, and Rehash keeps the four', () => {
+    for (const seed of seeds) {
+      const { s, ctx } = fiveCandidates(false, seed);
+      expect(lineupSet(s, 1)).toEqual(["p1", "p2", "p3", "p4"]);
+      expect(rehashBlock(s, "c1", ctx)).toEqual({ reason: "rest", newTeams: true });
+      const before = s.courts[0]!.lineup!;
+      const after = unwrap(rehashCourt(s, "c1", ctx));
+      expect(lineupSet(after, 1)).toEqual(["p1", "p2", "p3", "p4"]);
+      expect(after.courts[0]!.lineup).not.toEqual(before);
+    }
+  });
+
+  it('says "fairness" when the others have played more, and Rehash keeps the four', () => {
+    for (const seed of seeds) {
+      const { s, ctx } = fiveCandidates(true, seed);
+      expect(lineupSet(s, 1)).toEqual(["p1", "p2", "p3", "p4"]);
+      expect(rehashBlock(s, "c1", ctx)).toEqual({ reason: "fairness", newTeams: true });
+      expect(lineupSet(unwrap(rehashCourt(s, "c1", ctx)), 1)).toEqual(["p1", "p2", "p3", "p4"]);
+    }
+  });
+
+  it("reports newTeams false when the balanced split is the only one (Skills 3, 2, 2, 1)", () => {
+    const skills = {
+      p1: "advanced",
+      p2: "intermediate",
+      p3: "intermediate",
+      p4: "beginner",
+    } as const;
+    for (const seed of seeds) {
+      const { s, ctx } = fiveCandidates(false, seed, skills);
+      expect(lineupSet(s, 1)).toEqual(["p1", "p2", "p3", "p4"]);
+      expect(rehashBlock(s, "c1", ctx)).toEqual({ reason: "rest", newTeams: false });
+      expect(rehashCourt(s, "c1", ctx)).toEqual({ ok: false, reason: "no-other-balanced-teams" });
+    }
+  });
+
+  it("reports newTeams true when another balanced split exists (Skills 3, 3, 1, 1)", () => {
+    const skills = { p1: "advanced", p2: "advanced", p3: "beginner", p4: "beginner" } as const;
+    for (const seed of seeds) {
+      const { s, ctx } = fiveCandidates(false, seed, skills);
+      expect(rehashBlock(s, "c1", ctx)).toEqual({ reason: "rest", newTeams: true });
+      const next = unwrap(rehashCourt(s, "c1", ctx));
+      expect(lineupSet(next, 1)).toEqual(["p1", "p2", "p3", "p4"]);
+      // Both [p1,p3] v [p2,p4] and [p1,p4] v [p2,p3] are balanced; the other split is 4 apart.
+      const teams = next.courts[0]!.lineup!.teams.map((team) => [...team].sort().join("+")).sort();
+      expect(["p1+p3,p2+p4", "p1+p4,p2+p3"]).toContain(teams.join(","));
+    }
+  });
+
+  it("is null when a different allowed set exists", () => {
+    const ctx = makeCtx();
+    const s = fill(session({ players: playersNamed(8) }), ctx);
+    expect(rehashBlock(s, "c1", ctx)).toBeNull();
+  });
+
+  it("is null with exactly four Candidates, with no Lineup, and for unknown or busy Courts", () => {
+    const ctx = makeCtx();
+    expect(rehashBlock(fill(session({ players: playersNamed(4) }), ctx), "c1", ctx)).toBeNull();
+    expect(rehashBlock(session({ players: playersNamed(3) }), "c1", ctx)).toBeNull();
+    const { s } = fiveCandidates(false);
+    expect(rehashBlock(s, "nope", ctx)).toBeNull();
+    const busy = session({
+      players: playersNamed(6),
+      matches: [
+        match({
+          id: "m",
+          teams: [
+            ["p1", "p2"],
+            ["p3", "p4"],
+          ],
+          startedAt: T0,
+        }),
+      ],
+    });
+    expect(rehashBlock(busy, "c1", ctx)).toBeNull();
+  });
+});
+
+describe("swapIntoLineup", () => {
+  it("brings in the rested player and keeps three of the four", () => {
+    for (const seed of seeds) {
+      const { s, ctx } = fiveCandidates(false, seed);
+      const next = unwrap(swapIntoLineup(s, "c1", ctx));
+      const set = lineupSet(next, 1);
+      expect(set).toHaveLength(4);
+      expect(set).toContain("p5");
+      expect(
+        set.filter((id) => id !== "p5").every((id) => ["p1", "p2", "p3", "p4"].includes(id)),
+      ).toBe(true);
+    }
+  });
+
+  it("is rejected for unknown Courts, busy Courts, and when nobody can come in", () => {
+    const ctx = makeCtx();
+    const { s } = fiveCandidates(false);
+    expect(swapIntoLineup(s, "nope", ctx)).toEqual({ ok: false, reason: "court-not-found" });
+    const busy = session({
+      players: playersNamed(6),
+      matches: [
+        match({
+          id: "m",
+          teams: [
+            ["p1", "p2"],
+            ["p3", "p4"],
+          ],
+          startedAt: T0,
+        }),
+      ],
+    });
+    expect(swapIntoLineup(busy, "c1", ctx)).toEqual({ ok: false, reason: "court-busy" });
+    const four = fill(session({ players: playersNamed(4) }), ctx);
+    expect(swapIntoLineup(four, "c1", ctx)).toEqual({ ok: false, reason: "nobody-to-swap" });
+    const noLineup = session({ players: playersNamed(3) });
+    expect(swapIntoLineup(noLineup, "c1", ctx)).toEqual({ ok: false, reason: "nobody-to-swap" });
   });
 });

@@ -131,7 +131,7 @@ The four Session players (already split into Teams) proposed by the app for an I
 _Avoid_: Suggestion, available players
 
 **Rehash**:
-Asking the app for a different Lineup for one Court.
+Asking the app for a different Lineup for one Court, picked by the same rules as any Lineup. When no other players can come in without breaking Rest or Fairness, only the Teams change.
 _Avoid_: Shuffle, reroll
 
 **Rehash all**:

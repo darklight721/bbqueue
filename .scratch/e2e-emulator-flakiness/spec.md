@@ -12,6 +12,8 @@ The full `pnpm e2e` run doesn't pass reliably, with or without recent changes. A
 | Baseline | `e75abda` (before the small-free-pool work) | 2 | 533 passed, 4 failed | chromium-mobile-emulator: `delete-account.spec.ts:15`, `:107`; `delete-ended-session.spec.ts:41`, `:78` |
 | With small-free-pool changes | working tree | 2 | 543 passed, 4 failed | webkit-mobile-emulator: `roles.spec.ts:174`, `shared-clubs.spec.ts:99`, `shared-sessions.spec.ts:8`, `:51` |
 | With small-free-pool changes | working tree | default / 4 | 5–6 failed per run | `roles`, `delete-account`, `requests`, `shared-sessions` (once at a Club-list click "not stable"), once `welcome` |
+| With ticket 02 (Rehash sheet) | working tree | 2 | 553 passed, 4 failed | webkit-mobile-emulator: `delete-account.spec.ts:107`, `make-shared-club.spec.ts:87`, `roles.spec.ts:174`; chromium-mobile: `welcome.spec.ts:260` (passed 5/5 when run alone) |
+| With ticket 02 (balance rule) | working tree | 2 | 555 passed, 4 failed | chromium-mobile-emulator: `roles.spec.ts:174`; webkit-mobile-emulator: `roles.spec.ts:174`, `roles.spec.ts:88`, `delete-account.spec.ts:15` |
 
 The failures are 30 s test timeouts or URL/visibility expectations, often inside shared helpers such as `startSession` (`e2e/emulator/sessions.ts:56`).
 

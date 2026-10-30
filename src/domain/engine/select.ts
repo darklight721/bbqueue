@@ -324,6 +324,99 @@ function sameSet(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((id) => b.includes(id));
 }
 
+/** Different allowed sets of four (Rest and Fairness, ADR-0009), leaving the current set out. */
+function differentAllowedSets(
+  candidates: readonly string[],
+  currentSet: readonly string[],
+  env: Env,
+): string[][] {
+  return fairSets(candidates, env).filter((set) => !sameSet(set, currentSet));
+}
+
+/**
+ * Team balance limit for Rehash and New Teams: no worse than max(1, the current Lineup's
+ * balance). So an already-unbalanced Lineup (no balanced four exists) may move to another four
+ * that is no worse, but a balanced one never becomes unbalanced.
+ */
+function rehashBalanceLimit(env: Env, lineup: Lineup): number {
+  return Math.max(1, balanceOf(env, lineup.teams));
+}
+
+/**
+ * Rehash: a Lineup that differs from the Court's current one, never less balanced than
+ * `rehashBalanceLimit` allows.
+ * - A different allowed set of four (Rest and Fairness, ADR-0009), picked by the usual rules; or else
+ * - the best other split of the same four. This is "New Teams".
+ * It never swaps anybody in: a player the rules keep out stays out (see `pickSwapLineup`).
+ * With a Lineup on the Court, null means there is nothing within the limit (also with fewer than
+ * four Candidates); without one it is `pickLineup`.
+ */
+export function pickDifferentLineup(session: Session, court: Court, env: Env): Lineup | null {
+  const current = court.lineup;
+  if (!current) return pickLineup(session, court.id, env);
+  const candidates = candidatesFor(session, court.id);
+  if (candidates.length < 4) return null;
+  const currentSet = lineupPlayerIds(current);
+  const limit = rehashBalanceLimit(env, current);
+  const tooUnbalanced = (teams: Split) => balanceOf(env, teams) > limit;
+
+  const fromFair = bestSplitOf(differentAllowedSets(candidates, currentSet, env), env, {
+    skip: tooUnbalanced,
+  });
+  if (fromFair) return fromFair;
+
+  const currentSplit = splitSignature(current.teams);
+  return bestSplitOf([currentSet], env, {
+    skip: (teams) => splitSignature(teams) === currentSplit || tooUnbalanced(teams),
+  });
+}
+
+export type RehashBlockReason = "rest" | "fairness" | "waited" | "balance";
+
+/**
+ * Why Rehash on this Court can't bring anybody else in, or null when it can act directly.
+ * Null when a different allowed set within the balance limit exists, when there are exactly four
+ * Candidates (nobody to bring in: Rehash only re-splits, or says no balanced Teams), and when
+ * the Court has no Lineup or fewer than four Candidates. Otherwise, in priority order:
+ * - "rest": Rest alone leaves only the current set (someone else would play a third Match in a row).
+ * - "waited": Rest allows more, but Rests in a row forces the current set (those four have sat out
+ *   as long as the limit lets them).
+ * - "fairness": Rest and Rests in a row allow another set, but someone would be left out who is
+ *   owed a place.
+ * - "balance": other fours are allowed, but none splits into Teams within the balance limit.
+ * `newTeams` is true when another split of the current four is within the limit.
+ */
+export function rehashBlockReason(
+  session: Session,
+  court: Court,
+  env: Env,
+): { reason: RehashBlockReason; newTeams: boolean } | null {
+  const current = court.lineup;
+  if (!current) return null;
+  const candidates = candidatesFor(session, court.id);
+  if (candidates.length <= 4) return null;
+  const currentSet = lineupPlayerIds(current);
+  const limit = rehashBalanceLimit(env, current);
+  const allowed = differentAllowedSets(candidates, currentSet, env);
+  const fitsLimit = (set: readonly string[]) =>
+    splitsOf(set).some((teams) => balanceOf(env, teams) <= limit);
+  if (allowed.some(fitsLimit)) return null;
+
+  const currentSplit = splitSignature(current.teams);
+  const newTeams = splitsOf(currentSet).some(
+    (teams) => splitSignature(teams) !== currentSplit && balanceOf(env, teams) <= limit,
+  );
+
+  if (allowed.length > 0) return { reason: "balance", newTeams };
+  // Nothing different is allowed: find which rule leaves only the current set.
+  const allowsDifferent = (cut: { inn: string[]; field: string[]; slots: number }) =>
+    cut.field.length > cut.slots || !sameSet([...cut.inn, ...cut.field], currentSet);
+  const restOnly = restCut(candidates, 4, { ...env, restsLimit: Infinity });
+  if (!allowsDifferent(restOnly)) return { reason: "rest", newTeams };
+  if (!allowsDifferent(restCut(candidates, 4, env))) return { reason: "waited", newTeams };
+  return { reason: "fairness", newTeams };
+}
+
 /** One-player swaps of `current` against the other candidates. */
 function swapNeighbours(candidates: readonly string[], current: readonly string[]): string[][] {
   const outsiders = candidates.filter((id) => !current.includes(id));
@@ -347,42 +440,27 @@ function swapKey(env: Env, candidates: readonly string[], set: readonly string[]
 }
 
 /**
- * Rehash: a Lineup that differs from the Court's current one whenever possible.
- * Prefers a different allowed set of players (best by the usual rules), otherwise a different split.
+ * "Swap anyway": the best single-player swap of the Court's Lineup, on purpose ignoring Rest
+ * and Fairness (it may bring in a rested player). Ranked by `swapKey`, then the usual set rules.
+ * Null when the Court has no Lineup or there is nobody to swap in.
  */
-export function pickDifferentLineup(session: Session, court: Court, env: Env): Lineup | null {
+export function pickSwapLineup(session: Session, court: Court, env: Env): Lineup | null {
   const current = court.lineup;
-  if (!current) return pickLineup(session, court.id, env);
+  if (!current) return null;
   const candidates = candidatesFor(session, court.id);
-  if (candidates.length < 4) return null;
-  const currentSet = lineupPlayerIds(current);
-
-  const different = fairSets(candidates, env).filter((set) => !sameSet(set, currentSet));
-  const fromFair = bestSplitOf(different, env);
-  if (fromFair) return fromFair;
-
-  // The only allowed set *is* the current one: relax to the best single-player swap.
-  const neighbours = swapNeighbours(candidates, currentSet).map((set) => ({
+  const neighbours = swapNeighbours(candidates, lineupPlayerIds(current)).map((set) => ({
     set,
     keys: swapKey(env, candidates, set),
   }));
-  if (neighbours.length > 0) {
-    const bestKeys = neighbours.reduce(
-      (best, entry) => (compareNumbers(entry.keys, best) < 0 ? entry.keys : best),
-      neighbours[0]!.keys,
-    );
-    const group = neighbours
-      .filter((entry) => compareNumbers(entry.keys, bestKeys) === 0)
-      .map((entry) => entry.set);
-    const fromSwap = bestSplitOf(group, env);
-    if (fromSwap) return fromSwap;
-  }
-
-  // Exactly four Candidates: choose the best different split.
-  const currentSplit = splitSignature(current.teams);
-  return bestSplitOf([currentSet], env, {
-    skip: (teams) => splitSignature(teams) === currentSplit,
-  });
+  if (neighbours.length === 0) return null;
+  const bestKeys = neighbours.reduce(
+    (best, entry) => (compareNumbers(entry.keys, best) < 0 ? entry.keys : best),
+    neighbours[0]!.keys,
+  );
+  const group = neighbours
+    .filter((entry) => compareNumbers(entry.keys, bestKeys) === 0)
+    .map((entry) => entry.set);
+  return bestSplitOf(group, env);
 }
 
 /**

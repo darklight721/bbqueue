@@ -14,6 +14,7 @@ export {
   fill,
   moveQueueToCourt,
   rehashAll,
+  rehashBlock,
   rehashCourt,
   removeCourt,
   removeMatch,
@@ -21,6 +22,7 @@ export {
   setPointSystem,
   setSittingOut,
   startMatch,
+  swapIntoLineup,
   validateCreateSessionInput,
 } from "./operations.ts";
 export type { CreateSessionInput, MoveQueueReason, NewPlayerInput, Result } from "./operations.ts";

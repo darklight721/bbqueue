@@ -1,11 +1,13 @@
 import { useId, useState } from "react";
 import { ConfirmDialog } from "../../../components/ConfirmDialog.tsx";
 import { PlayIcon, RefreshIcon, TrashIcon } from "../../../components/icons.tsx";
+import { canRehashAll, rehashBlock } from "../../../domain/engine/index.ts";
 import type { Court, Match } from "../../../domain/types.ts";
 import { useSessionActions, useSessionView } from "../context.ts";
 import { TeamsView } from "../PlayerViews.tsx";
 import { teamNames } from "../teams.ts";
 import { MatchTimer } from "./MatchTimer.tsx";
+import { RehashBlockedSheet, type RehashBlock } from "./RehashBlockedSheet.tsx";
 import { ScoreDialog } from "./ScoreDialog.tsx";
 
 /** One Court: Busy (solid header, live timer, End match) or Idle (Lineup, Start match). */
@@ -104,11 +106,29 @@ function BusyCourt({ court, match }: { court: Court; match: Match }) {
 }
 
 function IdleCourt({ court }: { court: Court }) {
-  const { readOnly } = useSessionView();
+  const { session, readOnly } = useSessionView();
   const actions = useSessionActions();
   const headingId = useId();
   const lineup = court.lineup;
   const lineupKey = lineup ? lineup.teams.flat().join("|") : "none";
+  /** Set while the "No one else can come in" sheet is open. */
+  const [blocked, setBlocked] = useState<RehashBlock | null>(null);
+
+  const rehash = () => {
+    const block = rehashBlock(session, court.id, { now: Date.now(), rng: Math.random });
+    if (block) setBlocked(block);
+    else actions.rehashCourt(court.id);
+  };
+  /** Runs one of the sheet's choices; the sheet closes either way (a refusal shows the toast). */
+  const choose = (action: () => boolean) => () => {
+    setBlocked(null);
+    action();
+  };
+  // The other Idle Courts whose Lineup Rehash all would change too.
+  const otherLineups = session.courts
+    .filter((other) => other.id !== court.id && other.activeMatchId === null && other.lineup)
+    .map((other) => other.number)
+    .sort((a, b) => a - b);
 
   return (
     <section
@@ -158,7 +178,7 @@ function IdleCourt({ court }: { court: Court }) {
             type="button"
             className="btn btn-lg btn-outline border-base-300"
             disabled={!lineup}
-            onClick={() => actions.rehashCourt(court.id)}
+            onClick={rehash}
           >
             <RefreshIcon className="size-5" />
             Rehash
@@ -173,6 +193,18 @@ function IdleCourt({ court }: { court: Court }) {
             Start match
           </button>
         </div>
+      )}
+
+      {readOnly || blocked === null ? null : (
+        <RehashBlockedSheet
+          open
+          block={blocked}
+          rehashAll={canRehashAll(session) ? otherLineups : null}
+          onNewTeams={choose(() => actions.rehashCourt(court.id))}
+          onRehashAll={choose(() => actions.rehashAll())}
+          onSwapAnyway={choose(() => actions.swapIntoLineup(court.id))}
+          onCancel={() => setBlocked(null)}
+        />
       )}
     </section>
   );

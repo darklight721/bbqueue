@@ -7,6 +7,7 @@ import {
   endMatch,
   moveQueueToCourt,
   rehashAll,
+  rehashBlock,
   rehashCourt,
   removeCourt,
   removeMatch,
@@ -15,6 +16,7 @@ import {
   startMatch,
 } from "./operations.ts";
 import { allPlayerStats } from "./playerStats.ts";
+import { balanceOf, lineupPlayerIds, makeEnv, restKey } from "./select.ts";
 import { buildHistory } from "./stats.ts";
 import { addQueue, queueWarnings, removeQueue, setQueueSlot } from "./queues.ts";
 import { createRng, randomInt } from "./rng.ts";
@@ -590,6 +592,85 @@ describe("Courts that start at the same instant", () => {
           `${players}p/${courts}C seed ${seed}`,
           true,
         ]);
+      }
+    }
+  });
+});
+
+describe("Rehash over whole evenings", () => {
+  it("a press never raises the Rest cost or makes unbalanced Teams, and matches rehashBlock (ticket 02)", () => {
+    // Rest cost = Σ max(0, Streak − 1) over the four. Pressing Rehash at every Lineup picked
+    // (not applied) used to bring back the rested player whenever Rest forced the current set.
+    // Skills are mixed (beginner, intermediate, advanced in turn), so balance matters.
+    for (const [players, courts] of [
+      [9, 2],
+      [10, 2],
+      [13, 3],
+      [14, 3],
+      [18, 4],
+    ] as const) {
+      for (const seed of [1, 2, 3, 4, 5]) {
+        const ctx = makeCtx(seed);
+        let s = createSession(
+          {
+            name: "Rehash",
+            clubId: null,
+            clubName: null,
+            pointSystem: 21,
+            plannedHours: 3,
+            courts,
+            players: Array.from({ length: players }, (_, i) => ({
+              name: `P${i + 1}`,
+              skill: SKILL_CYCLE[(i + seed) % 3]!,
+            })),
+          },
+          ctx,
+        );
+        const first = new Map(s.courts.map((c, i) => [c.id, T0 + (i * 15 * MIN) / courts]));
+        const endAt = new Map<string, number>();
+        let now = T0;
+        for (let guard = 0; guard < 400 && s.matches.length < 3 * players; guard++) {
+          for (const m of s.matches.filter(
+            (x) => x.status === "active" && endAt.get(x.id)! <= now,
+          )) {
+            s = unwrap(endMatch(s, m.id, null, at(ctx, now)));
+            const court = s.courts.find((c) => c.number === m.courtNumber)!;
+            if (!court.lineup) continue;
+            const label = `${players}p/${courts}C seed ${seed}`;
+            const env = makeEnv(s, at(ctx, now));
+            const cost = (ids: string[]) => ids.reduce((n, id) => n + restKey(env, id), 0);
+            const limit = Math.max(1, balanceOf(env, court.lineup.teams));
+            const pressed = rehashCourt(s, court.id, at(ctx, now));
+            if (pressed.ok) {
+              const after = pressed.session.courts.find((c) => c.id === court.id)!.lineup!;
+              expect([
+                label,
+                cost(lineupPlayerIds(after)) <= cost(lineupPlayerIds(court.lineup)),
+              ]).toEqual([label, true]);
+              expect([label, balanceOf(env, after.teams) <= limit]).toEqual([label, true]);
+            } else {
+              expect(pressed).toEqual({ ok: false, reason: "no-other-balanced-teams" });
+            }
+            // The sheet and the button agree: a block with newTeams true can always re-split.
+            const block = rehashBlock(s, court.id, at(ctx, now));
+            if (block?.newTeams) expect([label, pressed.ok]).toEqual([label, true]);
+            if (block && !block.newTeams) {
+              expect([label, pressed.ok === false]).toEqual([label, true]);
+            }
+          }
+          for (const c of s.courts) {
+            if (c.activeMatchId !== null || !c.lineup || now < first.get(c.id)!) continue;
+            s = unwrap(startMatch(s, c.id, at(ctx, now)));
+            endAt.set(s.matches.at(-1)!.id, now + 15 * MIN);
+          }
+          const nexts = [
+            ...[...endAt.entries()]
+              .filter(([id]) => s.matches.find((m) => m.id === id)?.status === "active")
+              .map(([, tm]) => tm),
+            ...[...first.values()].filter((tm) => tm > now),
+          ];
+          now = Math.min(...nexts);
+        }
       }
     }
   });

@@ -8,6 +8,7 @@ import {
   removeCourt,
   removeMatch,
   startMatch,
+  swapIntoLineup,
 } from "../../domain/engine/index.ts";
 import type { Session } from "../../domain/types.ts";
 import {
@@ -107,6 +108,7 @@ export function SessionProvider({
       removeMatch: (matchId) => run((s, ctx) => removeMatch(s, matchId, ctx)),
       rehashCourt: (courtId) => run((s, ctx) => rehashCourt(s, courtId, ctx)),
       rehashAll: () => run((s, ctx) => rehashAll(s, ctx)),
+      swapIntoLineup: (courtId) => run((s, ctx) => swapIntoLineup(s, courtId, ctx)),
       addCourt: () => run((s, ctx) => addCourt(s, ctx)),
       removeCourt: (courtId) => run((s, ctx) => removeCourt(s, courtId, ctx)),
     };

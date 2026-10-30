@@ -4,6 +4,7 @@ import type { Court, Session, SkillLevel } from "../types.ts";
 import { fill } from "./operations.ts";
 import { createRng, randomInt } from "./rng.ts";
 import {
+  balanceOf,
   bestSplitOf,
   domOf,
   fairSets,
@@ -14,6 +15,8 @@ import {
   owes,
   pickDifferentLineup,
   pickLineup,
+  pickSwapLineup,
+  rehashBlockReason,
   replaceInLineup,
   restCut,
   restKey,
@@ -528,20 +531,31 @@ describe("replaceInLineup", () => {
 
 // ---------------------------------------------------------------------- rehash
 
+/** A one-Court Session whose Court already holds p1–p4 as [p1,p2] vs [p3,p4], with `count` players. */
+function courtWithLineup(count: number, skills: Partial<Record<string, SkillLevel>> = {}) {
+  const players = ids(count).map((id) => player(id, skills[id] ?? "intermediate"));
+  const s0 = session({ players });
+  const court: Court = {
+    ...s0.courts[0]!,
+    lineup: {
+      teams: [
+        ["p1", "p2"],
+        ["p3", "p4"],
+      ],
+    },
+  };
+  return { s: { ...s0, courts: [court] }, court };
+}
+
+const splitOf = (lineup: { teams: [string[], string[]] }) =>
+  lineup.teams
+    .map((team) => [...team].sort().join("+"))
+    .sort()
+    .join(" vs ");
+
 describe("pickDifferentLineup", () => {
-  it("still returns a different Lineup when the only allowed set is the current one", () => {
-    const players = ids(5).map((id) => player(id));
-    const s0 = session({ players });
-    const court: Court = {
-      ...s0.courts[0]!,
-      lineup: {
-        teams: [
-          ["p1", "p2"],
-          ["p3", "p4"],
-        ],
-      },
-    };
-    const s = { ...s0, courts: [court] };
+  it("never swaps: with only the current set allowed it re-splits the same four (Fairness case)", () => {
+    const { s, court } = courtWithLineup(5);
     for (const seed of seedList(20)) {
       // p5 has 2 more recent Matches than everybody else: all four others are owed before it
       const env = fakeEnv(
@@ -553,24 +567,316 @@ describe("pickDifferentLineup", () => {
       );
       expect(fairSets(ids(5), env)).toHaveLength(1);
       const next = pickDifferentLineup(s, court, env)!;
+      expect(lineupPlayerIds(next).sort()).toEqual(["p1", "p2", "p3", "p4"]);
+      expect(splitOf(next)).not.toEqual(splitOf(court.lineup!));
+    }
+  });
+
+  // Ticket .scratch/small-free-pool/issues/02-rehash-swap-breaks-rest.md
+  it("does not bring in a player who would play a third Match in a row", () => {
+    // Five Candidates (e.g. 9 players on 2 Courts, 5 free). p5 has played two Matches in a row
+    // and is rested; the current Lineup p1–p4 has nobody at Streak 2. Every other set of four
+    // contains p5, so Rehash re-splits p1–p4 instead.
+    const { s, court } = courtWithLineup(5);
+    for (const seed of seedList(20)) {
+      const env = fakeEnv(
+        { ...specsFor(["p1", "p2", "p3", "p4"], { streak: 1 }), p5: { streak: 2 } },
+        { seed },
+      );
+      expect(fairSets(ids(5), env)).toHaveLength(1); // Rest leaves only the current set
+      const next = pickDifferentLineup(s, court, env)!;
+      expect(lineupPlayerIds(next).sort()).toEqual(["p1", "p2", "p3", "p4"]);
+      expect(splitOf(next)).not.toEqual(splitOf(court.lineup!));
+    }
+  });
+
+  it("never makes unbalanced Teams: with no other balanced split it returns null", () => {
+    // Skills 3, 2, 2, 1: only [p1,p4] vs [p2,p3] is balanced (4 v 4); the others are 5 v 3.
+    const skills = {
+      p1: "advanced",
+      p2: "intermediate",
+      p3: "intermediate",
+      p4: "beginner",
+    } as const;
+    const { s, court } = courtWithLineup(5, skills);
+    const balanced: Court = {
+      ...court,
+      lineup: {
+        teams: [
+          ["p1", "p4"],
+          ["p2", "p3"],
+        ],
+      },
+    };
+    const s2 = { ...s, courts: [balanced] };
+    for (const seed of seedList(10)) {
+      const env = fakeEnv(
+        {
+          p1: { streak: 1, skill: "advanced" },
+          p2: { streak: 1 },
+          p3: { streak: 1 },
+          p4: { streak: 1, skill: "beginner" },
+          p5: { streak: 2 },
+        },
+        { seed },
+      );
+      expect(pickDifferentLineup(s2, balanced, env)).toBeNull();
+    }
+  });
+
+  it("re-splits to another balanced split (difference 0 or 1) when there is one", () => {
+    // Skills 3, 3, 1, 1: [p1,p3] vs [p2,p4] and [p1,p4] vs [p2,p3] are both balanced.
+    const skills = { p1: "advanced", p2: "advanced", p3: "beginner", p4: "beginner" } as const;
+    const { s, court } = courtWithLineup(5, skills);
+    const current: Court = {
+      ...court,
+      lineup: {
+        teams: [
+          ["p1", "p3"],
+          ["p2", "p4"],
+        ],
+      },
+    };
+    const s2 = { ...s, courts: [current] };
+    for (const seed of seedList(10)) {
+      const env = fakeEnv(
+        {
+          p1: { streak: 1, skill: "advanced" },
+          p2: { streak: 1, skill: "advanced" },
+          p3: { streak: 1, skill: "beginner" },
+          p4: { streak: 1, skill: "beginner" },
+          p5: { streak: 2 },
+        },
+        { seed },
+      );
+      const next = pickDifferentLineup(s2, current, env)!;
+      expect(lineupPlayerIds(next).sort()).toEqual(["p1", "p2", "p3", "p4"]);
+      expect(splitOf(next)).toBe("p1+p4 vs p2+p3");
+      expect(balanceOf(env, next.teams)).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("lets an already-unbalanced Lineup move to another four that is no worse (max(1, current))", () => {
+    // p1–p3 are owed a place before p4 and p5, so the allowed sets are p1–p3 plus p4 or p5.
+    // Skills 3, 3, 3, 1, 1: both fours are 3, 3, 3, 1 with best balance 2. The current Lineup
+    // (balance 2) is already unbalanced, so another four with balance 2 is fine.
+    const skills = {
+      p1: "advanced",
+      p2: "advanced",
+      p3: "advanced",
+      p4: "beginner",
+      p5: "beginner",
+    } as const;
+    const { s, court } = courtWithLineup(5, skills);
+    const spec = {
+      p1: { recent: 0, total: 0, skill: "advanced" },
+      p2: { recent: 0, total: 0, skill: "advanced" },
+      p3: { recent: 0, total: 0, skill: "advanced" },
+      p4: { recent: 2, total: 2, skill: "beginner" },
+      p5: { recent: 2, total: 2, skill: "beginner" },
+    } as const;
+    for (const seed of seedList(10)) {
+      const env = fakeEnv(spec, { seed });
+      expect(balanceOf(env, court.lineup!.teams)).toBe(2);
+      const next = pickDifferentLineup(s, court, env)!;
+      expect(lineupPlayerIds(next).sort()).toEqual(["p1", "p2", "p3", "p5"]);
+      expect(balanceOf(env, next.teams)).toBeLessThanOrEqual(2);
+    }
+  });
+
+  it("re-splits the four when there are exactly four Candidates", () => {
+    const { s, court } = courtWithLineup(4);
+    for (const seed of seedList(10)) {
+      const env = fakeEnv(specsFor(ids(4)), { seed });
+      const next = pickDifferentLineup(s, court, env)!;
+      expect(lineupPlayerIds(next).sort()).toEqual(["p1", "p2", "p3", "p4"]);
+      expect(splitOf(next)).not.toEqual(splitOf(court.lineup!));
+    }
+  });
+
+  it("picks a different allowed set when one exists", () => {
+    const { s, court } = courtWithLineup(6);
+    for (const seed of seedList(10)) {
+      const env = fakeEnv(specsFor(ids(6)), { seed });
+      const next = pickDifferentLineup(s, court, env)!;
       expect(lineupPlayerIds(next).sort()).not.toEqual(["p1", "p2", "p3", "p4"]);
-      expect(lineupPlayerIds(next)).toContain("p5");
+    }
+  });
+
+  it("is null with fewer than four Candidates", () => {
+    const { s, court } = courtWithLineup(3);
+    expect(pickDifferentLineup(s, court, fakeEnv(specsFor(ids(3))))).toBeNull();
+  });
+
+  it("matches pickLineup's rules when the Court has no Lineup", () => {
+    const players = ids(6).map((id) => player(id));
+    const s = session({ players });
+    const env = fakeEnv(specsFor(ids(6)));
+    expect(pickDifferentLineup(s, s.courts[0]!, env)).not.toBeNull();
+    expect(pickLineup(s, "c1", env)).not.toBeNull();
+  });
+});
+
+describe("rehashBlockReason", () => {
+  it("is null when a different allowed set within the balance limit exists", () => {
+    const { s, court } = courtWithLineup(6);
+    expect(rehashBlockReason(s, court, fakeEnv(specsFor(ids(6))))).toBeNull();
+  });
+
+  it("is null with exactly four Candidates (Rehash re-splits, or says no balanced Teams)", () => {
+    const { s, court } = courtWithLineup(4);
+    expect(rehashBlockReason(s, court, fakeEnv(specsFor(ids(4))))).toBeNull();
+  });
+
+  it("is null when the Court has no Lineup", () => {
+    const s = session({ players: ids(6).map((id) => player(id)) });
+    expect(rehashBlockReason(s, s.courts[0]!, fakeEnv(specsFor(ids(6))))).toBeNull();
+  });
+
+  it('is "rest" when Rest forces the current set', () => {
+    const { s, court } = courtWithLineup(5);
+    const env = fakeEnv({
+      ...specsFor(["p1", "p2", "p3", "p4"], { streak: 1 }),
+      p5: { streak: 2 },
+    });
+    expect(rehashBlockReason(s, court, env)).toEqual({ reason: "rest", newTeams: true });
+  });
+
+  it('is "waited" when Rests in a row forces the current set', () => {
+    // p1–p4 have sat out two Matches in a row (the limit); p5 has not. Streaks are all 0, so
+    // Rest alone would allow other sets.
+    const { s, court } = courtWithLineup(5);
+    const env = fakeEnv(
+      { ...specsFor(["p1", "p2", "p3", "p4"], { rests: 2 }), p5: { rests: 0 } },
+      { restsLimit: 2 },
+    );
+    expect(fairSets(ids(5), env)).toHaveLength(1);
+    expect(rehashBlockReason(s, court, env)).toEqual({ reason: "waited", newTeams: true });
+  });
+
+  it('is "rest" before "waited" when both would force the current set', () => {
+    const { s, court } = courtWithLineup(5);
+    const env = fakeEnv(
+      {
+        ...specsFor(["p1", "p2", "p3", "p4"], { streak: 1, rests: 2 }),
+        p5: { streak: 2 },
+      },
+      { restsLimit: 2 },
+    );
+    expect(rehashBlockReason(s, court, env)?.reason).toBe("rest");
+  });
+
+  it('is "fairness" when Rest allows another set but someone is owed a place', () => {
+    const { s, court } = courtWithLineup(5);
+    const env = fakeEnv({
+      ...specsFor(["p1", "p2", "p3", "p4"], { recent: 0, total: 0 }),
+      p5: { recent: 2, total: 2 },
+    });
+    expect(rehashBlockReason(s, court, env)).toEqual({ reason: "fairness", newTeams: true });
+  });
+
+  describe('"balance": other fours are allowed but none splits into balanced Teams', () => {
+    // p1–p3 are owed before p4 and p5, so the allowed sets are p1–p3 + p4 (current) or + p5.
+    const spec = (p3: SkillLevel, p5: SkillLevel) => ({
+      p1: { recent: 0, total: 0, skill: "advanced" as const },
+      p2: { recent: 0, total: 0, skill: "advanced" as const },
+      p3: { recent: 0, total: 0, skill: p3 },
+      p4: { recent: 2, total: 2, skill: "beginner" as const },
+      p5: { recent: 2, total: 2, skill: p5 },
+    });
+    const lineup = (court: Court): Court => ({
+      ...court,
+      lineup: {
+        teams: [
+          ["p1", "p4"],
+          ["p2", "p3"],
+        ],
+      },
+    });
+
+    it("is balance, with newTeams true when another split of the four is balanced", () => {
+      // Current 3, 3, 1, 1 (balanced); swapping p4 for p5 (3) gives 3, 3, 1, 3 (best balance 2).
+      const { s, court } = courtWithLineup(5, { p1: "advanced", p2: "advanced", p3: "beginner" });
+      const env = fakeEnv(spec("beginner", "advanced"));
+      expect(rehashBlockReason(s, lineup(court), env)).toEqual({
+        reason: "balance",
+        newTeams: true,
+      });
+    });
+  });
+
+  it("with Skills 3, 2, 2, 1 and the balanced split current, New Teams is false", () => {
+    // The Rest-blocked case: only [p1,p4] vs [p2,p3] is balanced, so no other split fits.
+    const { s, court } = courtWithLineup(5, {
+      p1: "advanced",
+      p2: "intermediate",
+      p3: "intermediate",
+      p4: "beginner",
+    });
+    const balanced: Court = {
+      ...court,
+      lineup: {
+        teams: [
+          ["p1", "p4"],
+          ["p2", "p3"],
+        ],
+      },
+    };
+    const env = fakeEnv({
+      p1: { streak: 1, skill: "advanced" },
+      p2: { streak: 1 },
+      p3: { streak: 1 },
+      p4: { streak: 1, skill: "beginner" },
+      p5: { streak: 2 },
+    });
+    expect(rehashBlockReason(s, balanced, env)).toEqual({ reason: "rest", newTeams: false });
+  });
+
+  it("with Skills 3, 3, 1, 1 two splits are balanced, so New Teams is true", () => {
+    const { s, court } = courtWithLineup(5, {
+      p1: "advanced",
+      p2: "advanced",
+      p3: "beginner",
+      p4: "beginner",
+    });
+    const current: Court = {
+      ...court,
+      lineup: {
+        teams: [
+          ["p1", "p3"],
+          ["p2", "p4"],
+        ],
+      },
+    };
+    const env = fakeEnv({
+      p1: { streak: 1, skill: "advanced" },
+      p2: { streak: 1, skill: "advanced" },
+      p3: { streak: 1, skill: "beginner" },
+      p4: { streak: 1, skill: "beginner" },
+      p5: { streak: 2 },
+    });
+    expect(rehashBlockReason(s, current, env)).toEqual({ reason: "rest", newTeams: true });
+  });
+});
+
+describe("pickSwapLineup (Swap anyway)", () => {
+  it("brings in the rested player even though Rest forbids it", () => {
+    const { s, court } = courtWithLineup(5);
+    for (const seed of seedList(10)) {
+      const env = fakeEnv(
+        { ...specsFor(["p1", "p2", "p3", "p4"], { streak: 1 }), p5: { streak: 2 } },
+        { seed },
+      );
+      const next = lineupPlayerIds(pickSwapLineup(s, court, env)!);
+      expect(next).toContain("p5");
+      expect(
+        next.filter((id) => id !== "p5").every((id) => ["p1", "p2", "p3", "p4"].includes(id)),
+      ).toBe(true);
     }
   });
 
   it("swaps in the less-behind of two dominated players", () => {
-    const players = ids(6).map((id) => player(id));
-    const s0 = session({ players });
-    const court: Court = {
-      ...s0.courts[0]!,
-      lineup: {
-        teams: [
-          ["p1", "p2"],
-          ["p3", "p4"],
-        ],
-      },
-    };
-    const s = { ...s0, courts: [court] };
+    const { s, court } = courtWithLineup(6);
     for (const seed of seedList(10)) {
       // p5 and p6 are both dominated by the four, so every set with one of them passes
       // someone over; the swap with the better exact counts (p5) wins.
@@ -582,17 +888,16 @@ describe("pickDifferentLineup", () => {
         },
         { seed },
       );
-      const next = lineupPlayerIds(pickDifferentLineup(s, court, env)!);
+      const next = lineupPlayerIds(pickSwapLineup(s, court, env)!);
       expect(next).toContain("p5");
       expect(next).not.toContain("p6");
     }
   });
 
-  it("matches pickLineup's rules when the Court has no Lineup", () => {
-    const players = ids(6).map((id) => player(id));
-    const s = session({ players });
-    const env = fakeEnv(specsFor(ids(6)));
-    expect(pickDifferentLineup(s, s.courts[0]!, env)).not.toBeNull();
-    expect(pickLineup(s, "c1", env)).not.toBeNull();
+  it("is null with nobody to swap in, or without a Lineup", () => {
+    const { s, court } = courtWithLineup(4);
+    expect(pickSwapLineup(s, court, fakeEnv(specsFor(ids(4))))).toBeNull();
+    const empty = session({ players: ids(6).map((id) => player(id)) });
+    expect(pickSwapLineup(empty, empty.courts[0]!, fakeEnv(specsFor(ids(6))))).toBeNull();
   });
 });

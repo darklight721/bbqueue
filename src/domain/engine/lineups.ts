@@ -5,6 +5,7 @@ import {
   makeEnv,
   pickDifferentLineup,
   pickLineup,
+  pickSwapLineup,
   replaceInLineup,
 } from "./select.ts";
 import { isIdle, sortedCourts } from "./stats.ts";
@@ -39,12 +40,29 @@ export function fillLineups(session: Session, ctx: EngineContext): Session {
   return current;
 }
 
-/** Re-pick one Court's Lineup, different from the current one when possible. */
-export function rehashLineup(session: Session, courtId: string, ctx: EngineContext): Session {
+/**
+ * Re-pick one Court's Lineup, different from the current one (see `pickDifferentLineup`).
+ * Null when nothing different fits the balance limit: the caller keeps the Session as it is.
+ * A Court without a Lineup just gets one when it can.
+ */
+export function rehashLineup(
+  session: Session,
+  courtId: string,
+  ctx: EngineContext,
+): Session | null {
   const court = session.courts.find((candidate) => candidate.id === courtId);
   if (!court) return session;
   const lineup = pickDifferentLineup(session, court, makeEnv(session, ctx));
-  return setLineup(session, courtId, lineup);
+  if (lineup) return setLineup(session, courtId, lineup);
+  return court.lineup ? null : session;
+}
+
+/** "Swap anyway": bring one player into the Court's Lineup, ignoring Rest and Fairness. Null when nobody can come in. */
+export function swapLineup(session: Session, courtId: string, ctx: EngineContext): Session | null {
+  const court = session.courts.find((candidate) => candidate.id === courtId);
+  if (!court) return null;
+  const lineup = pickSwapLineup(session, court, makeEnv(session, ctx));
+  return lineup ? setLineup(session, courtId, lineup) : null;
 }
 
 /**

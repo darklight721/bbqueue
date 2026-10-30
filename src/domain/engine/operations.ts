@@ -10,11 +10,24 @@ import type {
 } from "../types.ts";
 import { findDuplicateName, namesEqual, normalizeName } from "../validation.ts";
 import { makeId, type EngineContext } from "./context.ts";
-import { fillLineups, releasePlayers, rehashLineup, setLineup, updateCourt } from "./lineups.ts";
+import {
+  fillLineups,
+  releasePlayers,
+  rehashLineup,
+  setLineup,
+  swapLineup,
+  updateCourt,
+} from "./lineups.ts";
 import { canMoveQueue, clearPlayerFromQueues, queueTeams } from "./queues.ts";
 import { rehashAllLineups } from "./rehashAll.ts";
 import { validateScore } from "./scoring.ts";
-import { busyPlayerIds, freePlayerIds, heldPlayerIds } from "./select.ts";
+import {
+  busyPlayerIds,
+  freePlayerIds,
+  heldPlayerIds,
+  makeEnv,
+  rehashBlockReason,
+} from "./select.ts";
 import { toEndedSession } from "./endedSession.ts";
 import { isIdle } from "./stats.ts";
 
@@ -129,11 +142,39 @@ export function rehashCourt(
   session: Session,
   courtId: string,
   ctx: EngineContext,
-): Result<"court-not-found" | "court-busy"> {
+): Result<"court-not-found" | "court-busy" | "no-other-balanced-teams"> {
   const court = session.courts.find((candidate) => candidate.id === courtId);
   if (!court) return fail("court-not-found");
   if (!isIdle(court)) return fail("court-busy");
-  return ok(rehashLineup(session, courtId, ctx));
+  const next = rehashLineup(session, courtId, ctx);
+  return next ? ok(next) : fail("no-other-balanced-teams");
+}
+
+/**
+ * Why Rehash on this Court can't bring anybody else in (the app asks before doing more), or null
+ * when Rehash can act straight away. See `rehashBlockReason`.
+ */
+export function rehashBlock(
+  session: Session,
+  courtId: string,
+  ctx: EngineContext,
+): { reason: "rest" | "fairness" | "waited" | "balance"; newTeams: boolean } | null {
+  const court = session.courts.find((candidate) => candidate.id === courtId);
+  if (!court || !isIdle(court)) return null;
+  return rehashBlockReason(session, court, makeEnv(session, ctx));
+}
+
+/** "Swap anyway": one player comes into the Court's Lineup, ignoring Rest and Fairness. */
+export function swapIntoLineup(
+  session: Session,
+  courtId: string,
+  ctx: EngineContext,
+): Result<"court-not-found" | "court-busy" | "nobody-to-swap"> {
+  const court = session.courts.find((candidate) => candidate.id === courtId);
+  if (!court) return fail("court-not-found");
+  if (!isIdle(court)) return fail("court-busy");
+  const swapped = swapLineup(session, courtId, ctx);
+  return swapped ? ok(swapped) : fail("nobody-to-swap");
 }
 
 export function canRehashAll(session: Session): boolean {

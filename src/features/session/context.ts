@@ -33,6 +33,8 @@ export interface SessionActions {
   removeMatch: (matchId: string) => boolean;
   rehashCourt: (courtId: string) => boolean;
   rehashAll: () => boolean;
+  /** "Swap anyway": bring one player into the Court's Lineup, ignoring Rest and Fairness. */
+  swapIntoLineup: (courtId: string) => boolean;
   addCourt: () => boolean;
   removeCourt: (courtId: string) => boolean;
 }

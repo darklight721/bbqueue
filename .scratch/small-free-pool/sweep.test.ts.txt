@@ -1169,3 +1169,719 @@ describe("follow-up C: Spare players with the Rest fix", () => {
     log("\nC: Spare sweep, 30 seeds, ~10 plays per player\n" + lines.join("\n"));
   });
 });
+
+
+/* ======================================================================
+   SECTION 4 (ticket 02 diagnosis: Rehash branches, Rest, replaceInLineup, rehashAll).
+   Separate self-contained file; see its header.
+   ====================================================================== */
+
+/*
+ * SECTION 4 — throwaway diagnosis for .scratch/small-free-pool/issues/02-rehash-swap-breaks-rest.md.
+ * At every Lineup the engine picks (after each Match ends) it asks, WITHOUT applying it, what one
+ * Rehash press would return (pickDifferentLineup), classifies the branch, and checks Rest.
+ * Also checks replaceInLineup and rehashAll for the same problem.
+ * Re-run: copy to src/domain/engine/smallpool-sweep4.test.ts, then
+ *   SWEEP_OUT=/some/dir/sweep4.txt pnpm exec vp test run src/domain/engine/smallpool-sweep4.test.ts
+ * Delete afterwards.
+ */
+import { appendFileSync } from "node:fs";
+import { describe, it } from "vite-plus/test";
+import type { Court, Session } from "../types.ts";
+import { createSession, endMatch, rehashAll, startMatch } from "./operations.ts";
+import { createRng } from "./rng.ts";
+import {
+  candidatesFor,
+  combinations,
+  fairSets,
+  freePlayerIds,
+  heldPlayerIds,
+  lineupPlayerIds,
+  makeEnv,
+  pickDifferentLineup,
+  replaceInLineup,
+  restKey,
+  type Env,
+} from "./select.ts";
+import { MIN, T0, at, makeCtx, unwrap } from "./test-utils.ts";
+
+const OUT = process.env.SWEEP_OUT ?? "/tmp/sweep4.txt";
+const log = (s: string) => {
+  appendFileSync(OUT, s + "\n");
+  console.log(s);
+};
+const SKILL_CYCLE = ["beginner", "intermediate", "advanced"] as const;
+const SEEDS = Array.from({ length: 30 }, (_, i) => i + 1);
+const pct = (n: number, d: number) => (d === 0 ? "-" : `${((100 * n) / d).toFixed(0)}%`);
+
+type Mode = "staggered" | "drift+delay";
+
+interface Counts {
+  picks: number;
+  /** Press with a Lineup that has someone at Streak ≥2 already (not the case the ticket is about). */
+  A: number; // a different allowed set of four exists
+  B: number; // single-player swap
+  C: number; // re-split of the same four
+  none: number; // Rehash returned null
+  breakA: number;
+  breakB: number;
+  breakC: number;
+  /** B/C: some different set of four that is not worse on Rest exists (ignoring Fairness). */
+  altSetB: number;
+  altSetC: number;
+  /** B/C where the result broke Rest although a Rest-neutral different set existed. */
+  breakDespiteAltB: number;
+  /** B where every different set of four is worse on Rest (the only Rest-respecting option is a re-split). */
+  breakNoAltB: number;
+  /** B: current Lineup has nobody at Streak ≥2, result has someone (Streak 2 → 3). */
+  strictB: number;
+  /** B: current Lineup has nobody at Streak ≥2. */
+  cleanCurrentB: number;
+  // replaceInLineup
+  repl: number;
+  replWorseThanBest: number;
+  replForcedStreak2: number;
+  // rehashAll
+  rhaPresses: number;
+  rhaWorse: number;
+}
+
+const zero = (): Counts => ({
+  picks: 0,
+  A: 0,
+  B: 0,
+  C: 0,
+  none: 0,
+  breakA: 0,
+  breakB: 0,
+  breakC: 0,
+  altSetB: 0,
+  altSetC: 0,
+  breakDespiteAltB: 0,
+  breakNoAltB: 0,
+  strictB: 0,
+  cleanCurrentB: 0,
+  repl: 0,
+  replWorseThanBest: 0,
+  replForcedStreak2: 0,
+  rhaPresses: 0,
+  rhaWorse: 0,
+});
+
+/**
+ * Rest cost of a set of four: Σ restKey = Σ max(0, Streak − 1) (the engine's own Rest key, so a
+ * player at Streak 3 costs more than one at Streak 2, and Streak 0–1 costs nothing). A result
+ * "breaks Rest" when its cost is higher than the current Lineup's.
+ */
+function over2(ids: readonly string[], env: Env): number {
+  return ids.reduce((n, id) => n + restKey(env, id), 0);
+}
+
+function instrument(s: Session, court: Court, env: Env, ctxNow: ReturnType<typeof makeCtx>, c: Counts) {
+  const current = lineupPlayerIds(court.lineup);
+  if (current.length !== 4) return;
+  c.picks += 1;
+  const candidates = candidatesFor(s, court.id);
+  const same = (a: readonly string[], b: readonly string[]) => a.every((x) => b.includes(x));
+  const currentOver = over2(current, env);
+
+  const result = pickDifferentLineup(s, court, env);
+  if (!result) {
+    c.none += 1;
+    return;
+  }
+  const next = lineupPlayerIds(result);
+  const different = fairSets(candidates, env).filter((set) => !same(set, current));
+  const branch: "A" | "B" | "C" = different.length > 0 ? "A" : !same(next, current) ? "B" : "C";
+  c[branch] += 1;
+  const broke = over2(next, env) > currentOver;
+  if (broke) c[`break${branch}` as "breakA"] += 1;
+  if (branch === "B") {
+    const streak2 = (ids: readonly string[]) =>
+      ids.filter((id) => env.history.byPlayer.get(id)!.streak >= 2).length;
+    if (streak2(current) === 0) {
+      c.cleanCurrentB += 1;
+      if (streak2(next) > 0) c.strictB += 1;
+    }
+  }
+  if (branch !== "A") {
+    // Any different set of four from the candidates that is not worse on Rest (Fairness ignored).
+    const altSet = combinations(candidates, 4).some(
+      (set) => !same(set, current) && over2(set, env) <= currentOver,
+    );
+    if (altSet) c[`altSet${branch}` as "altSetB"] += 1;
+    if (branch === "B" && broke) {
+      if (altSet) c.breakDespiteAltB += 1;
+      else c.breakNoAltB += 1;
+    }
+    if (branch === "C" && broke) c.breakDespiteAltB += 0;
+  }
+
+  // replaceInLineup on each member (as if they were leaving)
+  for (const leaving of current) {
+    const rep = replaceInLineup(s, court, leaving, env);
+    if (!rep) continue;
+    const newcomer = lineupPlayerIds(rep).find((id) => !current.includes(id) || id === leaving);
+    const added = lineupPlayerIds(rep).filter((id) => !current.filter((x) => x !== leaving).includes(id));
+    if (added.length !== 1 || newcomer === undefined) continue;
+    const held = heldPlayerIds(s);
+    const pool = freePlayerIds(s).filter((id) => id !== leaving && !held.has(id));
+    const best = Math.min(...pool.map((id) => restKey(env, id)));
+    c.repl += 1;
+    if (restKey(env, added[0]!) > best) c.replWorseThanBest += 1;
+    if (best >= 1) c.replForcedStreak2 += 1;
+  }
+  void ctxNow;
+}
+
+function play(players: number, courts: number, seed: number, mode: Mode, c: Counts) {
+  const mixed = seed % 2 === 0;
+  const ctx = makeCtx(seed);
+  const durRng = createRng(seed * 31 + 7);
+  const delayRng = createRng(seed * 17 + 3);
+  const dur = () => (mode === "staggered" ? 15 : 12 + durRng() * 6) * MIN;
+  const delay = () => (mode === "drift+delay" ? delayRng() * 2 * MIN : 0);
+  let s = createSession(
+    {
+      name: "S4",
+      clubId: null,
+      clubName: null,
+      pointSystem: 21,
+      plannedHours: 3,
+      courts,
+      players: Array.from({ length: players }, (_, i) => ({
+        name: `P${i + 1}`,
+        skill: mixed ? SKILL_CYCLE[i % 3]! : "intermediate",
+      })),
+    },
+    ctx,
+  );
+  const target = Math.ceil(2.5 * players);
+  const ids = s.courts.map((x) => x.id);
+  const first = new Map(
+    ids.map((id, i) => [id, T0 + (mode === "staggered" ? (i * 15 * MIN) / courts : 0)]),
+  );
+  const readyAt = new Map(first);
+  const endAt = new Map<string, number>();
+  let ended = 0;
+  let now = T0;
+  for (let guard = 0; guard < 100_000 && ended < target; guard++) {
+    const due = s.matches
+      .filter((m) => m.status === "active" && endAt.get(m.id)! <= now + 1e-6)
+      .sort((a, b) => a.courtNumber - b.courtNumber);
+    for (const m of due) {
+      s = unwrap(endMatch(s, m.id, null, at(ctx, now)));
+      ended += 1;
+      const court = s.courts.find((x) => x.number === m.courtNumber)!;
+      readyAt.set(court.id, now + delay());
+      if (court.lineup) {
+        const c2 = at(ctx, now);
+        instrument(s, court, makeEnv(s, c2), ctx, c);
+      }
+    }
+    if (ended >= target) break;
+    // rehashAll check: two or more Idle Courts with Lineups right now
+    const idle = s.courts.filter((x) => x.activeMatchId === null && x.lineup);
+    if (idle.length >= 2) {
+      const env = makeEnv(s, at(ctx, now));
+      const before = idle.reduce((n, x) => n + over2(lineupPlayerIds(x.lineup), env), 0);
+      const after = unwrap(rehashAll(s, at(ctx, now)));
+      const idleAfter = after.courts.filter((x) => x.activeMatchId === null && x.lineup);
+      const afterN = idleAfter.reduce((n, x) => n + over2(lineupPlayerIds(x.lineup), env), 0);
+      c.rhaPresses += 1;
+      if (afterN > before) c.rhaWorse += 1;
+    }
+    for (const x of s.courts.slice().sort((a, b) => a.number - b.number)) {
+      const court = s.courts.find((y) => y.id === x.id)!;
+      if (court.activeMatchId !== null || !court.lineup || now < readyAt.get(x.id)! - 1e-6) continue;
+      s = unwrap(startMatch(s, x.id, at(ctx, now)));
+      endAt.set(s.matches.at(-1)!.id, now + dur());
+    }
+    const nexts = [
+      ...[...endAt.entries()]
+        .filter(([id]) => s.matches.find((m) => m.id === id)?.status === "active")
+        .map(([, t]) => t),
+      ...ids.map((id) => readyAt.get(id)!).filter((t) => t > now + 1e-6),
+    ];
+    if (nexts.length === 0) break;
+    now = Math.min(...nexts);
+  }
+}
+
+function traceApplied(players: number, courts: number, seed: number, picks: number) {
+  const ctx = makeCtx(seed);
+  let s = createSession(
+    {
+      name: "T",
+      clubId: null,
+      clubName: null,
+      pointSystem: 21,
+      plannedHours: 3,
+      courts,
+      players: Array.from({ length: players }, (_, i) => ({ name: `P${i + 1}`, skill: "intermediate" as const })),
+    },
+    ctx,
+  );
+  const nm = (id: string) => s.players.find((p) => p.id === id)!.name;
+  const ids = s.courts.map((x) => x.id);
+  const first = new Map(ids.map((id, i) => [id, T0 + (i * 15 * MIN) / courts]));
+  const endAt = new Map<string, number>();
+  const lines: string[] = [];
+  let now = T0;
+  let n = 0;
+  for (let guard = 0; guard < 10_000 && n < picks; guard++) {
+    for (const m of s.matches.filter((x) => x.status === "active" && endAt.get(x.id)! <= now + 1e-6)) {
+      s = unwrap(endMatch(s, m.id, null, at(ctx, now)));
+      const court = s.courts.find((x) => x.number === m.courtNumber)!;
+      const env = makeEnv(s, at(ctx, now));
+      const cand = candidatesFor(s, court.id);
+      const cur = lineupPlayerIds(court.lineup);
+      const re = pickDifferentLineup(s, court, env);
+      const reSet = lineupPlayerIds(re);
+      const st = (id: string) => `${nm(id)}[s${env.history.byPlayer.get(id)!.streak}]`;
+      n += 1;
+      if (n > 3)
+        lines.push(
+          `pick ${n} Court ${m.courtNumber}: free ${cand.map(st).join(" ")} | engine ${cur.map(nm).join(",")} (over2=${over2(cur, env)}) | rehash ${reSet.map(nm).join(",")} (over2=${over2(reSet, env)}) | left out by engine: ${cand.filter((x) => !cur.includes(x)).map(nm)} | left out by rehash: ${cand.filter((x) => !reSet.includes(x)).map(nm)}`,
+        );
+      s = { ...s, courts: s.courts.map((x) => (x.id === court.id ? { ...x, lineup: re } : x)) };
+    }
+    for (const x of s.courts) {
+      if (x.activeMatchId !== null || !x.lineup || now < first.get(x.id)! - 1e-6) continue;
+      s = unwrap(startMatch(s, x.id, at(ctx, now)));
+      endAt.set(s.matches.at(-1)!.id, now + 15 * MIN);
+    }
+    const nexts = [
+      ...[...endAt.entries()].filter(([id]) => s.matches.find((m) => m.id === id)?.status === "active").map(([, t]) => t),
+      ...ids.map((id) => first.get(id)!).filter((t) => t > now + 1e-6),
+    ];
+    now = Math.min(...nexts);
+  }
+  return lines;
+}
+
+describe("trace of applied Rehash presses", () => {
+  it("9p/2C and 10p/2C", () => {
+    log("\nD3 applied Rehash on every pick, 9p/2C seed 1 (picks 4+)\n" + traceApplied(9, 2, 1, 16).join("\n"));
+    log("\nD3b applied Rehash on every pick, 10p/2C seed 1 (picks 4+)\n" + traceApplied(10, 2, 1, 12).join("\n"));
+  });
+});
+
+describe("diagnosis: Rehash branches and Rest", () => {
+  it("sweep", { timeout: 3_600_000 }, () => {
+    const l1 = [
+      "cell | Spare | mode | picks | A: different allowed set | B: single-player swap | C: re-split | null | A breaks Rest | B breaks Rest (share of B) | C breaks Rest | B: Rest-neutral different set existed | B broke Rest although one existed | B broke Rest and none existed (only a re-split respects Rest) | C: Rest-neutral different set existed | B with a current Lineup free of Streak-2 players | of those, result has a Streak-2 player (→ 3)",
+    ];
+    const l2 = [
+      "cell | Spare | mode | replaceInLineup calls | picked worse Rest key than best candidate | forced (best candidate already Streak ≥2) | rehashAll presses | rehashAll left more Streak≥2 players than before",
+    ];
+    for (const courts of [1, 2, 3, 4]) {
+      for (const spare of [0, 1, 2, 3, 4]) {
+        const players = 4 * courts + spare;
+        for (const mode of ["staggered", "drift+delay"] as const) {
+          const c = zero();
+          for (const seed of SEEDS) play(players, courts, seed, mode, c);
+          l1.push(
+            [
+              `${players}p/${courts}C`,
+              spare,
+              mode,
+              c.picks,
+              `${c.A} (${pct(c.A, c.picks)})`,
+              `${c.B} (${pct(c.B, c.picks)})`,
+              `${c.C} (${pct(c.C, c.picks)})`,
+              c.none,
+              `${c.breakA}`,
+              `${c.breakB} (${pct(c.breakB, c.B)})`,
+              `${c.breakC}`,
+              `${c.altSetB} (${pct(c.altSetB, c.B)})`,
+              c.breakDespiteAltB,
+              c.breakNoAltB,
+              `${c.altSetC} (${pct(c.altSetC, c.C)})`,
+              c.cleanCurrentB,
+              `${c.strictB} (${pct(c.strictB, c.cleanCurrentB)})`,
+            ].join(" | "),
+          );
+          l2.push(
+            [
+              `${players}p/${courts}C`,
+              spare,
+              mode,
+              c.repl,
+              c.replWorseThanBest,
+              `${c.replForcedStreak2} (${pct(c.replForcedStreak2, c.repl)})`,
+              c.rhaPresses,
+              c.rhaWorse,
+            ].join(" | "),
+          );
+        }
+      }
+    }
+    log("\nD1 Rehash press at every picked Lineup (not applied), 30 seeds\n" + l1.join("\n"));
+    log("\nD2 replaceInLineup / rehashAll\n" + l2.join("\n"));
+  });
+});
+
+
+/* ======================================================================
+   SECTION 5 (ticket 02 design: how often is "Rehash all" offered, and what does it do vs "Swap anyway").
+   Separate self-contained file; see its header.
+   ====================================================================== */
+
+/*
+ * SECTION 5 — throwaway measurement for ticket 02's decided design: when a single-Court Rehash
+ * would hit branch B (swap fallback), how often would "Rehash all" be offered (2+ Idle Courts), and
+ * what would it do compared with "Swap anyway"? Nothing is applied to the simulated Session; the
+ * measurements use a separate rng so the evenings are identical to a run without them.
+ * Re-run: copy to src/domain/engine/smallpool-sweep5.test.ts, then
+ *   SWEEP_OUT=/some/dir/sweep5.txt pnpm exec vp test run src/domain/engine/smallpool-sweep5.test.ts
+ * Delete afterwards.
+ */
+import { appendFileSync } from "node:fs";
+import { describe, it } from "vite-plus/test";
+import type { Court, Session } from "../types.ts";
+import { createSession, endMatch, startMatch } from "./operations.ts";
+import { rehashAllLineups } from "./rehashAll.ts";
+import { createRng } from "./rng.ts";
+import {
+  candidatesFor,
+  fairSets,
+  freePlayerIds,
+  lineupPlayerIds,
+  makeEnv,
+  owes,
+  pickDifferentLineup,
+  restKey,
+  restsTier,
+  type Env,
+} from "./select.ts";
+import { MIN, T0, at, makeCtx, unwrap } from "./test-utils.ts";
+
+const OUT = process.env.SWEEP_OUT ?? "/tmp/sweep5.txt";
+const log = (s: string) => {
+  appendFileSync(OUT, s + "\n");
+  console.log(s);
+};
+const SKILL_CYCLE = ["beginner", "intermediate", "advanced"] as const;
+const SEEDS = Array.from({ length: 30 }, (_, i) => i + 1);
+const pct = (n: number, d: number) => (d === 0 ? "-" : `${((100 * n) / d).toFixed(0)}%`);
+const f = (x: number, d = 1) => x.toFixed(d);
+
+type Mode = "staggered" | "drift+delay";
+
+/** Σ restKey = Σ max(0, Streak − 1): the engine's Rest cost of a set of players. */
+const restCost = (ids: readonly string[], env: Env) =>
+  ids.reduce((n, id) => n + restKey(env, id), 0);
+
+/** Σ met over the six pairs of the four. */
+function novelty(ids: readonly string[], env: Env): number {
+  let sum = 0;
+  for (let i = 0; i < ids.length; i++)
+    for (let j = i + 1; j < ids.length; j++) sum += env.history.met(ids[i]!, ids[j]!);
+  return sum;
+}
+
+const sameSet = (a: readonly string[], b: readonly string[]) =>
+  a.length === b.length && a.every((x) => b.includes(x));
+
+/** Players of the Lineups chosen from `pool` who a left-out player (same Rest group) is owed a place before. */
+function passedOver(chosen: readonly string[], pool: readonly string[], env: Env): number {
+  const left = pool.filter((id) => !chosen.includes(id));
+  const sameGroup = (a: string, b: string) =>
+    restKey(env, a) === restKey(env, b) && restsTier(env, a) === restsTier(env, b);
+  return chosen.filter((c) => left.some((x) => sameGroup(x, c) && owes(env, x, c))).length;
+}
+
+interface Acc {
+  picks: number; // end-event moments × idle Courts with a Lineup
+  B: number; // moments where Rehash would hit branch B
+  idleSum: number; // Idle Courts (incl. Courts without a Lineup) at B moments
+  idle2: number; // B moments with 2+ Idle Courts
+  idleCounts: Map<number, number>;
+  // rehash all, evaluated only where offered
+  pressedDiffers: number;
+  anyChanges: number;
+  othersChange: number;
+  othersChangeCourts: number; // other Idle Courts whose set changed
+  otherCourts: number; // other Idle Courts with a Lineup before
+  courtLeftEmpty: number;
+  restWorseAll: number; // total Rest cost over all Idle Courts' Lineups got worse
+  restBetterAll: number;
+  restWorsePressed: number;
+  restDeltaAll: number;
+  fairWorse: number; // owed-a-place violations got worse
+  fairBetter: number;
+  // swap anyway, at the same moments
+  swapRestWorse: number;
+  swapRestDelta: number;
+  swapPressedNovelty: number;
+  rhaPressedNovelty: number;
+  rhaPressedRestDelta: number;
+  currentNovelty: number;
+  novelN: number;
+  rhaPressedRestWorse: number;
+  // swap anyway / current, restricted to the moments where Rehash all is offered
+  oSwapRestWorse: number;
+  oSwapRestDelta: number;
+  oSwapNovelty: number;
+  oCurrentNovelty: number;
+}
+
+const zero = (): Acc => ({
+  picks: 0,
+  B: 0,
+  idleSum: 0,
+  idle2: 0,
+  idleCounts: new Map(),
+  pressedDiffers: 0,
+  anyChanges: 0,
+  othersChange: 0,
+  othersChangeCourts: 0,
+  otherCourts: 0,
+  courtLeftEmpty: 0,
+  restWorseAll: 0,
+  restBetterAll: 0,
+  restWorsePressed: 0,
+  restDeltaAll: 0,
+  fairWorse: 0,
+  fairBetter: 0,
+  swapRestWorse: 0,
+  swapRestDelta: 0,
+  swapPressedNovelty: 0,
+  rhaPressedNovelty: 0,
+  rhaPressedRestDelta: 0,
+  currentNovelty: 0,
+  novelN: 0,
+  rhaPressedRestWorse: 0,
+  oSwapRestWorse: 0,
+  oSwapRestDelta: 0,
+  oSwapNovelty: 0,
+  oCurrentNovelty: 0,
+});
+
+function measure(
+  s: Session,
+  now: number,
+  seed: number,
+  counter: { n: number },
+  a: Acc,
+): void {
+  const idle = s.courts.filter((c) => c.activeMatchId === null);
+  for (const court of idle) {
+    if (!court.lineup) continue;
+    a.picks += 1;
+    counter.n += 1;
+    const mRng = createRng(seed * 7919 + counter.n);
+    const mctx = { ...at(makeCtx(seed), now), rng: mRng };
+    const env = makeEnv(s, mctx);
+    const current = lineupPlayerIds(court.lineup);
+    const candidates = candidatesFor(s, court.id);
+    if (candidates.length < 4) continue;
+    const different = fairSets(candidates, env).filter((set) => !sameSet(set, current));
+    const swap = pickDifferentLineup(s, court, env);
+    if (different.length > 0 || !swap) continue;
+    const swapSet = lineupPlayerIds(swap);
+    if (sameSet(swapSet, current)) continue; // branch C (re-split), not B
+    // ---- branch B moment
+    a.B += 1;
+    a.idleSum += idle.length;
+    a.idleCounts.set(idle.length, (a.idleCounts.get(idle.length) ?? 0) + 1);
+    // Swap anyway
+    const swapDelta = restCost(swapSet, env) - restCost(current, env);
+    a.swapRestDelta += swapDelta;
+    if (swapDelta > 0) a.swapRestWorse += 1;
+    a.swapPressedNovelty += novelty(swapSet, env);
+    a.currentNovelty += novelty(current, env);
+    a.novelN += 1;
+    if (idle.length < 2) continue;
+    a.idle2 += 1;
+    a.oSwapRestDelta += swapDelta;
+    if (swapDelta > 0) a.oSwapRestWorse += 1;
+    a.oSwapNovelty += novelty(swapSet, env);
+    a.oCurrentNovelty += novelty(current, env);
+    // Rehash all on a copy (separate rng stream again so it matches no other draw)
+    const rctx = { ...mctx, rng: createRng(seed * 104729 + counter.n) };
+    const after = rehashAllLineups(s, rctx);
+    const idleBefore = idle.filter((c) => c.lineup);
+    const idleAfterCourts = after.courts.filter((c) => c.activeMatchId === null);
+    const afterSet = (id: string) =>
+      lineupPlayerIds(idleAfterCourts.find((c) => c.id === id)?.lineup ?? null);
+    const pressedAfter = afterSet(court.id);
+    if (pressedAfter.length === 0) a.courtLeftEmpty += 1;
+    const pressedDiffers = pressedAfter.length === 4 && !sameSet(pressedAfter, current);
+    if (pressedDiffers) a.pressedDiffers += 1;
+    let changedAny = false;
+    let othersChanged = false;
+    for (const c of idleBefore) {
+      const before = lineupPlayerIds(c.lineup);
+      const afterC = afterSet(c.id);
+      const changed = afterC.length !== 4 || !sameSet(before, afterC);
+      if (changed) changedAny = true;
+      if (c.id !== court.id) {
+        a.otherCourts += 1;
+        if (changed) {
+          othersChanged = true;
+          a.othersChangeCourts += 1;
+        }
+      }
+    }
+    if (changedAny) a.anyChanges += 1;
+    if (othersChanged) a.othersChange += 1;
+    // Rest cost over all Idle Courts' Lineups, before vs after
+    const costBefore = idleBefore.reduce((n, c) => n + restCost(lineupPlayerIds(c.lineup), env), 0);
+    const costAfter = idleAfterCourts.reduce((n, c) => n + restCost(lineupPlayerIds(c.lineup), env), 0);
+    // Courts left empty after are compared against the same players (cost 0) – flagged separately.
+    if (costAfter > costBefore) a.restWorseAll += 1;
+    if (costAfter < costBefore) a.restBetterAll += 1;
+    a.restDeltaAll += costAfter - costBefore;
+    // Pressed Court only
+    if (pressedAfter.length === 4) {
+      const d = restCost(pressedAfter, env) - restCost(current, env);
+      a.rhaPressedRestDelta += d;
+      if (d > 0) a.rhaPressedRestWorse += 1;
+      a.rhaPressedNovelty += novelty(pressedAfter, env);
+    } else {
+      a.rhaPressedNovelty += novelty(current, env);
+    }
+    // Fairness: owed-a-place violations over the same free pool
+    const pool = freePlayerIds({
+      ...s,
+      courts: s.courts.map((c) => (c.activeMatchId === null ? { ...c, lineup: null } : c)),
+    });
+    const chosenBefore = idleBefore.flatMap((c) => lineupPlayerIds(c.lineup));
+    const chosenAfter = idleAfterCourts.flatMap((c) => lineupPlayerIds(c.lineup));
+    const vb = passedOver(chosenBefore, pool, env);
+    const va = passedOver(chosenAfter, pool, env);
+    if (va > vb) a.fairWorse += 1;
+    if (va < vb) a.fairBetter += 1;
+  }
+}
+
+function play(players: number, courts: number, seed: number, mode: Mode, a: Acc) {
+  const mixed = seed % 2 === 0;
+  const ctx = makeCtx(seed);
+  const durRng = createRng(seed * 31 + 7);
+  const delayRng = createRng(seed * 17 + 3);
+  const dur = () => (mode === "staggered" ? 15 : 12 + durRng() * 6) * MIN;
+  const delay = () => (mode === "drift+delay" ? delayRng() * 2 * MIN : 0);
+  let s = createSession(
+    {
+      name: "S5",
+      clubId: null,
+      clubName: null,
+      pointSystem: 21,
+      plannedHours: 3,
+      courts,
+      players: Array.from({ length: players }, (_, i) => ({
+        name: `P${i + 1}`,
+        skill: mixed ? SKILL_CYCLE[i % 3]! : "intermediate",
+      })),
+    },
+    ctx,
+  );
+  const target = Math.ceil(2.5 * players);
+  const ids = s.courts.map((x) => x.id);
+  const first = new Map(
+    ids.map((id, i) => [id, T0 + (mode === "staggered" ? (i * 15 * MIN) / courts : 0)]),
+  );
+  const readyAt = new Map(first);
+  const endAt = new Map<string, number>();
+  const counter = { n: 0 };
+  let ended = 0;
+  let now = T0;
+  for (let guard = 0; guard < 100_000 && ended < target; guard++) {
+    const due = s.matches
+      .filter((m) => m.status === "active" && endAt.get(m.id)! <= now + 1e-6)
+      .sort((a2, b) => a2.courtNumber - b.courtNumber);
+    for (const m of due) {
+      s = unwrap(endMatch(s, m.id, null, at(ctx, now)));
+      ended += 1;
+      readyAt.set(s.courts.find((x) => x.number === m.courtNumber)!.id, now + delay());
+    }
+    if (ended >= target) break;
+    if (due.length > 0) measure(s, now, seed, counter, a);
+    for (const x of s.courts.slice().sort((p, q) => p.number - q.number)) {
+      const court: Court = s.courts.find((y) => y.id === x.id)!;
+      if (court.activeMatchId !== null || !court.lineup || now < readyAt.get(x.id)! - 1e-6) continue;
+      s = unwrap(startMatch(s, x.id, at(ctx, now)));
+      endAt.set(s.matches.at(-1)!.id, now + dur());
+    }
+    const nexts = [
+      ...[...endAt.entries()]
+        .filter(([id]) => s.matches.find((m) => m.id === id)?.status === "active")
+        .map(([, t]) => t),
+      ...ids.map((id) => readyAt.get(id)!).filter((t) => t > now + 1e-6),
+    ];
+    if (nexts.length === 0) break;
+    now = Math.min(...nexts);
+  }
+}
+
+describe("Rehash all as an option when Rehash would swap", () => {
+  it("sweep", { timeout: 3_600_000 }, () => {
+    const l1 = [
+      "cell | Spare | mode | branch-B moments | Idle Courts mean at B | B moments with 2+ Idle (Rehash all appears) | Idle-count spread (1/2/3/4)",
+    ];
+    const l2 = [
+      "cell | Spare | mode | offered | pressed Court gets a different set | any Idle Court changes | other Idle Courts' Lineups change (share of offers) | other Courts changed / other Courts | Rest cost worse (all Idle Lineups) / better / mean Δ | pressed Court's Rest cost worse / mean Δ | Fairness violations worse / better | Court left without Lineup",
+    ];
+    const l3 = [
+      "cell | Spare | mode | offered | Swap anyway: Rest worse / mean Δ (pressed Court, same moments) | Rehash all: pressed Rest worse / mean Δ | novelty Σmet of pressed four: current / swap / Rehash all",
+    ];
+    for (const courts of [2, 3, 4]) {
+      for (const spare of [1, 2, 3, 4]) {
+        const players = 4 * courts + spare;
+        for (const mode of ["staggered", "drift+delay"] as const) {
+          const a = zero();
+          for (const seed of SEEDS) play(players, courts, seed, mode, a);
+          const cell = `${players}p/${courts}C`;
+          const cnt = (k: number) => a.idleCounts.get(k) ?? 0;
+          l1.push(
+            [
+              cell,
+              spare,
+              mode,
+              a.B,
+              a.B ? f(a.idleSum / a.B, 2) : "-",
+              `${a.idle2} (${pct(a.idle2, a.B)})`,
+              `${cnt(1)}/${cnt(2)}/${cnt(3)}/${cnt(4)}`,
+            ].join(" | "),
+          );
+          const o = a.idle2;
+          l2.push(
+            [
+              cell,
+              spare,
+              mode,
+              o,
+              `${a.pressedDiffers} (${pct(a.pressedDiffers, o)})`,
+              `${a.anyChanges} (${pct(a.anyChanges, o)})`,
+              `${a.othersChange} (${pct(a.othersChange, o)})`,
+              `${a.othersChangeCourts}/${a.otherCourts}`,
+              `${a.restWorseAll} / ${a.restBetterAll} / ${o ? f(a.restDeltaAll / o, 2) : "-"}`,
+              `${a.rhaPressedRestWorse} / ${o ? f(a.rhaPressedRestDelta / o, 2) : "-"}`,
+              `${a.fairWorse} / ${a.fairBetter}`,
+              a.courtLeftEmpty,
+            ].join(" | "),
+          );
+          l3.push(
+            [
+              cell,
+              spare,
+              mode,
+              o,
+              `${a.oSwapRestWorse}/${o} (${pct(a.oSwapRestWorse, o)}) / ${o ? f(a.oSwapRestDelta / o, 2) : "-"}`,
+              `${a.rhaPressedRestWorse}/${o} / ${o ? f(a.rhaPressedRestDelta / o, 2) : "-"}`,
+              o
+                ? `${f(a.oCurrentNovelty / o, 1)} / ${f(a.oSwapNovelty / o, 1)} / ${f(a.rhaPressedNovelty / o, 1)}`
+                : "-",
+            ].join(" | "),
+          );
+        }
+      }
+    }
+    log("\nE1 how often Rehash all would be offered at a branch-B moment\n" + l1.join("\n"));
+    log("\nE2 what Rehash all does when offered\n" + l2.join("\n"));
+    log("\nE3 Swap anyway vs Rehash all (all on the moments where Rehash all is offered)\n" + l3.join("\n"));
+  });
+});

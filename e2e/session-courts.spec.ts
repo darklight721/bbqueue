@@ -1,6 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
-import type { Club, Session } from "../src/domain/types.ts";
-import { makeClub, makeMidMatchSession, seedStorage } from "./fixtures.ts";
+import type { Club, Match, Session, SkillLevel, Team } from "../src/domain/types.ts";
+import {
+  makeClub,
+  makeCourt,
+  makeMidMatchSession,
+  makeSession,
+  makeSessionPlayer,
+  seedStorage,
+} from "./fixtures.ts";
 import {
   court,
   idNames,
@@ -502,5 +509,214 @@ test.describe("Spare players notice", () => {
     await expect(note(page)).toContainText("only 1 sits out each match");
     await expect(note(page)).toContainText("Add players to give everyone more rests");
     await expect(note(page)).not.toContainText("Use ");
+  });
+});
+
+test.describe("Rehash when no one else can come in", () => {
+  // Court 1's Lineup is Ana+Ben vs Cat+Dan. Ivy and Jon are free but played the last two Matches
+  // in a row (Streak 2), so Rest keeps them out: the only allowed four is the current Lineup.
+  const LINEUP = ["Ana", "Ben", "Cat", "Dan"];
+  const RESTED = ["Ivy", "Jon"];
+  const OTHER_COURT = ["Eve", "Fay", "Gus", "Hal"];
+  // The description may go on with more lines (e.g. "No other balanced Teams for these four.").
+  const BLOCKED_TEXT = /^Anyone else would play a third match in a row\./;
+
+  /** Ended Match 1: Ivy+Jon with Ana+Ben. Ended Match 2: Ivy+Jon with Cat+Dan. */
+  function history(everyone: string[]): Match[] {
+    const now = Date.now();
+    const ended = (
+      id: string,
+      number: number,
+      startedAt: number,
+      teams: Match["teams"],
+    ): Match => ({
+      id,
+      number,
+      courtNumber: 1,
+      teams,
+      freeAtStart: everyone.filter((name) => !teams.flat().includes(name)),
+      startedAt,
+      target: 21,
+      endedAt: startedAt + 10 * 60_000,
+      score: null,
+      status: "ended",
+    });
+    return [
+      ended("m1", 1, now - 40 * 60_000, [
+        ["Ivy", "Jon"],
+        ["Ana", "Ben"],
+      ]),
+      ended("m2", 2, now - 20 * 60_000, [
+        ["Ivy", "Jon"],
+        ["Cat", "Dan"],
+      ]),
+    ];
+  }
+
+  /** 6 players on 1 Court, or 10 on 2 Courts with a second Idle Lineup, in the state above. */
+  async function openBlocked(
+    page: Page,
+    courts: 1 | 2,
+    options: { skills?: Record<string, SkillLevel>; teams?: [Team, Team] } = {},
+  ) {
+    const names = [...LINEUP, ...(courts === 2 ? OTHER_COURT : []), ...RESTED];
+    const players = names.map((name) =>
+      makeSessionPlayer({ id: name, name, skill: options.skills?.[name] ?? "intermediate" }),
+    );
+    const session: Session = makeSession({
+      name: "Rest blocked",
+      players,
+      matches: history(names),
+      courts: [
+        makeCourt(1, {
+          lineup: {
+            teams: options.teams ?? [
+              ["Ana", "Ben"],
+              ["Cat", "Dan"],
+            ],
+          },
+        }),
+        ...(courts === 2
+          ? [
+              makeCourt(2, {
+                lineup: {
+                  teams: [
+                    ["Eve", "Fay"],
+                    ["Gus", "Hal"],
+                  ],
+                },
+              }),
+            ]
+          : []),
+      ],
+    });
+    await seedStorage(page, { session });
+    await page.goto(`/sessions/${session.id}`);
+    await expect(court(page, 1).getByText("Lineup", { exact: true })).toBeVisible();
+    expect(playersOf(await lineupOf(court(page, 1)))).toEqual(LINEUP);
+  }
+
+  const rehash = (page: Page) =>
+    court(page, 1).getByRole("button", { name: "Rehash", exact: true });
+  const sheet = (page: Page) => page.getByRole("dialog", { name: "No one else can come in" });
+
+  async function openSheet(page: Page) {
+    await rehash(page).click();
+    await expect(sheet(page)).toBeVisible();
+    await expect(sheet(page)).toHaveAccessibleDescription(BLOCKED_TEXT);
+  }
+
+  test("the sheet opens with the Lineup unchanged; New Teams re-splits the same four", async ({
+    page,
+  }) => {
+    await openBlocked(page, 1);
+    const before = await lineupOf(court(page, 1));
+
+    await openSheet(page);
+    // Nothing happens until a choice is made.
+    expect(await lineupOf(court(page, 1))).toEqual(before);
+    // One Court: there is no Rehash all to offer.
+    await expect(sheet(page).getByRole("button", { name: "Rehash all idle courts" })).toHaveCount(
+      0,
+    );
+
+    await sheet(page).getByRole("button", { name: "New Teams" }).click();
+    await expect(sheet(page)).toBeHidden();
+    const after = await lineupOf(court(page, 1));
+    expect(playersOf(after)).toEqual(LINEUP);
+    expect(splitKey(after)).not.toEqual(splitKey(before));
+  });
+
+  test("Swap anyway brings in one player who was resting", async ({ page }) => {
+    await openBlocked(page, 1);
+    await openSheet(page);
+    await sheet(page).getByRole("button", { name: "Swap anyway" }).click();
+    await expect(sheet(page)).toBeHidden();
+
+    const after = playersOf(await lineupOf(court(page, 1)));
+    expect(after).toHaveLength(4);
+    const stayed = after.filter((name) => LINEUP.includes(name));
+    const incoming = after.filter((name) => !LINEUP.includes(name));
+    expect(stayed).toHaveLength(3);
+    expect(incoming).toHaveLength(1);
+    expect(RESTED).toContain(incoming[0]);
+  });
+
+  test("Cancel and Escape leave the Lineup exactly as it was", async ({ page }) => {
+    await openBlocked(page, 1);
+    const before = await lineupOf(court(page, 1));
+    const stored = (await storedSession(page)).courts[0]!.lineup;
+
+    await openSheet(page);
+    await sheet(page).getByRole("button", { name: "Cancel" }).click();
+    await expect(sheet(page)).toBeHidden();
+    expect(await lineupOf(court(page, 1))).toEqual(before);
+
+    await openSheet(page);
+    await page.keyboard.press("Escape");
+    await expect(sheet(page)).toBeHidden();
+    expect(await lineupOf(court(page, 1))).toEqual(before);
+    expect((await storedSession(page)).courts[0]!.lineup).toEqual(stored);
+  });
+
+  test("with two Idle Courts the sheet offers Rehash all idle courts, which changes both Lineups", async ({
+    page,
+  }) => {
+    await openBlocked(page, 2);
+    const beforeOne = await lineupOf(court(page, 1));
+    const beforeTwo = await lineupOf(court(page, 2));
+
+    await openSheet(page);
+    const all = sheet(page).getByRole("button", { name: "Rehash all idle courts" });
+    await expect(all).toBeVisible();
+    await expect(all).toHaveAccessibleDescription("Also changes the Lineup on Court 2.");
+
+    await all.click();
+    await expect(sheet(page)).toBeHidden();
+    const afterOne = await lineupOf(court(page, 1));
+    const afterTwo = await lineupOf(court(page, 2));
+    expect(splitKey(afterOne)).not.toEqual(splitKey(beforeOne));
+    expect(splitKey(afterTwo)).not.toEqual(splitKey(beforeTwo));
+    // Rest still keeps the two who played twice in a row out; the other eight fill both Courts.
+    expect([...playersOf(afterOne), ...playersOf(afterTwo)].sort()).toEqual(
+      [...LINEUP, ...OTHER_COURT].sort(),
+    );
+  });
+
+  test("when the current split is the only balanced one, the sheet has no New Teams", async ({
+    page,
+  }) => {
+    // Skills 3, 2, 2, 1: only Ana+Dan (4) v Ben+Cat (4) is balanced; the other splits are 5 v 3.
+    // Ivy and Jon (Intermediate) are kept out by Rest whatever their Skill.
+    await openBlocked(page, 1, {
+      skills: { Ana: "advanced", Ben: "intermediate", Cat: "intermediate", Dan: "beginner" },
+      teams: [
+        ["Ana", "Dan"],
+        ["Ben", "Cat"],
+      ],
+    });
+    const before = await lineupOf(court(page, 1));
+    const stored = (await storedSession(page)).courts[0]!.lineup;
+
+    await openSheet(page);
+    await expect(sheet(page).getByText("No other balanced Teams for these four.")).toBeVisible();
+    await expect(sheet(page).getByRole("button", { name: "New Teams" })).toHaveCount(0);
+    await expect(sheet(page).getByRole("button", { name: "Swap anyway" })).toBeVisible();
+
+    await sheet(page).getByRole("button", { name: "Cancel" }).click();
+    await expect(sheet(page)).toBeHidden();
+    expect(await lineupOf(court(page, 1))).toEqual(before);
+    expect((await storedSession(page)).courts[0]!.lineup).toEqual(stored);
+  });
+
+  test("with enough Spare players Rehash acts straight away, with no sheet", async ({ page }) => {
+    await startSession(page, { players: 8, courts: 1 });
+    const before = await lineupOf(court(page, 1));
+
+    await rehash(page).click();
+    await expect
+      .poll(async () => splitKey(await lineupOf(court(page, 1))))
+      .not.toEqual(splitKey(before));
+    await expect(sheet(page)).toHaveCount(0);
   });
 });
