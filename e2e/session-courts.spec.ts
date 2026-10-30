@@ -383,3 +383,124 @@ test.describe("Reload", () => {
     await expect(court(page, 1).getByRole("timer", { name: "Match time" })).toBeVisible();
   });
 });
+
+test.describe("Spare players notice", () => {
+  const note = (page: Page) => page.getByRole("note", { name: "Few spare players" });
+  const playersRegion = (page: Page) => page.getByRole("region", { name: "Players" });
+  const dismissedKey = (sessionId: string) => `bq:v1:spare-notice-dismissed:${sessionId}`;
+
+  async function addPlayers(page: Page, names: string[]) {
+    const region = playersRegion(page);
+    for (const name of names) {
+      await region.getByRole("textbox", { name: "Player name" }).fill(name);
+      await region.getByRole("button", { name: "Add player" }).click();
+      await expect(
+        region.getByRole("button", { name: `Remove ${name}`, exact: true }),
+      ).toBeVisible();
+    }
+  }
+
+  async function removePlayer(page: Page, name: string) {
+    await playersRegion(page)
+      .getByRole("button", { name: `Remove ${name}`, exact: true })
+      .click();
+    await page
+      .getByRole("dialog", { name: `Remove ${name} from this session?` })
+      .getByRole("button", { name: "Remove", exact: true })
+      .click();
+    await expect(
+      playersRegion(page).getByRole("button", { name: `Remove ${name}`, exact: true }),
+    ).toHaveCount(0);
+  }
+
+  test("comes and goes live as players and Courts change, with no toast", async ({ page }) => {
+    // 8 players on 2 Courts: no Spare players, so the notice already shows.
+    await startSession(page, { players: 8, courts: 2 });
+    await expect(note(page)).toContainText("8 players on 2 courts");
+    await expect(note(page)).toContainText("nobody sits out");
+
+    await addPlayers(page, ["Kim", "Lou"]);
+    await expect(note(page)).toContainText("10 players on 2 courts");
+    await expect(note(page)).toContainText("only 2 sit out");
+    await expect(note(page)).toContainText("Use 1 court or add players");
+    // It's a note, not a toast or an alert.
+    await expect(
+      page.getByRole("status").filter({ hasText: /spare|sit out|players on/i }),
+    ).toHaveCount(0);
+    await expect(page.getByRole("alert")).toHaveCount(0);
+
+    await addPlayers(page, ["Max", "Ned"]);
+    await expect(playersRegion(page).getByText("12 players", { exact: true })).toBeVisible();
+    await expect(note(page)).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Add court" }).click();
+    await expect(court(page, 3)).toBeVisible();
+    await expect(note(page)).toContainText("12 players on 3 courts");
+    await expect(note(page)).toContainText("nobody sits out");
+    await expect(note(page)).toContainText("Use 2 courts or add players");
+
+    await court(page, 3).getByRole("button", { name: "Remove court 3", exact: true }).click();
+    await expect(court(page, 3)).toHaveCount(0);
+    await expect(note(page)).toHaveCount(0);
+  });
+
+  test("Sitting out drops the count into the notice; Back in hides it", async ({ page }) => {
+    await startSession(page, { players: 8, courts: 2 });
+    await addPlayers(page, ["Kim", "Lou", "Max"]);
+    // 11 on 2 Courts: 3 Spare players.
+    await expect(playersRegion(page).getByText("11 players", { exact: true })).toBeVisible();
+    await expect(note(page)).toHaveCount(0);
+
+    await playersRegion(page).getByRole("button", { name: "Sit out Max" }).click();
+    await expect(playersRegion(page).getByText("11 players · 1 sitting out")).toBeVisible();
+    await expect(note(page)).toContainText("10 players on 2 courts");
+    await expect(note(page)).toContainText("only 2 sit out");
+
+    await playersRegion(page).getByRole("button", { name: "Back in Max" }).click();
+    await expect(playersRegion(page).getByRole("button", { name: "Sit out Max" })).toBeVisible();
+    await expect(note(page)).toHaveCount(0);
+  });
+
+  test("dismissing hides it for that count, across a reload, until the count changes", async ({
+    page,
+  }) => {
+    await startSession(page, { players: 8, courts: 2 });
+    await addPlayers(page, ["Kim", "Lou"]);
+    await expect(note(page)).toContainText("10 players on 2 courts");
+    const sessionId = (await storedSession(page)).id;
+
+    await note(page).getByRole("button", { name: "Dismiss" }).click();
+    await expect(note(page)).toHaveCount(0);
+    expect(await page.evaluate((key) => localStorage.getItem(key), dismissedKey(sessionId))).toBe(
+      JSON.stringify({ version: 1, data: "10/2" }),
+    );
+
+    await page.reload();
+    await expect(playersRegion(page).getByText("10 players", { exact: true })).toBeVisible();
+    await expect(note(page)).toHaveCount(0);
+
+    // Another count that shows the notice brings it back.
+    await removePlayer(page, "Lou");
+    await expect(note(page)).toContainText("9 players on 2 courts");
+    await expect(note(page)).toContainText("only 1 sits out");
+  });
+
+  test("with 1 Court: 6 players show nothing; 5 show the 1-Court text without a Use suggestion", async ({
+    page,
+  }) => {
+    await startSession(page, { players: 6, courts: 1 });
+    await expect(playersRegion(page).getByText("6 players", { exact: true })).toBeVisible();
+    await expect(note(page)).toHaveCount(0);
+
+    // Remove one of the two players who aren't in the Lineup.
+    const inLineup = playersOf(await lineupOf(court(page, 1)));
+    const free = NAMES.slice(0, 6).filter((name) => !inLineup.includes(name));
+    expect(free).toHaveLength(2);
+    await removePlayer(page, free[0]!);
+
+    await expect(note(page)).toContainText("5 players on 1 court");
+    await expect(note(page)).toContainText("only 1 sits out each match");
+    await expect(note(page)).toContainText("Add players to give everyone more rests");
+    await expect(note(page)).not.toContainText("Use ");
+  });
+});

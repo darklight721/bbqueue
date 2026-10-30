@@ -156,6 +156,10 @@ A Match starting without a Session player while that player was free to play and
 The number of Rests a Session player has had back-to-back since they last played. Resets to zero when they play or are Sitting out.
 _Avoid_: Wait count, bench time
 
+**Spare players**:
+How many Session players there are beyond four per Court, not counting those Sitting out. With 2 or fewer Spare players, the same players keep playing together or play long Streaks, whatever the app picks.
+_Avoid_: Bench, extras, leftovers, free players
+
 **Fairness window**:
 The recent stretch of time used to judge who has played least: 15 minutes while the Session's Point system is 21, 30 minutes while it is 31.
 

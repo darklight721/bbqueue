@@ -3,6 +3,7 @@ import { canRehashAll, MAX_COURTS } from "../../../domain/engine/index.ts";
 import { useSessionActions, useSessionView } from "../context.ts";
 import { SectionHeader } from "../SectionHeader.tsx";
 import { CourtCard } from "./CourtCard.tsx";
+import { SparePlayersNote } from "./SparePlayersNote.tsx";
 
 export function CourtsSection() {
   const { session, readOnly } = useSessionView();
@@ -34,6 +35,8 @@ export function CourtsSection() {
           ) : null
         }
       />
+
+      <SparePlayersNote />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {courts.map((court) => (

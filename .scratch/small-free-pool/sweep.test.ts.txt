@@ -1,0 +1,1171 @@
+/*
+ * Throwaway measurement sweep for .scratch/small-free-pool. Not a real test: it prints numbers.
+ * Re-run: copy to src/domain/engine/smallpool-sweep.test.ts, then
+ *   SWEEP_OUT=/some/dir/sweep.txt pnpm exec vp test run src/domain/engine/smallpool-sweep.test.ts
+ * (tables are appended to $SWEEP_OUT, default /tmp/sweep.txt, and also console.logged). Delete afterwards.
+ * ~45 s. Notes: "atomic" patches freeAtStart of Matches starting at the same instant in the
+ * driver (test-side only) to show what simultaneous starts would look like without the
+ * sequential-start Rest credit; pool@open = free players when a Court opens (its 4 + bench).
+ */
+import { appendFileSync } from "node:fs";
+import { describe, it } from "vite-plus/test";
+import type { Match, Session } from "../types.ts";
+import { setLineup } from "./lineups.ts";
+import {
+  canRehashAll,
+  createSession,
+  endMatch,
+  moveQueueToCourt,
+  rehashAll,
+  rehashCourt,
+  startMatch,
+} from "./operations.ts";
+import { addQueue, setQueueSlot } from "./queues.ts";
+import { createRng } from "./rng.ts";
+import { busyPlayerIds, freePlayerIds, heldPlayerIds, lineupPlayerIds, makeEnv, pickLineup } from "./select.ts";
+import { buildHistory, matchPlayerIds } from "./stats.ts";
+import { MIN, T0, at, makeCtx, unwrap } from "./test-utils.ts";
+
+const OUT = process.env.SWEEP_OUT ?? "/tmp/sweep.txt";
+const log = (s: string) => {
+  appendFileSync(OUT, s + "\n");
+  console.log(s);
+};
+const SKILL_CYCLE = ["beginner", "intermediate", "advanced"] as const;
+
+type Policy =
+  | "none"
+  | "rehash1"
+  | "rehash3"
+  | "rehashStreak"
+  | "rehashAll"
+  | "syncRehashAll"
+  | "queue";
+
+interface Opt {
+  players: number;
+  courts: number;
+  matches: number;
+  /** minutes between Court starts */
+  stagger: number;
+  /** random Match durations 12–18 min instead of fixed 15 */
+  jitter: boolean;
+  seed: number;
+  mixedSkill: boolean;
+  policy: Policy;
+  /** Correct freeAtStart for Matches that start at the same instant (test-side patch, see report). */
+  atomic?: boolean;
+}
+
+interface Run {
+  poolAtOpen: number[];
+  freeAtStart: number[];
+  pairsShared: number;
+  totalPairs: number;
+  maxStreak: number;
+  streak3Plays: number;
+  /** Streak where a Rest is a gap of at least 7 minutes between ending and starting. */
+  maxTimeStreak: number;
+  timeStreak3Plays: number;
+  /** Longest run of Matches each starting less than 1 minute after the previous one ended. */
+  maxB2B: number;
+  matchesEnded: number;
+  overlapPairs: number;
+  overlap3: number;
+  overlap4: number;
+  setRepeats: number;
+  spread: number;
+  idleMinutes: number;
+  courtMinutes: number;
+  presses: number;
+  flagged: number;
+  fixed: number;
+  unchanged: number;
+  noOpportunity: number;
+  opens: number;
+  endTimes: number[][];
+}
+
+function play(o: Opt): Run {
+  const ctx = makeCtx(o.seed);
+  const durRng = createRng(o.seed * 31 + 7);
+  const dur = () => (o.jitter ? 12 + durRng() * 6 : 15) * MIN;
+  let s: Session = createSession(
+    {
+      name: "Sweep",
+      clubId: null,
+      clubName: null,
+      pointSystem: 21,
+      plannedHours: 3,
+      courts: o.courts,
+      players: Array.from({ length: o.players }, (_, i) => ({
+        name: `P${i + 1}`,
+        skill: o.mixedSkill ? SKILL_CYCLE[i % 3]! : "intermediate",
+      })),
+    },
+    ctx,
+  );
+  const ids = s.courts.map((c) => c.id);
+  const firstStart = new Map(ids.map((id, i) => [id, T0 + i * o.stagger * MIN]));
+  const openedAt = new Map(firstStart);
+  const hasPlayed = new Set<string>();
+  const endAt = new Map<string, number>();
+  const pools: number[] = [];
+  const endTimes: number[][] = ids.map(() => []);
+  let idleMs = 0;
+  let presses = 0;
+  let flagged = 0;
+  let fixed = 0;
+  let unchanged = 0;
+  let noOpportunity = 0;
+  let opens = 0;
+  let ended = 0;
+  let now = T0;
+
+  const courtById = (id: string) => s.courts.find((c) => c.id === id)!;
+  const register = () => {
+    for (const m of s.matches) {
+      if (m.status === "active" && !endAt.has(m.id)) endAt.set(m.id, now + dur());
+    }
+  };
+  const startCourt = (id: string) => {
+    idleMs += now - openedAt.get(id)!;
+    hasPlayed.add(id);
+    s = unwrap(startMatch(s, id, at(ctx, now)));
+    register();
+  };
+  const poolOf = (m: Match, courtId: string) => {
+    const own = new Set(matchPlayerIds(m));
+    const busy = busyPlayerIds(s);
+    for (const id of own) busy.delete(id);
+    const held = heldPlayerIds(s, courtId);
+    return s.players.filter((p) => !p.removed && !p.sittingOut && !busy.has(p.id) && !held.has(p.id))
+      .length;
+  };
+  const lastSetOnCourt = (courtNumber: number): string[] | null => {
+    const last = s.matches
+      .filter((m) => m.courtNumber === courtNumber && m.status === "ended")
+      .sort((a, b) => b.startedAt - a.startedAt)[0];
+    return last ? matchPlayerIds(last) : null;
+  };
+  const overlap = (a: readonly string[], b: readonly string[]) =>
+    a.filter((x) => b.includes(x)).length;
+
+  register();
+  for (let guard = 0; guard < 100_000 && ended < o.matches; guard++) {
+    const due = s.matches
+      .filter((m) => m.status === "active" && endAt.get(m.id)! <= now + 1e-6)
+      .sort((a, b) => a.courtNumber - b.courtNumber);
+    for (const m of due) {
+      const court = s.courts.find((c) => c.number === m.courtNumber)!;
+      pools.push(poolOf(m, court.id));
+      s = unwrap(endMatch(s, m.id, null, at(ctx, now)));
+      ended += 1;
+      opens += 1;
+      openedAt.set(court.id, now);
+      endTimes[ids.indexOf(court.id)]!.push(now);
+    }
+    if (ended >= o.matches) break;
+    const freeBefore = freePlayerIds(s);
+
+    const idle = () =>
+      s.courts
+        .filter((c) => c.activeMatchId === null && now >= firstStart.get(c.id)!)
+        .sort((a, b) => a.number - b.number);
+    const idleNow = idle();
+    const justOpened = idleNow.filter((c) => hasPlayed.has(c.id));
+    const holdable = o.courts >= 2 && justOpened.length === idleNow.length;
+
+    if (o.policy === "none") {
+      for (const c of idleNow) if (c.lineup) startCourt(c.id);
+    } else if (o.policy === "rehash1" || o.policy === "rehash3" || o.policy === "rehashStreak") {
+      for (const c of idleNow) {
+        if (!c.lineup) continue;
+        const prev = lastSetOnCourt(c.number);
+        const before = lineupPlayerIds(c.lineup);
+        const bad = (cur: string[]) => {
+          if (o.policy === "rehashStreak") {
+            const h = buildHistory(s, now);
+            return cur.some((id) => h.byPlayer.get(id)!.streak >= 2);
+          }
+          return prev !== null && overlap(cur, prev) >= 3;
+        };
+        const maxPresses = o.policy === "rehash1" ? 1 : 3;
+        if (bad(before)) {
+          flagged += 1;
+          let tries = 0;
+          while (tries < maxPresses) {
+            const cur = lineupPlayerIds(courtById(c.id).lineup);
+            if (cur.length === 0 || !bad(cur)) break;
+            s = unwrap(rehashCourt(s, c.id, at(ctx, now)));
+            presses += 1;
+            tries += 1;
+          }
+          const after = lineupPlayerIds(courtById(c.id).lineup);
+          if (after.length > 0 && !bad(after)) fixed += 1;
+          if (after.length === 4 && overlap(after, before) === 4) unchanged += 1;
+        }
+        if (courtById(c.id).lineup) startCourt(c.id);
+      }
+    } else if (o.policy === "rehashAll") {
+      if (idleNow.length >= 2 && canRehashAll(s)) {
+        s = unwrap(rehashAll(s, at(ctx, now)));
+        presses += 1;
+      } else if (justOpened.length > 0) {
+        noOpportunity += 1;
+      }
+      for (const c of idle()) if (courtById(c.id).lineup) startCourt(c.id);
+    } else if (o.policy === "syncRehashAll") {
+      if (idleNow.length >= 2) {
+        s = unwrap(rehashAll(s, at(ctx, now)));
+        presses += 1;
+        for (const c of idle()) if (courtById(c.id).lineup) startCourt(c.id);
+      } else if (!holdable) {
+        for (const c of idleNow) if (c.lineup) startCourt(c.id);
+      } // else: hold the Court until another Court is free
+    } else if (o.policy === "queue") {
+      if (idleNow.length >= 2 || !holdable) {
+        for (const c of idleNow) {
+          if (courtById(c.id).activeMatchId !== null) continue;
+          if (!hasPlayed.has(c.id) && idleNow.length < 2) {
+            if (courtById(c.id).lineup) startCourt(c.id);
+            continue;
+          }
+          let t = s;
+          for (const d of s.courts) {
+            if (d.activeMatchId === null && now >= firstStart.get(d.id)!) t = setLineup(t, d.id, null);
+          }
+          const lineup = pickLineup(t, c.id, makeEnv(t, at(ctx, now)));
+          if (!lineup) continue;
+          t = unwrap(addQueue2(t, ctx));
+          const q = t.queues.at(-1)!;
+          const flat = [...lineup.teams[0], ...lineup.teams[1]];
+          const slots: [0 | 1, 0 | 1][] = [
+            [0, 0],
+            [0, 1],
+            [1, 0],
+            [1, 1],
+          ];
+          slots.forEach(([a, b], i) => {
+            t = unwrap(setQueueSlot(t, q.id, a, b, flat[i]!));
+          });
+          idleMs += now - openedAt.get(c.id)!;
+          hasPlayed.add(c.id);
+          s = unwrap(moveQueueToCourt(t, q.id, c.id, at(ctx, now)));
+          register();
+        }
+        for (const c of idle()) if (courtById(c.id).lineup) startCourt(c.id);
+      } // else hold
+    }
+
+    if (o.atomic) {
+      const batch = s.matches.filter((m) => m.status === "active" && m.startedAt === now);
+      const inBatch = new Set(batch.flatMap((m) => matchPlayerIds(m)));
+      s = {
+        ...s,
+        matches: s.matches.map((m) =>
+          batch.includes(m) ? { ...m, freeAtStart: freeBefore.filter((id) => !inBatch.has(id)) } : m,
+        ),
+      };
+    }
+    const nexts = [
+      ...[...endAt.entries()]
+        .filter(([id]) => s.matches.find((m) => m.id === id)?.status === "active")
+        .map(([, t]) => t),
+      ...ids.map((id) => firstStart.get(id)!).filter((t) => t > now),
+    ];
+    if (nexts.length === 0) break;
+    now = Math.min(...nexts);
+  }
+
+  // ---------------- metrics over ended Matches
+  const endedMatches = s.matches
+    .filter((m) => m.status === "ended")
+    .sort((a, b) => a.startedAt - b.startedAt || a.courtNumber - b.courtNumber);
+  const key = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+  const shared = new Set<string>();
+  const streak = new Map(s.players.map((p) => [p.id, 0]));
+  const plays = new Map(s.players.map((p) => [p.id, 0]));
+  let maxStreak = 0;
+  let streak3Plays = 0;
+  const seenSets = new Set<string>();
+  let setRepeats = 0;
+  const lastOnCourt = new Map<number, string[]>();
+  let overlapPairs = 0;
+  let overlap3 = 0;
+  let overlap4 = 0;
+  for (const m of endedMatches) {
+    const four = matchPlayerIds(m);
+    for (const a of four) for (const b of four) if (a < b) shared.add(key(a, b));
+    const free = new Set(m.freeAtStart);
+    for (const p of s.players) {
+      if (four.includes(p.id)) {
+        const v = streak.get(p.id)! + 1;
+        streak.set(p.id, v);
+        plays.set(p.id, plays.get(p.id)! + 1);
+        maxStreak = Math.max(maxStreak, v);
+        if (v >= 3) streak3Plays += 1;
+      } else if (free.has(p.id)) streak.set(p.id, 0);
+    }
+    const k = [...four].sort().join(",");
+    if (seenSets.has(k)) setRepeats += 1;
+    seenSets.add(k);
+    const prev = lastOnCourt.get(m.courtNumber);
+    if (prev) {
+      overlapPairs += 1;
+      const ov = overlap(four, prev);
+      if (ov >= 3) overlap3 += 1;
+      if (ov === 4) overlap4 += 1;
+    }
+    lastOnCourt.set(m.courtNumber, four);
+  }
+  const counts = [...plays.values()];
+  let maxTimeStreak = 0;
+  let timeStreak3Plays = 0;
+  let maxB2B = 0;
+  for (const p of s.players) {
+    let b = 0;
+    let le = -Infinity;
+    for (const m of endedMatches.filter((x) => matchPlayerIds(x).includes(p.id))) {
+      b = m.startedAt - le < 1 * MIN ? b + 1 : 1;
+      le = m.endedAt!;
+      maxB2B = Math.max(maxB2B, b);
+    }
+    const mine = endedMatches.filter((m) => matchPlayerIds(m).includes(p.id));
+    let run = 0;
+    let lastEnd = -Infinity;
+    for (const m of mine) {
+      run = m.startedAt - lastEnd >= 7 * MIN ? 1 : run + 1;
+      lastEnd = m.endedAt!;
+      maxTimeStreak = Math.max(maxTimeStreak, run);
+      if (run >= 3) timeStreak3Plays += 1;
+    }
+  }
+  return {
+    poolAtOpen: pools,
+    freeAtStart: endedMatches.map((m) => m.freeAtStart.length + 4),
+    pairsShared: shared.size,
+    totalPairs: (o.players * (o.players - 1)) / 2,
+    maxStreak,
+    streak3Plays,
+    maxTimeStreak,
+    timeStreak3Plays,
+    maxB2B,
+    matchesEnded: endedMatches.length,
+    overlapPairs,
+    overlap3,
+    overlap4,
+    setRepeats,
+    spread: Math.max(...counts) - Math.min(...counts),
+    idleMinutes: idleMs / MIN,
+    courtMinutes: (now - T0) / MIN,
+    presses,
+    flagged,
+    fixed,
+    unchanged,
+    noOpportunity,
+    opens,
+    endTimes,
+  };
+}
+
+function addQueue2(t: Session, ctx: ReturnType<typeof makeCtx>) {
+  return { ok: true as const, session: addQueue(t, ctx) };
+}
+
+// ------------------------------------------------------------------ aggregation
+
+const mean = (xs: number[]) => (xs.length === 0 ? 0 : xs.reduce((a, b) => a + b, 0) / xs.length);
+const f = (x: number, d = 1) => x.toFixed(d);
+const pct = (x: number) => `${(100 * x).toFixed(0)}%`;
+const SEEDS = Array.from({ length: 30 }, (_, i) => i + 1);
+
+interface Cell {
+  players: number;
+  courts: number;
+  runs: Run[];
+}
+
+function sweep(
+  players: number,
+  courts: number,
+  mode: "staggered" | "simultaneous" | "jitter",
+  policy: Policy = "none",
+  atomic = false,
+  seeds = SEEDS,
+): Cell {
+  const matches = Math.ceil(2.5 * players);
+  const runs = seeds.map((seed) =>
+    play({
+      players,
+      courts,
+      matches,
+      stagger: mode === "staggered" ? 15 / courts : 0,
+      jitter: mode === "jitter",
+      seed,
+      mixedSkill: seed % 2 === 0,
+      policy,
+      atomic,
+    }),
+  );
+  return { players, courts, runs };
+}
+
+const baselineCache = new Map<number, number>();
+function baselinePairs(players: number): number {
+  if (!baselineCache.has(players)) {
+    const c = sweep(players, 1, "staggered");
+    baselineCache.set(players, mean(c.runs.map((r) => r.pairsShared / r.totalPairs)));
+  }
+  return baselineCache.get(players)!;
+}
+
+function row(c: Cell, withBaseline: boolean): string {
+  const r = c.runs;
+  const cap = Math.min(1, (6 * Math.ceil(2.5 * c.players)) / ((c.players * (c.players - 1)) / 2));
+  const cols = [
+    `${c.players}p/${c.courts}C`,
+    f(c.players / c.courts, 2),
+    f(mean(r.flatMap((x) => x.poolAtOpen))),
+    `${f(mean(r.map((x) => x.pairsShared)), 1)}/${r[0]!.totalPairs} ${pct(mean(r.map((x) => x.pairsShared / x.totalPairs)))}`,
+    `min ${pct(Math.min(...r.map((x) => x.pairsShared / x.totalPairs)))}`,
+    withBaseline ? `1C-base ${pct(baselinePairs(c.players))} cap ${pct(cap)}` : "",
+    `${Math.max(...r.map((x) => x.maxStreak))}/${f(mean(r.map((x) => x.maxStreak)))}`,
+    pct(mean(r.map((x) => (x.maxStreak >= 3 ? 1 : 0)))),
+    f((100 * mean(r.map((x) => x.streak3Plays))) / mean(r.map((x) => x.matchesEnded)), 0),
+    `${Math.max(...r.map((x) => x.maxB2B))}/${f(mean(r.map((x) => x.maxB2B)))}`,
+    pct(mean(r.map((x) => (x.maxB2B >= 3 ? 1 : 0)))),
+    pct(mean(r.map((x) => (x.overlapPairs ? x.overlap3 / x.overlapPairs : 0)))),
+    pct(mean(r.map((x) => (x.overlapPairs ? x.overlap4 / x.overlapPairs : 0)))),
+    pct(mean(r.map((x) => x.setRepeats / x.matchesEnded))),
+    f(mean(r.map((x) => x.spread))),
+  ];
+  return cols.join(" | ");
+}
+
+const HEADER =
+  "cell | p/C | pool@open | pairs mean | pairs min | baseline | streak max/mean | runs w/ streak>=3 | streak>=3 plays per 100 matches | BACK-TO-BACK max/mean | runs w/ b2b>=3 | consecutive-on-Court overlap>=3 | overlap=4 | any-earlier-same-4 | play spread";
+
+const RANGES: Record<number, [number, number]> = { 1: [4, 10], 2: [8, 14], 3: [12, 20], 4: [16, 26] };
+
+describe("small free pool sweep", () => {
+  it("fact 1: staggered sweep", { timeout: 3_600_000 }, () => {
+    const lines = [HEADER];
+    for (const courts of [1, 2, 3, 4]) {
+      const [lo, hi] = RANGES[courts]!;
+      for (let p = lo; p <= hi; p++) lines.push(row(sweep(p, courts, "staggered"), true));
+    }
+    log("\nFACT 1 (staggered, 15-min fixed Matches, 30 seeds, ~10 plays per player)\n" + lines.join("\n"));
+  });
+
+  it("fact 2: simultaneous and jittered", { timeout: 3_600_000 }, () => {
+    for (const [mode, atomic] of [
+      ["simultaneous", false],
+      ["simultaneous", true],
+      ["jitter", false],
+    ] as const) {
+      const lines = [HEADER];
+      for (const courts of [2, 3, 4]) {
+        const [lo, hi] = RANGES[courts]!;
+        for (let p = lo; p <= hi; p++) lines.push(row(sweep(p, courts, mode, "none", atomic), false));
+      }
+      log(`\nFACT 2 mode=${mode} atomic=${atomic}\n` + lines.join("\n"));
+    }
+    // drift
+    const drift: string[] = ["cell | round | mean end spread (min) | mean min gap between adjacent Court ends (min)"];
+    for (const [p, c] of [
+      [10, 2],
+      [13, 3],
+      [18, 3],
+      [22, 4],
+    ] as const) {
+      const cell = sweep(p, c, "jitter");
+      for (let rd = 0; rd < 8; rd++) {
+        const sp: number[] = [];
+        const gap: number[] = [];
+        for (const r of cell.runs) {
+          const t = r.endTimes.map((e) => e[rd]).filter((x): x is number => x !== undefined);
+          if (t.length < c) continue;
+          const sorted = [...t].sort((a, b) => a - b);
+          sp.push((sorted.at(-1)! - sorted[0]!) / MIN);
+          gap.push(Math.min(...sorted.slice(1).map((x, i) => x - sorted[i]!)) / MIN);
+        }
+        drift.push(`${p}p/${c}C | ${rd + 1} | ${f(mean(sp), 2)} | ${f(mean(gap), 2)}`);
+      }
+    }
+    log("\nFACT 2 drift (simultaneous start, durations 12–18 min)\n" + drift.join("\n"));
+  });
+
+  it("fact 3: workarounds", { timeout: 3_600_000 }, () => {
+    const policies: Policy[] = ["none", "rehash1", "rehash3", "rehashStreak", "rehashAll", "syncRehashAll", "queue"];
+    const head =
+      "cell | timing | policy | pool@open | freeAtStart | pairs mean% | pairs min% | streak max/mean | runs streak>=3 | b2b max/mean | runs b2b>=3 | overlap>=3 | idle court-min per court-hour | presses/run | flagged/run | fixed% | unchanged% | rehashAll impossible (opens w/ <2 idle)/run";
+    const lines = [head];
+    for (const [p, c] of [
+      [10, 2],
+      [13, 3],
+      [9, 2],
+      [14, 3],
+      [12, 2],
+      [17, 3],
+    ] as const) {
+      for (const [mode, atomic] of [
+        ["staggered", false],
+        ["staggered", true],
+        ["jitter", false],
+        ["jitter", true],
+      ] as const) {
+        for (const policy of policies) {
+          const cell = sweep(p, c, mode, policy, atomic);
+          const r = cell.runs;
+          const flagged = mean(r.map((x) => x.flagged));
+          lines.push(
+            [
+              `${p}p/${c}C`,
+              mode + (atomic ? "+atomicStart" : ""),
+              policy,
+              f(mean(r.flatMap((x) => x.poolAtOpen))),
+              f(mean(r.flatMap((x) => x.freeAtStart))),
+              pct(mean(r.map((x) => x.pairsShared / x.totalPairs))),
+              pct(Math.min(...r.map((x) => x.pairsShared / x.totalPairs))),
+              `${Math.max(...r.map((x) => x.maxStreak))}/${f(mean(r.map((x) => x.maxStreak)))}`,
+              pct(mean(r.map((x) => (x.maxStreak >= 3 ? 1 : 0)))),
+              `${Math.max(...r.map((x) => x.maxB2B))}/${f(mean(r.map((x) => x.maxB2B)))}`,
+              pct(mean(r.map((x) => (x.maxB2B >= 3 ? 1 : 0)))),
+              pct(mean(r.map((x) => (x.overlapPairs ? x.overlap3 / x.overlapPairs : 0)))),
+              f((mean(r.map((x) => x.idleMinutes)) / c) / (mean(r.map((x) => x.courtMinutes)) / 60), 1),
+              f(mean(r.map((x) => x.presses))),
+              f(flagged),
+              flagged > 0 ? pct(mean(r.map((x) => x.fixed)) / flagged) : "-",
+              flagged > 0 ? pct(mean(r.map((x) => x.unchanged)) / flagged) : "-",
+              f(mean(r.map((x) => x.noOpportunity))),
+            ].join(" | "),
+          );
+        }
+      }
+    }
+    log("\nFACT 3 workarounds\n" + lines.join("\n"));
+  });
+});
+
+
+/* ======================================================================
+   SECTION 2 (follow-up A and B). Separate self-contained file; see its header.
+   ====================================================================== */
+
+/*
+ * SECTION 2 — throwaway follow-up measurements for .scratch/small-free-pool (self-contained).
+ * A: how forced is the pool-6 pick? + counterfactual rankings.  B: 12p/1C lock trace.
+ * Re-run: copy to src/domain/engine/smallpool-sweep2.test.ts, then
+ *   SWEEP_OUT=/some/dir/sweep2.txt pnpm exec vp test run src/domain/engine/smallpool-sweep2.test.ts
+ * Replicates the ranking of select.ts in the test (src is not edited). Delete the file afterwards.
+ */
+import { appendFileSync } from "node:fs";
+import { describe, it } from "vite-plus/test";
+import type { Session } from "../types.ts";
+import { setLineup } from "./lineups.ts";
+import { createSession, endMatch, startMatch } from "./operations.ts";
+import {
+  balanceOf,
+  bestSplitOf,
+  candidatesFor,
+  combinations,
+  fairSets,
+  isAllowed,
+  lineupPlayerIds,
+  makeEnv,
+  mixOf,
+  restsTier,
+  splitsOf,
+  type Env,
+} from "./select.ts";
+import { matchPlayerIds } from "./stats.ts";
+import { MIN, T0, at, makeCtx, unwrap } from "./test-utils.ts";
+
+const OUT = process.env.SWEEP_OUT ?? "/tmp/sweep2.txt";
+const log = (s: string) => {
+  appendFileSync(OUT, s + "\n");
+  console.log(s);
+};
+const SKILL_CYCLE = ["beginner", "intermediate", "advanced"] as const;
+const SEEDS = Array.from({ length: 30 }, (_, i) => i + 1);
+const mean = (xs: number[]) => (xs.length === 0 ? 0 : xs.reduce((a, b) => a + b, 0) / xs.length);
+const f = (x: number, d = 1) => x.toFixed(d);
+const pct = (x: number) => `${(100 * x).toFixed(0)}%`;
+
+// ------------------------------------------------------------ replicated ranking
+
+function cutBy(
+  ids: readonly string[],
+  count: number,
+  keyOf: (id: string) => number,
+): { inn: string[]; field: string[]; slots: number } {
+  const groups = new Map<number, string[]>();
+  for (const id of ids) {
+    const key = keyOf(id);
+    groups.set(key, [...(groups.get(key) ?? []), id]);
+  }
+  const inn: string[] = [];
+  for (const key of [...groups.keys()].sort((a, b) => a - b)) {
+    const group = groups.get(key)!;
+    if (inn.length + group.length >= count) return { inn, field: group, slots: count - inn.length };
+    inn.push(...group);
+  }
+  return { inn, field: [], slots: count - inn.length };
+}
+
+interface Variant {
+  /** restKey = max(0, streak − restOffset): 1 = engine (Streak 2 is rested first); 2 = allow Streak 3. */
+  restOffset: number;
+  /** "owed a place" needs this many fewer Matches (engine: 2; Infinity = Fairness ignored). */
+  margin: number;
+  /** Rests-in-a-row tier on (engine) or off. */
+  useTier: boolean;
+}
+const ENGINE: Variant = { restOffset: 1, margin: 2, useTier: true };
+
+function structure(candidates: readonly string[], env: Env, v: Variant) {
+  const h = (id: string) => env.history.byPlayer.get(id)!;
+  const rk = (id: string) => Math.max(0, h(id).streak - v.restOffset);
+  const tk = (id: string) => (v.useTier ? -restsTier(env, id) : 0);
+  const byRest = cutBy(candidates, 4, rk);
+  const byTier = cutBy(byRest.field, byRest.slots, tk);
+  const inn = [...byRest.inn, ...byTier.inn];
+  const field = byTier.field;
+  const slots = byTier.slots;
+  const owed = (x: string, c: string) => {
+    const a = h(x);
+    const b = h(c);
+    return a.recent <= b.recent - v.margin || (a.recent <= b.recent && a.total <= b.total - v.margin);
+  };
+  const dom = new Map(
+    field.map((p) => [p, new Set(field.filter((x) => x !== p && owed(x, p)))] as const),
+  );
+  const fits = field.filter((p) => dom.get(p)!.size < slots);
+  const sets = combinations(fits, slots)
+    .filter((chosen) => isAllowed(dom, new Set(chosen)))
+    .map((chosen) => [...inn, ...chosen]);
+  return { byRest, byTier, inn, field, slots, sets, fieldCombos: combinations(field, slots).length };
+}
+
+function customPick(pre: Session, courtId: string, env: Env, v: Variant) {
+  const candidates = candidatesFor(pre, courtId);
+  if (candidates.length < 4) return null;
+  return bestSplitOf(structure(candidates, env, v).sets, env);
+}
+
+// ------------------------------------------------------------------ driver
+
+interface PickRecord {
+  pool: number;
+  nSets: number;
+  /** Why a single set was forced. */
+  forcedBy: "rest" | "rests-in-row" | "fairness" | null;
+  chosenMix: number;
+  minMix: number;
+  /** min-mix set has a balanced split (balance ≤ 1) */
+  minMixBalanced: boolean;
+  chosenBalanced: boolean;
+  engineMatchesFairSets: boolean;
+  mixed: boolean;
+}
+
+interface Run {
+  pairs: number;
+  total: number;
+  maxStreak: number;
+  sameFourAgain: number;
+  matches: number;
+  spread: number;
+  picks: PickRecord[];
+}
+
+function play(
+  players: number,
+  courts: number,
+  seed: number,
+  variant: Variant | null,
+  opts: { matches?: number; onPick?: (pre: Session, courtId: string, env: Env, engineSet: string[]) => void } = {},
+): Run {
+  const mixed = seed % 2 === 0;
+  const ctx = makeCtx(seed);
+  let s = createSession(
+    {
+      name: "S2",
+      clubId: null,
+      clubName: null,
+      pointSystem: 21,
+      plannedHours: 3,
+      courts,
+      players: Array.from({ length: players }, (_, i) => ({
+        name: `P${i + 1}`,
+        skill: mixed ? SKILL_CYCLE[i % 3]! : "intermediate",
+      })),
+    },
+    ctx,
+  );
+  const target = opts.matches ?? Math.ceil(2.5 * players);
+  const ids = s.courts.map((c) => c.id);
+  const first = new Map(ids.map((id, i) => [id, T0 + (i * 15 * MIN) / courts]));
+  const endAt = new Map<string, number>();
+  const started = new Set<string>();
+  const picks: PickRecord[] = [];
+  let ended = 0;
+  let now = T0;
+  for (let guard = 0; guard < 100_000 && ended < target; guard++) {
+    for (const m of s.matches.filter((x) => x.status === "active" && endAt.get(x.id)! <= now)) {
+      const court = s.courts.find((c) => c.number === m.courtNumber)!;
+      s = unwrap(endMatch(s, m.id, null, at(ctx, now)));
+      ended += 1;
+      const c2 = at(ctx, now);
+      const pre = setLineup(s, court.id, null);
+      const env = makeEnv(pre, c2);
+      const engineSet = lineupPlayerIds(s.courts.find((c) => c.id === court.id)!.lineup);
+      if (engineSet.length === 4) {
+        opts.onPick?.(pre, court.id, env, engineSet);
+        // instrumentation for A
+        const candidates = candidatesFor(pre, court.id);
+        const st = structure(candidates, env, ENGINE);
+        const engSets = fairSets(candidates, env);
+        const key = (a: string[]) => [...a].sort().join(",");
+        const sets = st.sets;
+        const mixes = sets.map((x) => mixOf(env, x));
+        const minMix = Math.min(...mixes);
+        const bal = (x: string[]) => splitsOf(x).some((sp) => balanceOf(env, sp) <= 1);
+        let forcedBy: PickRecord["forcedBy"] = null;
+        if (sets.length === 1) {
+          if (st.byRest.field.length === st.byRest.slots) forcedBy = "rest";
+          else if (st.byTier.field.length === st.byTier.slots) forcedBy = "rests-in-row";
+          else forcedBy = "fairness";
+        }
+        picks.push({
+          pool: candidates.length,
+          nSets: sets.length,
+          forcedBy,
+          chosenMix: mixOf(env, engineSet),
+          minMix,
+          minMixBalanced: sets.some((x, i) => mixes[i] === minMix && bal(x)),
+          chosenBalanced: bal(engineSet),
+          engineMatchesFairSets:
+            engSets.length === sets.length && engSets.every((x) => sets.some((y) => key(x) === key(y))),
+          mixed,
+        });
+      }
+      if (variant) {
+        const lineup = customPick(pre, court.id, env, variant);
+        s = setLineup(s, court.id, lineup);
+      }
+    }
+    if (ended >= target) break;
+    for (const c of s.courts) {
+      if (c.activeMatchId !== null || !c.lineup || now < first.get(c.id)!) continue;
+      s = unwrap(startMatch(s, c.id, at(ctx, now)));
+      const m = s.matches.at(-1)!;
+      endAt.set(m.id, now + 15 * MIN);
+      started.add(c.id);
+    }
+    const nexts = [
+      ...[...endAt.entries()]
+        .filter(([id]) => s.matches.find((m) => m.id === id)?.status === "active")
+        .map(([, t]) => t),
+      ...ids.map((id) => first.get(id)!).filter((t) => t > now),
+    ];
+    if (nexts.length === 0) break;
+    now = Math.min(...nexts);
+  }
+  const em = s.matches
+    .filter((m) => m.status === "ended")
+    .sort((a, b) => a.startedAt - b.startedAt || a.courtNumber - b.courtNumber);
+  const shared = new Set<string>();
+  const streak = new Map(s.players.map((p) => [p.id, 0]));
+  const plays = new Map(s.players.map((p) => [p.id, 0]));
+  let maxStreak = 0;
+  const seen = new Set<string>();
+  let again = 0;
+  for (const m of em) {
+    const four = matchPlayerIds(m);
+    for (const a of four) for (const b of four) if (a < b) shared.add(`${a}|${b}`);
+    const free = new Set(m.freeAtStart);
+    for (const p of s.players) {
+      if (four.includes(p.id)) {
+        const v = streak.get(p.id)! + 1;
+        streak.set(p.id, v);
+        plays.set(p.id, plays.get(p.id)! + 1);
+        maxStreak = Math.max(maxStreak, v);
+      } else if (free.has(p.id)) streak.set(p.id, 0);
+    }
+    const k = [...four].sort().join(",");
+    if (seen.has(k)) again += 1;
+    seen.add(k);
+  }
+  const counts = [...plays.values()];
+  return {
+    pairs: shared.size,
+    total: (players * (players - 1)) / 2,
+    maxStreak,
+    sameFourAgain: again,
+    matches: em.length,
+    spread: Math.max(...counts) - Math.min(...counts),
+    picks,
+  };
+}
+
+const CELLS_A: [number, number][] = [
+  [10, 2],
+  [14, 3],
+  [18, 4],
+  [11, 2],
+  [15, 3],
+];
+
+describe("follow-up A and B", () => {
+  it("A: how forced is the pick, and counterfactuals", { timeout: 3_600_000 }, () => {
+    // ---- A1: instrumentation of the engine's own picks
+    const head1 =
+      "cell | pool | picks | exactly 1 set | (forced by Rest / Rests-in-row / Fairness) | 2–3 sets | >3 sets | mean #sets | chosen==min-Mixing (when >1 set) | miss explained by Team balance | unexplained miss | repl. ranking == engine fairSets";
+    const l1 = [head1];
+    for (const [p, c] of CELLS_A) {
+      const runs = SEEDS.map((seed) => play(p, c, seed, null));
+      const picks = runs.flatMap((r) => r.picks);
+      const one = picks.filter((x) => x.nSets === 1);
+      const few = picks.filter((x) => x.nSets >= 2 && x.nSets <= 3);
+      const many = picks.filter((x) => x.nSets > 3);
+      const choice = picks.filter((x) => x.nSets > 1);
+      const hit = choice.filter((x) => x.chosenMix === x.minMix);
+      const miss = choice.filter((x) => x.chosenMix !== x.minMix);
+      const explained = miss.filter((x) => x.minMixBalanced === false && x.chosenBalanced);
+      l1.push(
+        [
+          `${p}p/${c}C`,
+          f(mean(picks.map((x) => x.pool))),
+          picks.length,
+          pct(one.length / picks.length),
+          `${one.filter((x) => x.forcedBy === "rest").length}/${one.filter((x) => x.forcedBy === "rests-in-row").length}/${one.filter((x) => x.forcedBy === "fairness").length}`,
+          pct(few.length / picks.length),
+          pct(many.length / picks.length),
+          f(mean(picks.map((x) => x.nSets))),
+          choice.length ? `${hit.length}/${choice.length} (${pct(hit.length / choice.length)})` : "-",
+          miss.length ? `${explained.length}/${miss.length}` : "-",
+          miss.length - explained.length,
+          pct(picks.filter((x) => x.engineMatchesFairSets).length / picks.length),
+        ].join(" | "),
+      );
+    }
+    log("\nA1 engine picks, staggered, 30 seeds\n" + l1.join("\n"));
+
+    // ---- A2: counterfactuals
+    const variants: [string, Variant | null][] = [
+      ["engine as-is", null],
+      ["replicated engine (control)", ENGINE],
+      ["(i) Fairness ignored (margin ∞)", { ...ENGINE, margin: Infinity }],
+      ["(i') Fairness stricter (margin 1)", { ...ENGINE, margin: 1 }],
+      ["(ii) Streak 3 allowed", { ...ENGINE, restOffset: 2 }],
+      ["(i)+(ii)", { restOffset: 2, margin: Infinity, useTier: true }],
+      ["(iv) Streak 4 allowed", { ...ENGINE, restOffset: 3 }],
+      ["(iii) Rests-in-row tier off", { ...ENGINE, useTier: false }],
+    ];
+    const l2 = ["cell | variant | pairs mean | pairs min | Streak max/mean | runs Streak>=3 | same-4-again | play spread"];
+    for (const [p, c] of CELLS_A) {
+      for (const [label, v] of variants) {
+        const runs = SEEDS.map((seed) => play(p, c, seed, v));
+        l2.push(
+          [
+            `${p}p/${c}C`,
+            label,
+            `${f(mean(runs.map((r) => r.pairs)), 1)}/${runs[0]!.total} ${pct(mean(runs.map((r) => r.pairs / r.total)))}`,
+            pct(Math.min(...runs.map((r) => r.pairs / r.total))),
+            `${Math.max(...runs.map((r) => r.maxStreak))}/${f(mean(runs.map((r) => r.maxStreak)))}`,
+            pct(mean(runs.map((r) => (r.maxStreak >= 3 ? 1 : 0)))),
+            pct(mean(runs.map((r) => r.sameFourAgain / r.matches))),
+            f(mean(runs.map((r) => r.spread))),
+          ].join(" | "),
+        );
+      }
+    }
+    log("\nA2 counterfactuals (staggered, 30 seeds)\n" + l2.join("\n"));
+  });
+
+  it("B: 1 Court lock trace", { timeout: 3_600_000 }, () => {
+    // ---- B1: trace one seed for 12p/1C
+    const trace = (players: number, seed: number, picksToShow: number, courts = 1) => {
+      const lines: string[] = [];
+      let n = 0;
+      const name = (s: Session, id: string) => s.players.find((p) => p.id === id)!.name;
+      play(players, courts, seed, null, {
+        matches: picksToShow,
+        onPick: (pre, courtId, env, engineSet) => {
+          n += 1;
+          const candidates = candidatesFor(pre, courtId);
+          const st = structure(candidates, env, ENGINE);
+          const h = (id: string) => env.history.byPlayer.get(id)!;
+          const state = candidates
+            .map((id) => `${name(pre, id)}[s${h(id).streak} r${h(id).rests} w${h(id).recent} t${h(id).total}]`)
+            .join(" ");
+          const restGroups = [...new Set(candidates.map((id) => Math.max(0, h(id).streak - 1)))]
+            .sort()
+            .map((k) => `restKey${k}:${candidates.filter((id) => Math.max(0, h(id).streak - 1) === k).length}`)
+            .join(",");
+          const tierGroups = [...new Set(st.byRest.field.map((id) => restsTier(env, id)))]
+            .sort()
+            .map((k) => `tier${k}:${st.byRest.field.filter((id) => restsTier(env, id) === k).length}`)
+            .join(",");
+          const rules: string[] = [];
+          if (st.byRest.inn.length > 0 || st.byRest.field.length < candidates.length) rules.push("Rest");
+          if (st.byTier.inn.length > 0 || st.byTier.field.length < st.byRest.field.length)
+            rules.push("Rests-in-a-row");
+          if (st.sets.length < st.fieldCombos) rules.push("Fairness-owed");
+          if (st.sets.length > 1) rules.push("Mixing");
+          lines.push(
+            `pick ${n}: free ${candidates.length}; ${restGroups}; field after Rest ${tierGroups || "-"}; ` +
+              `Rest-cut inn=${st.byRest.inn.length} Tier-cut inn=${st.byTier.inn.length} field=${st.field.length} slots=${st.slots}; ` +
+              `sets after Fairness=${st.sets.length}/${st.fieldCombos}; rules active=[${rules.join(", ")}]; ` +
+              `CHOSEN ${engineSet.map((id) => name(pre, id)).sort((a, b) => Number(a.slice(1)) - Number(b.slice(1))).join(",")}\n    state: ${state}`,
+          );
+        },
+      });
+      return lines;
+    };
+    log("\nB1 trace 12p/1C seed 1 (picks after each Match ends; picks 1–3 are the first three rounds' successors)\n" + trace(12, 1, 14).join("\n"));
+    log("\nB1b trace 8p/1C seed 1 (first 8 picks)\n" + trace(8, 1, 8).join("\n"));
+
+    log("\nB1c trace 10p/2C seed 1 (pool 6, picks 5–12)\n" + trace(10, 1, 12, 2).slice(4).join("\n"));
+
+    // ---- B2: summary across seeds, 1 Court
+    const l = [
+      "cell | variant | pairs mean | pairs min | same-4-again | picks with Rests-in-row cut active | picks forced to 1 set (rest/tier/fairness) | mean #sets",
+    ];
+    for (const p of [8, 9, 10, 11, 12, 13, 16, 20]) {
+      for (const [label, v] of [
+        ["engine", null],
+        ["Rests-in-row tier off", { ...ENGINE, useTier: false }],
+      ] as [string, Variant | null][]) {
+        const runs = SEEDS.map((seed) => play(p, 1, seed, v));
+        const picks = runs.flatMap((r) => r.picks);
+        const tierActive: number[] = [];
+        // recompute tier activity only for the engine runs
+        if (v === null) {
+          for (const seed of SEEDS) {
+            play(p, 1, seed, null, {
+              onPick: (pre, courtId, env) => {
+                const st = structure(candidatesFor(pre, courtId), env, ENGINE);
+                tierActive.push(st.byTier.inn.length > 0 || st.byTier.field.length < st.byRest.field.length ? 1 : 0);
+              },
+            });
+          }
+        }
+        const one = picks.filter((x) => x.nSets === 1);
+        l.push(
+          [
+            `${p}p/1C`,
+            label,
+            `${f(mean(runs.map((r) => r.pairs)), 1)}/${runs[0]!.total} ${pct(mean(runs.map((r) => r.pairs / r.total)))}`,
+            pct(Math.min(...runs.map((r) => r.pairs / r.total))),
+            pct(mean(runs.map((r) => r.sameFourAgain / r.matches))),
+            v === null ? pct(mean(tierActive)) : "-",
+            `${pct(one.length / picks.length)} (${one.filter((x) => x.forcedBy === "rest").length}/${one.filter((x) => x.forcedBy === "rests-in-row").length}/${one.filter((x) => x.forcedBy === "fairness").length})`,
+            f(mean(picks.map((x) => x.nSets))),
+          ].join(" | "),
+        );
+      }
+    }
+    log("\nB2 1 Court summary (30 seeds, ~10 plays each)\n" + l.join("\n"));
+  });
+});
+
+
+/* ======================================================================
+   SECTION 3 (Spare-player sweep with the planned Rest fix applied in the driver).
+   Separate self-contained file; see its header.
+   ====================================================================== */
+
+/*
+ * SECTION 3 — throwaway follow-up: Spare players (players − 4×Courts), with the planned
+ * "no Rest while held by another Court's Lineup" fix applied in the driver (test side only:
+ * after each startMatch, freeAtStart drops players held by another Court's Lineup).
+ * Re-run: copy to src/domain/engine/smallpool-sweep3.test.ts, then
+ *   SWEEP_OUT=/some/dir/sweep3.txt pnpm exec vp test run src/domain/engine/smallpool-sweep3.test.ts
+ * Delete the file afterwards.
+ */
+import { appendFileSync } from "node:fs";
+import { describe, it } from "vite-plus/test";
+import { createSession, endMatch, startMatch } from "./operations.ts";
+import { createRng } from "./rng.ts";
+import { heldPlayerIds } from "./select.ts";
+import { matchPlayerIds } from "./stats.ts";
+import { MIN, T0, at, makeCtx, unwrap } from "./test-utils.ts";
+
+const OUT = process.env.SWEEP_OUT ?? "/tmp/sweep3.txt";
+const log = (s: string) => {
+  appendFileSync(OUT, s + "\n");
+  console.log(s);
+};
+const SKILL_CYCLE = ["beginner", "intermediate", "advanced"] as const;
+const SEEDS = Array.from({ length: 30 }, (_, i) => i + 1);
+const mean = (xs: number[]) => (xs.length === 0 ? 0 : xs.reduce((a, b) => a + b, 0) / xs.length);
+const f = (x: number, d = 1) => x.toFixed(d);
+const pct = (x: number) => `${(100 * x).toFixed(0)}%`;
+
+type Mode = "staggered" | "simultaneous+12–18min" | "simultaneous+12–18min+start delay 0–2min";
+
+interface Run {
+  pairs: number;
+  total: number;
+  maxStreak: number;
+  maxB2B: number;
+  sameFourAgain: number;
+  matches: number;
+  spread: number;
+}
+
+function play(players: number, courts: number, seed: number, mode: Mode, fix: boolean): Run {
+  const mixed = seed % 2 === 0;
+  const ctx = makeCtx(seed);
+  const durRng = createRng(seed * 31 + 7);
+  const delayRng = createRng(seed * 17 + 3);
+  const dur = () => (mode === "staggered" ? 15 : 12 + durRng() * 6) * MIN;
+  /** Time the organiser takes to press Start after a Lineup appears. */
+  const delay = () => (mode.includes("delay") ? delayRng() * 2 * MIN : 0);
+  let s = createSession(
+    {
+      name: "S3",
+      clubId: null,
+      clubName: null,
+      pointSystem: 21,
+      plannedHours: 3,
+      courts,
+      players: Array.from({ length: players }, (_, i) => ({
+        name: `P${i + 1}`,
+        skill: mixed ? SKILL_CYCLE[i % 3]! : "intermediate",
+      })),
+    },
+    ctx,
+  );
+  const target = Math.ceil(2.5 * players);
+  const ids = s.courts.map((c) => c.id);
+  const first = new Map(
+    ids.map((id, i) => [id, T0 + (mode === "staggered" ? (i * 15 * MIN) / courts : 0)]),
+  );
+  const endAt = new Map<string, number>();
+  const readyAt = new Map(first);
+  let ended = 0;
+  let now = T0;
+  for (let guard = 0; guard < 100_000 && ended < target; guard++) {
+    const due = s.matches
+      .filter((m) => m.status === "active" && endAt.get(m.id)! <= now + 1e-6)
+      .sort((a, b) => a.courtNumber - b.courtNumber);
+    for (const m of due) {
+      s = unwrap(endMatch(s, m.id, null, at(ctx, now)));
+      ended += 1;
+      readyAt.set(s.courts.find((c) => c.number === m.courtNumber)!.id, now + delay());
+    }
+    if (ended >= target) break;
+    for (const c of s.courts.slice().sort((a, b) => a.number - b.number)) {
+      const court = s.courts.find((x) => x.id === c.id)!;
+      if (court.activeMatchId !== null || !court.lineup || now < readyAt.get(c.id)! - 1e-6) continue;
+      const held = heldPlayerIds(s, c.id);
+      s = unwrap(startMatch(s, c.id, at(ctx, now)));
+      const m = s.matches.at(-1)!;
+      endAt.set(m.id, now + dur());
+      if (fix) {
+        s = {
+          ...s,
+          matches: s.matches.map((x) =>
+            x.id === m.id ? { ...x, freeAtStart: x.freeAtStart.filter((id) => !held.has(id)) } : x,
+          ),
+        };
+      }
+    }
+    const nexts = [
+      ...[...endAt.entries()]
+        .filter(([id]) => s.matches.find((m) => m.id === id)?.status === "active")
+        .map(([, t]) => t),
+      ...ids.map((id) => readyAt.get(id)!).filter((t) => t > now + 1e-6),
+    ];
+    if (nexts.length === 0) break;
+    now = Math.min(...nexts);
+  }
+  const em = s.matches
+    .filter((m) => m.status === "ended")
+    .sort((a, b) => a.startedAt - b.startedAt || a.courtNumber - b.courtNumber);
+  const shared = new Set<string>();
+  const streak = new Map(s.players.map((p) => [p.id, 0]));
+  const plays = new Map(s.players.map((p) => [p.id, 0]));
+  const b2b = new Map(s.players.map((p) => [p.id, 0]));
+  const lastEnd = new Map<string, number>();
+  let maxStreak = 0;
+  let maxB2B = 0;
+  const seen = new Set<string>();
+  let again = 0;
+  for (const m of em) {
+    const four = matchPlayerIds(m);
+    for (const a of four) for (const b of four) if (a < b) shared.add(`${a}|${b}`);
+    const free = new Set(m.freeAtStart);
+    for (const p of s.players) {
+      if (four.includes(p.id)) {
+        const v = streak.get(p.id)! + 1;
+        streak.set(p.id, v);
+        plays.set(p.id, plays.get(p.id)! + 1);
+        maxStreak = Math.max(maxStreak, v);
+        const gap = m.startedAt - (lastEnd.get(p.id) ?? -Infinity);
+        const b = gap < (mode.includes("delay") ? 3 : 1) * MIN ? b2b.get(p.id)! + 1 : 1; // back-to-back: next start < 1 min (3 min with the 0–2 min start delay) after the previous end
+        b2b.set(p.id, b);
+        maxB2B = Math.max(maxB2B, b);
+        lastEnd.set(p.id, m.endedAt!);
+      } else if (free.has(p.id)) streak.set(p.id, 0);
+    }
+    const k = [...four].sort().join(",");
+    if (seen.has(k)) again += 1;
+    seen.add(k);
+  }
+  const counts = [...plays.values()];
+  return {
+    pairs: shared.size,
+    total: (players * (players - 1)) / 2,
+    maxStreak,
+    maxB2B,
+    sameFourAgain: again,
+    matches: em.length,
+    spread: Math.max(...counts) - Math.min(...counts),
+  };
+}
+
+const CELLS: [number, number][] = [
+  [5, 1],
+  [6, 1],
+  ...[2, 3, 4].flatMap((c) => [0, 1, 2, 3, 4].map((sp) => [4 * c + sp, c] as [number, number])),
+];
+
+describe("follow-up C: Spare players with the Rest fix", () => {
+  it("sweep", { timeout: 3_600_000 }, () => {
+    const lines = [
+      "cell | Spare | mode | engine | pairs | b2b max/mean | Streak max/mean | seeds Streak>=3 | same-4-again | play spread",
+    ];
+    for (const [p, c] of CELLS) {
+      for (const mode of [
+        "staggered",
+        "simultaneous+12–18min",
+        "simultaneous+12–18min+start delay 0–2min",
+      ] as const) {
+        for (const fix of [true, false]) {
+          const runs = SEEDS.map((seed) => play(p, c, seed, mode, fix));
+          lines.push(
+            [
+              `${p}p/${c}C`,
+              p - 4 * c,
+              mode,
+              fix ? "FIXED" : "buggy",
+              `${f(mean(runs.map((r) => r.pairs)), 1)}/${runs[0]!.total} ${pct(mean(runs.map((r) => r.pairs / r.total)))}` +
+                ` (min ${pct(Math.min(...runs.map((r) => r.pairs / r.total)))})`,
+              `${Math.max(...runs.map((r) => r.maxB2B))}/${f(mean(runs.map((r) => r.maxB2B)))}`,
+              `${Math.max(...runs.map((r) => r.maxStreak))}/${f(mean(runs.map((r) => r.maxStreak)))}`,
+              pct(mean(runs.map((r) => (r.maxStreak >= 3 ? 1 : 0)))),
+              pct(mean(runs.map((r) => r.sameFourAgain / r.matches))),
+              f(mean(runs.map((r) => r.spread))),
+            ].join(" | "),
+          );
+        }
+      }
+    }
+    log("\nC: Spare sweep, 30 seeds, ~10 plays per player\n" + lines.join("\n"));
+  });
+});

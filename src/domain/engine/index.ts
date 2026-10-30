@@ -53,3 +53,5 @@ export { buildSummary, rankStandings } from "./summary.ts";
 export { fairnessWindowMs } from "./stats.ts";
 export { applyRequests } from "./requests.ts";
 export type { RequestOutcome, SkipReason } from "./requests.ts";
+export { sparePlayers, spareNotice, spareNoticeText } from "./spare.ts";
+export type { SpareNotice } from "./spare.ts";

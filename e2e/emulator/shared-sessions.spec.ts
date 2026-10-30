@@ -48,6 +48,29 @@ test.describe("Shared active session between two people", () => {
     await anaPage.context().close();
   });
 
+  test("the Spare players notice shows for the host, not for the Player watching", async ({
+    page,
+    browser,
+    baseURL,
+  }) => {
+    // 5 players on the default 1 Court: 1 Spare player.
+    const { club, anaPage } = await twoPeople(page, browser, baseURL);
+    await startSession(page, club);
+    await watchFromHome(anaPage);
+
+    const hostNote = page.getByRole("note", { name: "Few spare players" });
+    await expect(hostNote).toBeVisible();
+    await expect(hostNote).toContainText("5 players on 1 court");
+    await expect(hostNote.getByRole("button", { name: "Dismiss" })).toBeVisible();
+
+    // The Player has the same Session in front of them, with the Courts loaded, but no note.
+    await expect(court(anaPage, 1).getByText("Lineup", { exact: true })).toBeVisible();
+    await expect(anaPage.getByRole("note", { name: "Few spare players" })).toHaveCount(0);
+    await expect(anaPage.getByText(/players on 1 court/)).toHaveCount(0);
+
+    await anaPage.context().close();
+  });
+
   test("the host plays offline, and the Player catches up when the host is back online", async ({
     page,
     context,

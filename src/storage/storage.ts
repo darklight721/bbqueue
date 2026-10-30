@@ -22,6 +22,8 @@ const ENDED_CONFIRMED_KEY = "bq:v1:ended-confirmed";
 const ACCOUNT_KEY = "bq:v1:account";
 const WELCOME_DONE_KEY = "bq:v1:welcome-done";
 const INSTALL_HINT_DISMISSED_KEY = "bq:v1:install-hint-dismissed";
+/** Followed by the Session id; see `spareNoticeDismissedKey`. */
+const SPARE_NOTICE_DISMISSED_PREFIX = "bq:v1:spare-notice-dismissed:";
 /** Replaced by Ended sessions (ADR-0005); removed on load and never written again. */
 const LEGACY_SUMMARY_KEY = "bq:v1:summary";
 
@@ -426,4 +428,23 @@ export function loadInstallHintDismissed(): boolean {
 
 export function saveInstallHintDismissed(): void {
   write(INSTALL_HINT_DISMISSED_KEY, true);
+}
+
+/** One key per Session: the few-Spare-players notice dismissed on this device. */
+export function spareNoticeDismissedKey(sessionId: string): string {
+  return `${SPARE_NOTICE_DISMISSED_PREFIX}${sessionId}`;
+}
+
+const parseString: Parse<string> = (value) => (typeof value === "string" ? value : null);
+
+/**
+ * The notice key (`"{players}/{courts}"`) for which the few-Spare-players notice was last
+ * dismissed in this Session on this device, or null when it never was.
+ */
+export function loadSpareNoticeDismissed(sessionId: string): string | null {
+  return read(spareNoticeDismissedKey(sessionId), parseString);
+}
+
+export function saveSpareNoticeDismissed(sessionId: string, noticeKey: string): void {
+  write(spareNoticeDismissedKey(sessionId), noticeKey);
 }
