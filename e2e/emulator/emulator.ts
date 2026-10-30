@@ -7,6 +7,7 @@ import {
 } from "../../src/test/emulatorAdmin.ts";
 import type { Account, Club, ClubPlayer, EndedSession } from "../../src/domain/types.ts";
 import { readStoredData } from "../fixtures.ts";
+import { openWelcomeWayOn } from "../welcome-helpers.ts";
 
 /**
  * Helpers for the specs in this folder, which run on the Firebase emulators so that two browser
@@ -27,8 +28,9 @@ export function uniqueId(prefix: string): string {
 /** First launch → Welcome → name → Home. Returns the Account that was created on the server. */
 export async function signUp(page: Page, name: string): Promise<Account> {
   await page.goto("/");
-  await page.getByLabel("Your name").fill(name);
-  await page.getByRole("button", { name: "Continue" }).click();
+  const form = await openWelcomeWayOn(page);
+  await form.getByLabel("Your name").fill(name);
+  await form.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1, name: "BBQueue", exact: true })).toBeVisible();
   let account: Account | null = null;
   await expect

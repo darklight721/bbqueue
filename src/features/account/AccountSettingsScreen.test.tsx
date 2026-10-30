@@ -19,6 +19,10 @@ import {
 const ROY: Account = { accountId: "roy-7k3f", name: "Roy Smith" };
 const IPHONE_SAFARI =
   "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
+const IPHONE_CHROME =
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/130.0.6723.90 Mobile/15E148 Safari/604.1";
+const ANDROID_CHROME =
+  "Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36";
 
 beforeEach(() => {
   localStorage.clear();
@@ -289,20 +293,62 @@ describe("Account settings", () => {
 
   describe("Install the app hint", () => {
     const hint = () => screen.queryByRole("region", { name: "Install the app" });
+    const installFirst = () =>
+      screen.queryByRole("region", { name: "Add BBQueue to your Home Screen first" });
+    const useBrowser = (userAgent: string) =>
+      Object.defineProperty(navigator, "userAgent", { value: userAgent, configurable: true });
 
-    it("shows in iOS Safari and can be dismissed for good", async () => {
-      Object.defineProperty(navigator, "userAgent", { value: IPHONE_SAFARI, configurable: true });
+    it("on iOS with an Account: warns the Account stays in the browser, and can be dismissed for good", async () => {
+      useBrowser(IPHONE_SAFARI);
       withAccount();
       const { user } = renderAt("/account");
 
+      expect(hint()).toHaveTextContent(
+        "Your Account stays in this browser. The installed app starts fresh.",
+      );
+      expect(hint()).toHaveTextContent("Add to Home Screen");
       await user.click(within(hint()!).getByRole("button", { name: "Dismiss tip" }));
 
       expect(hint()).not.toBeInTheDocument();
       expect(getInstallHintDismissed()).toBe(true);
     });
 
+    it("warns in every iOS browser, not just Safari", () => {
+      useBrowser(IPHONE_CHROME);
+      withAccount();
+      renderAt("/account");
+      expect(hint()).toHaveTextContent("Your Account stays in this browser.");
+    });
+
+    it("on Android with an Account: suggests installing, without the warning", () => {
+      useBrowser(ANDROID_CHROME);
+      withAccount();
+      renderAt("/account");
+      expect(hint()).toHaveTextContent(
+        "It opens full screen, and the browser is less likely to clear your data.",
+      );
+      expect(hint()).not.toHaveTextContent("stays in this browser");
+    });
+
+    it("on iOS without an Account: says to install first, as on the Welcome screen", async () => {
+      useBrowser(IPHONE_SAFARI);
+      withAccount(null);
+      const { user } = renderAt("/account");
+
+      expect(installFirst()).toHaveTextContent(
+        "Then open it from there. What you set up here stays in this browser.",
+      );
+      expect(within(installFirst()!).getAllByRole("listitem")).toHaveLength(3);
+      // The form to add a name is still there.
+      expect(screen.getByRole("button", { name: "Add your name" })).toBeInTheDocument();
+
+      await user.click(within(installFirst()!).getByRole("button", { name: "Dismiss tip" }));
+      expect(installFirst()).not.toBeInTheDocument();
+      expect(getInstallHintDismissed()).toBe(true);
+    });
+
     it("stays away once dismissed", () => {
-      Object.defineProperty(navigator, "userAgent", { value: IPHONE_SAFARI, configurable: true });
+      useBrowser(IPHONE_SAFARI);
       localStorage.setItem(
         "bq:v1:install-hint-dismissed",
         JSON.stringify({ version: 1, data: true }),
@@ -313,19 +359,35 @@ describe("Account settings", () => {
       expect(hint()).not.toBeInTheDocument();
     });
 
-    it("isn't shown in other browsers or without an Account", () => {
+    it("on Android without an Account: shows the same tip under the form, dismissible with the same flag", async () => {
+      useBrowser(ANDROID_CHROME);
+      withAccount(null);
+      const { user } = renderAt("/account");
+
+      expect(hint()).toHaveTextContent(
+        "It opens full screen, and the browser is less likely to clear your data.",
+      );
+      expect(installFirst()).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Add your name" })).toBeInTheDocument();
+
+      await user.click(within(hint()!).getByRole("button", { name: "Dismiss tip" }));
+      expect(hint()).not.toBeInTheDocument();
+      expect(getInstallHintDismissed()).toBe(true);
+    });
+
+    it("isn't shown on desktop, with or without an Account", () => {
       withAccount();
       const { unmount } = renderAt("/account");
       expect(hint()).not.toBeInTheDocument();
       unmount();
 
-      Object.defineProperty(navigator, "userAgent", { value: IPHONE_SAFARI, configurable: true });
       localStorage.clear();
       resetStoreForTests();
       setWelcomeDone();
       withAccount(null);
       renderAt("/account");
       expect(hint()).not.toBeInTheDocument();
+      expect(installFirst()).not.toBeInTheDocument();
     });
   });
 });

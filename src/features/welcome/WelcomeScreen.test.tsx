@@ -1,11 +1,16 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { App } from "../../app/App.tsx";
 import { BackendError } from "../../backend/backend.ts";
 import { createInMemoryBackend } from "../../backend/inMemoryBackend.ts";
 import { setBackendForTests } from "../../backend/index.ts";
-import { getAccount, getWelcomeDone, resetStoreForTests } from "../../storage/store.ts";
+import {
+  getAccount,
+  getInstallHintDismissed,
+  getWelcomeDone,
+  resetStoreForTests,
+} from "../../storage/store.ts";
 
 beforeEach(() => {
   localStorage.clear();
@@ -218,5 +223,174 @@ describe("Welcome screen", () => {
     expect(input).toHaveFocus();
     expect(screen.getByText("Enter a name")).toBeInTheDocument();
     expect(getWelcomeDone()).toBe(false);
+  });
+});
+
+describe("Welcome screen install hint", () => {
+  const IPHONE_SAFARI =
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
+  const IPHONE_FIREFOX =
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) FxiOS/132.0 Mobile/15E148 Safari/605.1.15";
+  const ANDROID_CHROME =
+    "Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36";
+
+  const installFirst = () =>
+    screen.queryByRole("region", { name: "Add BBQueue to your Home Screen first" });
+  const anyway = () => screen.queryByRole("button", { name: "Continue in the browser anyway" });
+  const sheet = () => screen.queryByRole("dialog", { name: "Continue in the browser" });
+  const androidSteps = () =>
+    screen.queryByRole("region", { name: "Add BBQueue to your Home Screen" });
+
+  function useBrowser(userAgent: string) {
+    Object.defineProperty(navigator, "userAgent", { value: userAgent, configurable: true });
+  }
+
+  afterEach(() => {
+    Reflect.deleteProperty(navigator, "userAgent");
+  });
+
+  it("on iOS, installing comes first; the form is behind Continue in the browser anyway", async () => {
+    useBrowser(IPHONE_SAFARI);
+    setBackendForTests(createInMemoryBackend());
+    const user = userEvent.setup();
+    render(<App />);
+
+    expect(installFirst()).toHaveTextContent(
+      "Then open it from there. What you set up here stays in this browser.",
+    );
+    const steps = within(installFirst()!).getAllByRole("listitem");
+    expect(steps).toHaveLength(3);
+    expect(steps[0]).toHaveTextContent("Open the browser's Share menu (it may be under ⋯)");
+    expect(steps[1]).toHaveTextContent("Choose Add to Home Screen");
+    expect(steps[2]).toHaveTextContent("Open BBQueue from your Home Screen");
+    // Not dismissible: it goes away with the Welcome screen.
+    expect(within(installFirst()!).queryByRole("button")).not.toBeInTheDocument();
+    expect(androidSteps()).not.toBeInTheDocument();
+    // No form until asked for.
+    expect(screen.queryByLabelText("Your name")).not.toBeInTheDocument();
+    expect(sheet()).not.toBeInTheDocument();
+
+    await user.click(anyway()!);
+
+    expect(sheet()).toHaveAccessibleDescription(
+      "What you set up here stays in this browser. The app on your Home Screen won't have it.",
+    );
+    // The title has focus, not the field, so the iOS keyboard doesn't cover the sheet.
+    expect(
+      within(sheet()!).getByRole("heading", { name: "Continue in the browser" }),
+    ).toHaveFocus();
+    await user.type(within(sheet()!).getByLabelText("Your name"), "Roy{Enter}");
+
+    expect(await screen.findByRole("heading", { level: 1, name: "BBQueue" })).toBeInTheDocument();
+    expect(getAccount()).toMatchObject({ name: "Roy" });
+  });
+
+  it("on iOS, Skip in the sheet still goes Home, and doesn't dismiss the tip on Account settings", async () => {
+    useBrowser(IPHONE_FIREFOX);
+    setBackendForTests(createInMemoryBackend());
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(anyway()!);
+    await user.click(within(sheet()!).getByRole("button", { name: "Skip for now" }));
+
+    expect(screen.getByRole("heading", { level: 1, name: "BBQueue" })).toBeInTheDocument();
+    expect(getWelcomeDone()).toBe(true);
+    expect(getInstallHintDismissed()).toBe(false);
+  });
+
+  it("on iOS, closing the sheet goes back to the install steps", async () => {
+    useBrowser(IPHONE_SAFARI);
+    setBackendForTests(createInMemoryBackend());
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(anyway()!);
+    await user.click(within(sheet()!).getByRole("button", { name: "Close" }));
+
+    expect(sheet()).not.toBeInTheDocument();
+    expect(installFirst()).toBeInTheDocument();
+    expect(anyway()).toHaveFocus();
+    expect(getWelcomeDone()).toBe(false);
+    expect(getAccount()).toBeNull();
+  });
+
+  it("on iOS offline, the same button leads to continuing without an Account", async () => {
+    useBrowser(IPHONE_SAFARI);
+    setBackendForTests(createInMemoryBackend({ online: false }));
+    const user = userEvent.setup();
+    render(<App />);
+
+    expect(installFirst()).toBeInTheDocument();
+    await user.click(anyway()!);
+    expect(within(sheet()!).getByRole("status")).toHaveTextContent("An Account needs a connection");
+    await user.click(within(sheet()!).getByRole("button", { name: "Continue without an Account" }));
+    expect(getWelcomeDone()).toBe(true);
+  });
+
+  it("on Android, the same layout with Android's own steps, and no claim that data stays behind", async () => {
+    useBrowser(ANDROID_CHROME);
+    setBackendForTests(createInMemoryBackend());
+    const user = userEvent.setup();
+    render(<App />);
+
+    expect(androidSteps()).toHaveTextContent(
+      "It opens full screen, and the browser is less likely to clear your data.",
+    );
+    expect(androidSteps()).not.toHaveTextContent("stays in this browser");
+    const steps = within(androidSteps()!).getAllByRole("listitem");
+    expect(steps).toHaveLength(3);
+    expect(steps[0]).toHaveTextContent("Open the browser's ⋮ menu");
+    expect(steps[1]).toHaveTextContent("Choose Install app or Add to Home Screen");
+    expect(steps[2]).toHaveTextContent("Open BBQueue from your Home Screen");
+    expect(within(androidSteps()!).queryByRole("button")).not.toBeInTheDocument();
+    expect(installFirst()).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Your name")).not.toBeInTheDocument();
+
+    await user.click(anyway()!);
+    expect(sheet()).toHaveAccessibleDescription(
+      "You can still install the app later, from the browser's ⋮ menu.",
+    );
+    expect(sheet()).not.toHaveTextContent("stays in this browser");
+    await user.type(within(sheet()!).getByLabelText("Your name"), "Roy");
+    await user.click(within(sheet()!).getByRole("button", { name: "Continue" }));
+
+    expect(await screen.findByRole("heading", { level: 1, name: "BBQueue" })).toBeInTheDocument();
+    expect(getAccount()).toMatchObject({ name: "Roy" });
+  });
+
+  it("on Android offline, the same button leads to continuing without an Account", async () => {
+    useBrowser(ANDROID_CHROME);
+    setBackendForTests(createInMemoryBackend({ online: false }));
+    const user = userEvent.setup();
+    render(<App />);
+
+    expect(androidSteps()).toBeInTheDocument();
+    await user.click(anyway()!);
+    await user.click(within(sheet()!).getByRole("button", { name: "Continue without an Account" }));
+    expect(getWelcomeDone()).toBe(true);
+  });
+
+  it("isn't shown on desktop", () => {
+    setBackendForTests(createInMemoryBackend());
+    render(<App />);
+    expect(screen.getByLabelText("Your name")).toBeInTheDocument();
+    expect(installFirst()).not.toBeInTheDocument();
+    expect(anyway()).not.toBeInTheDocument();
+    expect(androidSteps()).not.toBeInTheDocument();
+  });
+
+  it("isn't shown when running as the installed app", () => {
+    useBrowser(IPHONE_SAFARI);
+    Object.defineProperty(navigator, "standalone", { value: true, configurable: true });
+    try {
+      setBackendForTests(createInMemoryBackend());
+      render(<App />);
+      expect(screen.getByLabelText("Your name")).toBeInTheDocument();
+      expect(installFirst()).not.toBeInTheDocument();
+      expect(anyway()).not.toBeInTheDocument();
+    } finally {
+      Reflect.deleteProperty(navigator, "standalone");
+    }
   });
 });

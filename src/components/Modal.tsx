@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, type ReactNode, type RefObject } from "react";
+import { CloseIcon } from "./icons.tsx";
 
 export interface ModalProps {
   open: boolean;
@@ -14,6 +15,11 @@ export interface ModalProps {
    * closed until the user taps a field (an auto-opened iOS keyboard covers the sheet).
    */
   focusTitle?: boolean;
+  /**
+   * Show a round × in the top corner, with this accessible name, that calls `onClose`. For sheets
+   * whose own buttons all move on, so there is no Cancel to go back with.
+   */
+  closeLabel?: string;
   children?: ReactNode;
 }
 
@@ -32,6 +38,7 @@ function OpenModal({
   onClose,
   initialFocusRef,
   focusTitle = false,
+  closeLabel,
   children,
 }: ModalProps) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -74,12 +81,12 @@ function OpenModal({
         onClose();
       }}
     >
-      <div className="modal-box pb-safe px-6 pt-6">
+      <div className="modal-box pb-safe relative px-6 pt-6">
         <h2
           ref={titleRef}
           id={titleId}
           tabIndex={focusTitle ? -1 : undefined}
-          className="font-display text-2xl uppercase focus:outline-none"
+          className={`font-display text-2xl uppercase focus:outline-none ${closeLabel ? "pr-10" : ""}`}
         >
           {title}
         </h2>
@@ -89,6 +96,16 @@ function OpenModal({
           </p>
         ) : null}
         <div className="mt-5">{children}</div>
+        {closeLabel ? (
+          <button
+            type="button"
+            className="btn btn-circle btn-ghost btn-sm absolute top-3 right-3 size-10 text-base-content/60"
+            aria-label={closeLabel}
+            onClick={onClose}
+          >
+            <CloseIcon className="size-5" />
+          </button>
+        ) : null}
       </div>
       <div className="modal-backdrop">
         <button type="button" tabIndex={-1} aria-hidden="true" onClick={onClose}>

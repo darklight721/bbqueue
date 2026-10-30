@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { court } from "../session-helpers.ts";
+import { openWelcomeWayOn } from "../welcome-helpers.ts";
 import { readServerClub, signUp, uniqueId } from "./emulator.ts";
 
 // Roy has a Local club (made before he had an Account), then makes it shared; Ana joins it.
@@ -7,7 +8,7 @@ import { readServerClub, signUp, uniqueId } from "./emulator.ts";
 /** First launch, skip the Welcome screen, make a Local club "Garage" with five players. */
 async function localClub(page: Page, name: string) {
   await page.goto("/");
-  await page.getByRole("button", { name: "Skip for now" }).click();
+  await (await openWelcomeWayOn(page)).getByRole("button", { name: "Skip for now" }).click();
   await page.goto("/clubs/new");
   await page.getByRole("textbox", { name: "Club name" }).fill(name);
   for (const player of ["Ana", "Roy S.", "Cat", "Dan", "Eve"]) {

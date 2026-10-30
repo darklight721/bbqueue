@@ -1,12 +1,4 @@
-import {
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-  type ReactNode,
-} from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { BackendError, type Backend, type BackendErrorCode } from "../../backend/backend.ts";
 import { useOnline } from "../../backend/useOnline.ts";
@@ -36,7 +28,8 @@ import { CourtLines } from "../home/CourtLines.tsx";
 import { ACCOUNT_STATS_PATH } from "../play-record/paths.ts";
 import { CreateAccountForm } from "./CreateAccountForm.tsx";
 import { DeleteAccount } from "./DeleteAccount.tsx";
-import { currentBrowser, shouldOfferInstallHint } from "./installHint.ts";
+import { INSTALL_MESSAGE, useInstallHintKind } from "./installHint.ts";
+import { InstallSteps } from "./InstallSteps.tsx";
 import { OfflineNotice } from "./OfflineNotice.tsx";
 
 /** What went wrong saving a new name, in words. `invalid-name` shows as the field's own error. */
@@ -87,7 +80,7 @@ function AccountDetails({
   account: Account;
   announce: Announce;
 }) {
-  const offerInstallHint = useMemo(() => shouldOfferInstallHint(currentBrowser()), []);
+  const installHint = useInstallHintKind();
   const installHintDismissed = useInstallHintDismissed();
 
   return (
@@ -115,7 +108,9 @@ function AccountDetails({
         />
       </div>
 
-      {offerInstallHint && !installHintDismissed ? <InstallHint /> : null}
+      {installHint && !installHintDismissed ? (
+        <InstallHint variant={installHint === "ios" ? "ios-account" : "android"} step={3} />
+      ) : null}
 
       <DeleteAccount account={account} />
     </>
@@ -425,26 +420,64 @@ function AccountIdSection({ accountId, announce }: { accountId: string; announce
   );
 }
 
-function InstallHint() {
+type InstallHintVariant =
+  /** Android: the installed app shares the browser's data, so it is only an upgrade. */
+  | "android"
+  /** iOS with an Account: the installed app has its own storage and won't have it. */
+  | "ios-account"
+  /** iOS without an Account: install first, as on the Welcome screen. */
+  | "ios-first";
+
+/** The install tip on Account settings. Dismissing it is remembered, apart from the Welcome screen. */
+function InstallHint({ variant, step }: { variant: InstallHintVariant; step: number }) {
   const titleId = useId();
   return (
     <section
       aria-labelledby={titleId}
-      className="animate-rise relative flex gap-3 rounded-box border-[1.5px] border-base-300 bg-base-100 p-4 pr-12 shadow-sm"
-      style={delay(3)}
+      className="animate-rise relative rounded-box border-[1.5px] border-base-300 bg-base-100 p-4 shadow-sm"
+      style={delay(step)}
     >
-      <span className="grid size-11 shrink-0 place-items-center rounded-full bg-volt text-[#14201a]">
-        <PlusIcon className="size-5" />
-      </span>
-      <div className="flex min-w-0 flex-col gap-1">
+      <div className="flex items-center gap-3 pr-10">
+        {variant === "ios-account" ? (
+          <span className="grid size-11 shrink-0 place-items-center rounded-full bg-warning text-warning-content">
+            <WarningIcon className="size-5" />
+          </span>
+        ) : (
+          <span className="grid size-11 shrink-0 place-items-center rounded-full bg-volt text-[#14201a]">
+            <PlusIcon className="size-5" />
+          </span>
+        )}
         <h2 id={titleId} className="font-display text-xl leading-tight font-bold uppercase">
-          Install the app
+          {variant === "ios-first" ? INSTALL_MESSAGE.ios.title : "Install the app"}
         </h2>
-        <p className="leading-snug text-base-content/75">
-          Get the most out of BBQueue: it opens full screen and keeps your Account safe. In your
-          browser's Share or ⋮ menu, choose{" "}
-          <span className="font-semibold text-base-content">Add to Home Screen</span>.
-        </p>
+      </div>
+      <div className="mt-3 flex flex-col gap-3 leading-snug text-base-content/75">
+        {variant === "android" ? (
+          <p>
+            It opens full screen, and the browser is less likely to clear your data. In the
+            browser's ⋮ menu, choose{" "}
+            <span className="font-semibold text-base-content">Install app</span> or{" "}
+            <span className="font-semibold text-base-content">Add to Home Screen</span>.
+          </p>
+        ) : null}
+        {variant === "ios-account" ? (
+          <>
+            <p className="font-semibold text-base-content">
+              Your Account stays in this browser. The installed app starts fresh.
+            </p>
+            <p>
+              On iPhone and iPad, the app on your Home Screen keeps its own data, separate from this
+              browser. You can still install it: in the browser's Share menu (it may be under ⋯),
+              choose <span className="font-semibold text-base-content">Add to Home Screen</span>.
+            </p>
+          </>
+        ) : null}
+        {variant === "ios-first" ? (
+          <>
+            <p>{INSTALL_MESSAGE.ios.body}</p>
+            <InstallSteps platform="ios" tone="plain" />
+          </>
+        ) : null}
       </div>
       <button
         type="button"
@@ -460,6 +493,13 @@ function InstallHint() {
 
 function NoAccount({ backend, announce }: { backend: Backend; announce: Announce }) {
   const online = useOnline(backend);
+  const installHint = useInstallHintKind();
+  const installHintDismissed = useInstallHintDismissed();
+  const showInstallHint = installHint !== null && !installHintDismissed;
+  // iOS: install first, above the form, since an Account made in the browser stays behind there.
+  // Android: the installed app shares the browser's data, so only the usual tip, under the form.
+  const installFirst = showInstallHint && installHint === "ios";
+
   return (
     <>
       <CourtCard>
@@ -472,7 +512,9 @@ function NoAccount({ backend, announce }: { backend: Backend; announce: Announce
         </p>
       </CourtCard>
 
-      <div className="animate-rise" style={delay(1)}>
+      {installFirst ? <InstallHint variant="ios-first" step={1} /> : null}
+
+      <div className="animate-rise" style={delay(installFirst ? 2 : 1)}>
         {online ? (
           <CreateAccountForm
             backend={backend}
@@ -483,6 +525,10 @@ function NoAccount({ backend, announce }: { backend: Backend; announce: Announce
           <OfflineNotice>An Account needs a connection. Connect to add your name.</OfflineNotice>
         )}
       </div>
+
+      {showInstallHint && installHint === "android" ? (
+        <InstallHint variant="android" step={2} />
+      ) : null}
     </>
   );
 }

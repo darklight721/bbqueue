@@ -54,6 +54,17 @@ export function MinusIcon(props: IconProps) {
   );
 }
 
+/** Three dots stacked: a browser's ⋮ menu (Chrome on Android). */
+export function MenuDotsIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="5.5" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="18.5" r="1.4" fill="currentColor" stroke="none" />
+    </Icon>
+  );
+}
+
 export function CloseIcon(props: IconProps) {
   return (
     <Icon {...props}>

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { devices, expect, test, type Page } from "@playwright/test";
 import { readFakeAccount, readStoredData, seedStorage } from "./fixtures.ts";
 
 const ROY = { accountId: "roy-7k3f", name: "Roy Smith" };
@@ -131,6 +131,10 @@ test.describe("Account settings", () => {
     await expect(page.getByRole("button", { name: "Edit name" })).toBeDisabled();
     await expect(page.getByText("Changing your name needs a connection.")).toBeVisible();
   });
+});
+
+test.describe("Account settings install hint on Android", () => {
+  test.use({ userAgent: devices["Pixel 7"].userAgent });
 
   test("the Install the app hint can be dismissed for good", async ({ page }) => {
     await seedStorage(page, { account: ROY });
@@ -138,13 +142,64 @@ test.describe("Account settings", () => {
     await expect(accountCard(page)).toBeVisible();
     const hint = page.getByRole("region", { name: "Install the app" });
 
-    // Both projects emulate a phone in its browser (Android Chrome, iOS Safari), so it shows.
     await expect(hint).toBeVisible();
+    await expect(hint).toContainText("the browser is less likely to clear your data");
     await hint.getByRole("button", { name: "Dismiss tip" }).click();
     await expect(hint).toHaveCount(0);
 
     await page.reload();
     await expect(accountCard(page)).toBeVisible();
     await expect(hint).toHaveCount(0);
+  });
+
+  test("without an Account: the same tip shows; dismissing is remembered after a reload", async ({
+    page,
+  }) => {
+    await page.goto("/account");
+    await expect(accountCard(page)).toContainText("No Account yet");
+    const hint = page.getByRole("region", { name: "Install the app" });
+
+    await expect(hint).toContainText("the browser is less likely to clear your data");
+    await expect(page.getByRole("button", { name: "Add your name" })).toBeVisible();
+    await hint.getByRole("button", { name: "Dismiss tip" }).click();
+    await expect(hint).toHaveCount(0);
+
+    await page.reload();
+    await expect(accountCard(page)).toContainText("No Account yet");
+    await expect(hint).toHaveCount(0);
+  });
+});
+
+test.describe("Account settings install hint on iPhone", () => {
+  test.use({ userAgent: devices["iPhone 14"].userAgent });
+
+  test("with an Account: warns it stays in this browser; dismissing is remembered after a reload", async ({
+    page,
+  }) => {
+    await seedStorage(page, { account: ROY });
+    await page.goto("/account");
+    await expect(accountCard(page)).toBeVisible();
+    const hint = page.getByRole("region", { name: "Install the app" });
+
+    await expect(hint).toContainText(
+      "Your Account stays in this browser. The installed app starts fresh.",
+    );
+    await expect(hint).toContainText("Add to Home Screen");
+    await hint.getByRole("button", { name: "Dismiss tip" }).click();
+    await expect(hint).toHaveCount(0);
+
+    await page.reload();
+    await expect(accountCard(page)).toBeVisible();
+    await expect(hint).toHaveCount(0);
+  });
+
+  test("without an Account: says to install first, above the form to add a name", async ({
+    page,
+  }) => {
+    await page.goto("/account");
+    const hint = page.getByRole("region", { name: "Add BBQueue to your Home Screen first" });
+
+    await expect(hint).toContainText("What you set up here stays in this browser.");
+    await expect(page.getByRole("button", { name: "Add your name" })).toBeVisible();
   });
 });

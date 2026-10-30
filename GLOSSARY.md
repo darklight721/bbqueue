@@ -13,7 +13,7 @@ A person on a Club's roster, with a name and a Skill level. May be linked to an 
 _Avoid_: Member, user
 
 **Local club**:
-A Club that exists only on one device, created while no Account was signed in there. Only that device can see it. It stays a Local club after an Account is created, until it is turned into a Shared club.
+A Club that exists only on one device, created while no Account was signed in there. Only that device can see it (on iPhone and iPad, only the browser or the installed app it was created in). It stays a Local club after an Account is created, until it is turned into a Shared club.
 _Avoid_: Offline club, private club
 
 **Shared club**:
@@ -23,7 +23,7 @@ _Avoid_: Online club, synced club, public club
 ## Accounts
 
 **Account**:
-A person's identity in the app, with a Name and an Account ID. Bound to the device it was created on. Using the app without an Account is allowed and keeps everything on the device.
+A person's identity in the app, with a Name and an Account ID. Bound to where it was created: the device, and on iPhone and iPad also either the browser or the installed app — the two don't see each other's Accounts. Using the app without an Account is allowed and keeps everything on the device.
 _Avoid_: User, profile, login
 
 **Account ID**:
