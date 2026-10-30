@@ -41,7 +41,7 @@ import {
 } from "./backend.ts";
 import { FIREBASE_EMULATOR } from "./firebaseEmulator.ts";
 import { createFirebaseClubs } from "./firebaseClubs.ts";
-import { toBackendError } from "./firebaseShared.ts";
+import { retryDelay, toBackendError } from "./firebaseShared.ts";
 import { createFirebaseActiveSessions } from "./firebaseSessions.ts";
 
 /**
@@ -149,17 +149,33 @@ export function createFirebaseBackend(
           listener(null);
           return;
         }
-        stopDoc = onSnapshot(
-          doc(db, "accounts", user.uid),
-          (snapshot) => {
-            // Offline with nothing cached says "doesn't exist", which is not the same as deleted.
-            if (!snapshot.exists() && snapshot.metadata.fromCache) return;
-            if (!snapshot.exists() && Date.now() < justCreatedUntil) return;
-            lastKnown = accountFromSnapshot(snapshot);
-            listener(lastKnown);
-          },
-          (error) => console.error("Account listener failed", error),
-        );
+        // Like the other listeners, try again after an error: a dead Account listener would quietly
+        // stop everything that waits for the Account (Shared clubs, Active sessions) until a reload.
+        let attempt = 0;
+        let retry: ReturnType<typeof setTimeout> | undefined;
+        let stopSnapshot = () => {};
+        const listen = () => {
+          stopSnapshot = onSnapshot(
+            doc(db, "accounts", user.uid),
+            (snapshot) => {
+              attempt = 0;
+              // Offline with nothing cached says "doesn't exist", which is not the same as deleted.
+              if (!snapshot.exists() && snapshot.metadata.fromCache) return;
+              if (!snapshot.exists() && Date.now() < justCreatedUntil) return;
+              lastKnown = accountFromSnapshot(snapshot);
+              listener(lastKnown);
+            },
+            (error) => {
+              console.warn("Account listener failed, trying again", error);
+              retry = setTimeout(listen, retryDelay(attempt++));
+            },
+          );
+        };
+        stopDoc = () => {
+          clearTimeout(retry);
+          stopSnapshot();
+        };
+        listen();
       });
       return () => {
         stopAuth();
