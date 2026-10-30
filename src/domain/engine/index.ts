@@ -7,7 +7,6 @@ export {
   MIN_PLAYERS,
   addCourt,
   addPlayer,
-  canRehashAll,
   createSession,
   endMatch,
   endSession,

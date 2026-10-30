@@ -24,8 +24,8 @@ const NO_OTHER_TEAMS_TEXT = "No other balanced Teams for these four.";
 /**
  * Bottom sheet for a Rehash that can't bring anyone else in without breaking a rule (Rest,
  * Rests in a row, Fairness or Team balance). Nothing changes until the organiser picks: New Teams
- * (same four, another balanced split, when there is one), Rehash all idle courts (when possible),
- * Swap anyway (on purpose, against the rules), or Cancel.
+ * (same four, another balanced split, when there is one), Rehash all idle courts (when another
+ * Idle Court holds a Lineup), Swap anyway (on purpose, against the rules), or Cancel.
  *
  * The first offered of New Teams / Rehash all is the primary button. With neither, nothing looks
  * primary: Swap anyway breaks a rule and stays the quietest, and Cancel gets the focus.
@@ -42,8 +42,8 @@ export function RehashBlockedSheet({
   open: boolean;
   block: RehashBlock;
   /**
-   * Set when Rehash all is possible: the numbers of the other Idle Courts that hold a Lineup
-   * (may be empty). Null hides the option.
+   * Set when Rehash all is offered (another Idle Court holds a Lineup): the numbers of those
+   * other Idle Courts. Null hides the option.
    */
   rehashAll: readonly number[] | null;
   onNewTeams: () => void;
@@ -51,9 +51,7 @@ export function RehashBlockedSheet({
   onSwapAnyway: () => void;
   onCancel: () => void;
 }) {
-  const alsoId = useId();
   const cancelRef = useRef<HTMLButtonElement>(null);
-  const also = rehashAll ? alsoChangesText(rehashAll) : null;
   const { newTeams } = block;
   const rehashAllPrimary = !newTeams;
   const anyMain = newTeams || rehashAll !== null;
@@ -86,21 +84,11 @@ export function RehashBlockedSheet({
         ) : null}
 
         {rehashAll ? (
-          <div className="flex flex-col gap-1.5">
-            <button
-              type="button"
-              className={`btn btn-lg ${rehashAllPrimary ? "btn-primary" : "btn-outline border-base-300"}`}
-              aria-describedby={also ? alsoId : undefined}
-              onClick={onRehashAll}
-            >
-              Rehash all idle courts
-            </button>
-            {also ? (
-              <p id={alsoId} className="text-center text-sm text-base-content/60">
-                {also}
-              </p>
-            ) : null}
-          </div>
+          <RehashAllOption
+            otherLineups={rehashAll}
+            primary={rehashAllPrimary}
+            onClick={onRehashAll}
+          />
         ) : null}
 
         {/* Swap anyway breaks a rule on purpose: kept quiet, next to Cancel. */}
@@ -125,5 +113,40 @@ export function RehashBlockedSheet({
         </div>
       </div>
     </Modal>
+  );
+}
+
+/**
+ * "Rehash all idle courts", with the other Courts whose Lineup it would change too as its
+ * description. Shared by the blocked sheet and the Rehash choice sheet.
+ */
+export function RehashAllOption({
+  otherLineups,
+  primary,
+  onClick,
+}: {
+  /** Numbers of the other Idle Courts that hold a Lineup. */
+  otherLineups: readonly number[];
+  primary: boolean;
+  onClick: () => void;
+}) {
+  const alsoId = useId();
+  const also = alsoChangesText(otherLineups);
+  return (
+    <div className="flex flex-col gap-1.5">
+      <button
+        type="button"
+        className={`btn btn-lg ${primary ? "btn-primary" : "btn-outline border-base-300"}`}
+        aria-describedby={also ? alsoId : undefined}
+        onClick={onClick}
+      >
+        Rehash all idle courts
+      </button>
+      {also ? (
+        <p id={alsoId} className="text-center text-sm text-base-content/60">
+          {also}
+        </p>
+      ) : null}
+    </div>
   );
 }

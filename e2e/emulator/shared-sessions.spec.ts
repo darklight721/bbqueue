@@ -48,7 +48,7 @@ test.describe("Shared active session between two people", () => {
     await anaPage.context().close();
   });
 
-  test("the Spare players notice shows for the host, not for the Player watching", async ({
+  test("the Spare players icon shows for the host, not for the Player watching", async ({
     page,
     browser,
     baseURL,
@@ -58,13 +58,16 @@ test.describe("Shared active session between two people", () => {
     await startSession(page, club);
     await watchFromHome(anaPage);
 
-    const hostNote = page.getByRole("note", { name: "Few spare players" });
-    await expect(hostNote).toBeVisible();
-    await expect(hostNote).toContainText("5 players on 1 court");
-    await expect(hostNote.getByRole("button", { name: "Dismiss" })).toBeVisible();
+    const hostIcon = page.getByRole("button", { name: "Few spare players" });
+    await expect(hostIcon).toBeVisible();
+    await hostIcon.click();
+    await expect(page.getByRole("note", { name: "Few spare players" })).toContainText(
+      "5 players on 1 court",
+    );
 
-    // The Player has the same Session in front of them, with the Courts loaded, but no note.
+    // The Player has the same Session in front of them, with the Courts loaded, but no icon.
     await expect(court(anaPage, 1).getByText("Lineup", { exact: true })).toBeVisible();
+    await expect(anaPage.getByRole("button", { name: "Few spare players" })).toHaveCount(0);
     await expect(anaPage.getByRole("note", { name: "Few spare players" })).toHaveCount(0);
     await expect(anaPage.getByText(/players on 1 court/)).toHaveCount(0);
 

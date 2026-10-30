@@ -24,7 +24,6 @@ import {
   loadSharedClubs,
   loadSharedEndedSessions,
   loadSharedSessions,
-  loadSpareNoticeDismissed,
   loadWelcomeDone,
   removeLegacySummary,
   replaceEndedSessions,
@@ -38,9 +37,7 @@ import {
   saveSharedClubs,
   saveSharedEndedSessions,
   saveSharedSessions,
-  saveSpareNoticeDismissed,
   saveWelcomeDone,
-  spareNoticeDismissedKey,
 } from "./storage.ts";
 import { mergeActiveSessions } from "./sharedSessions.ts";
 
@@ -145,10 +142,6 @@ if (typeof window !== "undefined") {
     if (all || event.key === STORAGE_KEYS.account) refresh(accountSlot);
     if (all || event.key === STORAGE_KEYS.welcomeDone) refresh(welcomeDoneSlot);
     if (all || event.key === STORAGE_KEYS.installHintDismissed) refresh(installHintDismissedSlot);
-    if (all || event.key?.startsWith(spareNoticeDismissedKey(""))) {
-      spareNoticeDismissed.clear();
-      notify(spareNoticeDismissedSlot);
-    }
   });
 }
 
@@ -694,34 +687,6 @@ export function useInstallHintDismissed(): boolean {
   return useSyncExternalStore(subscribeInstallHintDismissed, getInstallHintDismissed);
 }
 
-// --- Few Spare players notice ---------------------------------------------------------------
-//
-// Per Session, the notice key (`"{players}/{courts}"`) it was last dismissed for on this device.
-
-const spareNoticeDismissed = new Map<string, string | null>();
-const spareNoticeDismissedSlot = createSlot<null>(null);
-const subscribeSpareNoticeDismissed = subscribeTo(spareNoticeDismissedSlot);
-
-export function getSpareNoticeDismissed(sessionId: string): string | null {
-  if (!spareNoticeDismissed.has(sessionId)) {
-    spareNoticeDismissed.set(sessionId, loadSpareNoticeDismissed(sessionId));
-  }
-  return spareNoticeDismissed.get(sessionId) ?? null;
-}
-
-export function setSpareNoticeDismissed(sessionId: string, noticeKey: string): void {
-  spareNoticeDismissed.set(sessionId, noticeKey);
-  saveSpareNoticeDismissed(sessionId, noticeKey);
-  notify(spareNoticeDismissedSlot);
-}
-
-/** The notice key the few-Spare-players notice was dismissed for in this Session, or null. */
-export function useSpareNoticeDismissed(sessionId: string): string | null {
-  return useSyncExternalStore(subscribeSpareNoticeDismissed, () =>
-    getSpareNoticeDismissed(sessionId),
-  );
-}
-
 /** Test helper: drop caches so the next read re-loads from localStorage. */
 export function resetStoreForTests(): void {
   for (const slot of [
@@ -737,7 +702,6 @@ export function resetStoreForTests(): void {
   ]) {
     slot.loaded = false;
   }
-  spareNoticeDismissed.clear();
   endedHere.clear();
   for (const [sessionId, clubId] of Object.entries(loadEndedHere()))
     endedHere.set(sessionId, clubId);

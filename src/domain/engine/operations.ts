@@ -177,7 +177,7 @@ export function swapIntoLineup(
   return swapped ? ok(swapped) : fail("nobody-to-swap");
 }
 
-export function canRehashAll(session: Session): boolean {
+function canRehashAll(session: Session): boolean {
   return session.courts.filter(isIdle).length >= 2;
 }
 

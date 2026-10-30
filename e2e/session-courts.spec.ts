@@ -121,12 +121,17 @@ test.describe("Courts and Lineups", () => {
     expect(session.matches[0]).toMatchObject({ status: "active", courtNumber: 1, score: null });
   });
 
-  test("Rehash changes Court 1's Lineup", async ({ page }) => {
+  test("Rehash changes Court 1's Lineup (Just this court)", async ({ page }) => {
     await startSession(page);
     const before = await lineupOf(court(page, 1));
     const otherBefore = await lineupOf(court(page, 2));
 
+    // Court 2 also holds a Lineup, so Rehash asks first.
     await court(page, 1).getByRole("button", { name: "Rehash", exact: true }).click();
+    await page
+      .getByRole("dialog", { name: "Rehash Court 1" })
+      .getByRole("button", { name: "Just this court" })
+      .click();
     await expect
       .poll(async () => splitKey(await lineupOf(court(page, 1))))
       .not.toBe(splitKey(before));
@@ -135,42 +140,122 @@ test.describe("Courts and Lineups", () => {
     expect(await lineupOf(court(page, 2))).toEqual(otherBefore);
   });
 
-  test("Rehash all is hidden with one Court, then needs two Idle Courts", async ({ page }) => {
-    await startSession(page, { players: 4, courts: 1 });
-    const rehashAll = page.getByRole("button", { name: "Rehash all" });
-    await expect(court(page, 1)).toBeVisible();
-    await expect(rehashAll).toHaveCount(0);
-
-    await page.getByRole("button", { name: "Add court" }).click();
+  test("there is no Rehash all button in the Courts header", async ({ page }) => {
+    await startSession(page, { players: 8, courts: 2 });
     await expect(court(page, 2)).toBeVisible();
-    await expect(rehashAll).toBeEnabled();
-
-    // A Busy Court no longer counts as Idle: still shown (2 Courts), but disabled.
-    await court(page, 1).getByRole("button", { name: "Start match" }).click();
-    await expect(court(page, 1).getByText("Playing", { exact: true })).toBeVisible();
-    await expect(rehashAll).toBeDisabled();
-    await expect(rehashAll).toHaveAttribute("title", "Needs at least 2 idle courts");
-
-    // Back to one Court: hidden again.
-    await court(page, 2).getByRole("button", { name: "Remove court 2", exact: true }).click();
-    await expect(court(page, 2)).toHaveCount(0);
-    await expect(rehashAll).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^Rehash all/ })).toHaveCount(0);
+    await expect(page.getByRole("heading", { level: 2, name: "Courts" })).toBeVisible();
   });
 
-  test("Rehash all re-picks Lineups for all Idle Courts", async ({ page }) => {
-    await startSession(page);
-    const beforeOne = await lineupOf(court(page, 1));
-    const beforeTwo = await lineupOf(court(page, 2));
+  test.describe("Rehash with two Idle Courts holding Lineups", () => {
+    const choiceSheet = (page: Page) => page.getByRole("dialog", { name: "Rehash Court 1" });
     const arrangement = (a: Lineup, b: Lineup) => [splitKey(a), splitKey(b)].sort().join(" || ");
 
-    await page.getByRole("button", { name: "Rehash all" }).click();
-    await expect
-      .poll(async () => arrangement(await lineupOf(court(page, 1)), await lineupOf(court(page, 2))))
-      .not.toBe(arrangement(beforeOne, beforeTwo));
+    async function openChoice(page: Page) {
+      await court(page, 1).getByRole("button", { name: "Rehash", exact: true }).click();
+      await expect(choiceSheet(page)).toBeVisible();
+    }
 
-    const afterOne = await lineupOf(court(page, 1));
-    const afterTwo = await lineupOf(court(page, 2));
-    expect(new Set([...playersOf(afterOne), ...playersOf(afterTwo)]).size).toBe(8);
+    test("opens the Rehash Court 1 sheet with Just this court focused; nothing changes yet", async ({
+      page,
+    }) => {
+      await startSession(page);
+      const beforeOne = await lineupOf(court(page, 1));
+      const beforeTwo = await lineupOf(court(page, 2));
+
+      await openChoice(page);
+      const sheet = choiceSheet(page);
+      await expect(sheet.getByRole("button", { name: "Just this court" })).toBeFocused();
+      await expect(
+        sheet.getByRole("button", { name: "Rehash all idle courts" }),
+      ).toHaveAccessibleDescription("Also changes the Lineup on Court 2.");
+      await expect(sheet.getByRole("button", { name: "Cancel" })).toBeVisible();
+      await expect(sheet.getByRole("button", { name: "Swap anyway" })).toHaveCount(0);
+      expect(await lineupOf(court(page, 1))).toEqual(beforeOne);
+      expect(await lineupOf(court(page, 2))).toEqual(beforeTwo);
+    });
+
+    test("Just this court changes only that Court's Lineup", async ({ page }) => {
+      await startSession(page);
+      const beforeOne = await lineupOf(court(page, 1));
+      const beforeTwo = await lineupOf(court(page, 2));
+
+      await openChoice(page);
+      await choiceSheet(page).getByRole("button", { name: "Just this court" }).click();
+      await expect(choiceSheet(page)).toBeHidden();
+      await expect
+        .poll(async () => splitKey(await lineupOf(court(page, 1))))
+        .not.toBe(splitKey(beforeOne));
+      expect(playersOf(await lineupOf(court(page, 1)))).toEqual(playersOf(beforeOne));
+      expect(await lineupOf(court(page, 2))).toEqual(beforeTwo);
+    });
+
+    test("Rehash all idle courts re-picks the Lineups of both Courts", async ({ page }) => {
+      await startSession(page);
+      const beforeOne = await lineupOf(court(page, 1));
+      const beforeTwo = await lineupOf(court(page, 2));
+
+      await openChoice(page);
+      await choiceSheet(page).getByRole("button", { name: "Rehash all idle courts" }).click();
+      await expect(choiceSheet(page)).toBeHidden();
+      await expect
+        .poll(async () =>
+          arrangement(await lineupOf(court(page, 1)), await lineupOf(court(page, 2))),
+        )
+        .not.toBe(arrangement(beforeOne, beforeTwo));
+
+      const afterOne = await lineupOf(court(page, 1));
+      const afterTwo = await lineupOf(court(page, 2));
+      expect(new Set([...playersOf(afterOne), ...playersOf(afterTwo)]).size).toBe(8);
+    });
+
+    test("Cancel and Escape change nothing", async ({ page }) => {
+      await startSession(page);
+      const beforeOne = await lineupOf(court(page, 1));
+      const beforeTwo = await lineupOf(court(page, 2));
+      const stored = (await storedSession(page)).courts.map((c) => c.lineup);
+
+      await openChoice(page);
+      await choiceSheet(page).getByRole("button", { name: "Cancel" }).click();
+      await expect(choiceSheet(page)).toBeHidden();
+
+      await openChoice(page);
+      await page.keyboard.press("Escape");
+      await expect(choiceSheet(page)).toBeHidden();
+
+      expect(await lineupOf(court(page, 1))).toEqual(beforeOne);
+      expect(await lineupOf(court(page, 2))).toEqual(beforeTwo);
+      expect((await storedSession(page)).courts.map((c) => c.lineup)).toEqual(stored);
+    });
+  });
+
+  test("Rehash acts at once, with no sheet, when the other Court is Busy", async ({ page }) => {
+    await startSession(page);
+    await court(page, 2).getByRole("button", { name: "Start match" }).click();
+    await expect(court(page, 2).getByText("Playing", { exact: true })).toBeVisible();
+    const before = await lineupOf(court(page, 1));
+
+    await court(page, 1).getByRole("button", { name: "Rehash", exact: true }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect
+      .poll(async () => splitKey(await lineupOf(court(page, 1))))
+      .not.toBe(splitKey(before));
+  });
+
+  test("Rehash acts at once, with no sheet, when the other Court waits for players", async ({
+    page,
+  }) => {
+    // 6 players fill one Court with two to spare; Court 2 has nobody left to line up.
+    await startSession(page, { players: 6, courts: 1 });
+    await page.getByRole("button", { name: "Add court" }).click();
+    await expect(court(page, 2).getByText("Waiting for players")).toBeVisible();
+    const before = await lineupOf(court(page, 1));
+
+    await court(page, 1).getByRole("button", { name: "Rehash", exact: true }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect
+      .poll(async () => splitKey(await lineupOf(court(page, 1))))
+      .not.toBe(splitKey(before));
   });
 
   test("Add court → Court 3 waiting for players; Idle courts can be removed", async ({ page }) => {
@@ -391,10 +476,10 @@ test.describe("Reload", () => {
   });
 });
 
-test.describe("Spare players notice", () => {
-  const note = (page: Page) => page.getByRole("note", { name: "Few spare players" });
+test.describe("Spare players warning", () => {
+  const icon = (page: Page) => page.getByRole("button", { name: "Few spare players" });
+  const popover = (page: Page) => page.getByRole("note", { name: "Few spare players" });
   const playersRegion = (page: Page) => page.getByRole("region", { name: "Players" });
-  const dismissedKey = (sessionId: string) => `bq:v1:spare-notice-dismissed:${sessionId}`;
 
   async function addPlayers(page: Page, names: string[]) {
     const region = playersRegion(page);
@@ -420,76 +505,133 @@ test.describe("Spare players notice", () => {
     ).toHaveCount(0);
   }
 
-  test("comes and goes live as players and Courts change, with no toast", async ({ page }) => {
-    // 8 players on 2 Courts: no Spare players, so the notice already shows.
+  /** Open the popover and return it. */
+  async function openPopover(page: Page) {
+    await icon(page).click();
+    await expect(popover(page)).toBeVisible();
+    return popover(page);
+  }
+
+  test("the icon shows in the Courts header; tapping opens the popover, tapping it again closes", async ({
+    page,
+  }) => {
+    // 8 players on 2 Courts: no Spare players.
     await startSession(page, { players: 8, courts: 2 });
-    await expect(note(page)).toContainText("8 players on 2 courts");
-    await expect(note(page)).toContainText("nobody sits out");
+    await expect(icon(page)).toBeVisible();
+    await expect(page.getByRole("heading", { level: 2, name: "Courts" })).toBeVisible();
+    // Never opens by itself, and the notice isn't a card on the page.
+    await expect(icon(page)).toHaveAttribute("aria-expanded", "false");
+    await expect(popover(page)).toHaveCount(0);
+
+    await icon(page).click();
+    await expect(icon(page)).toHaveAttribute("aria-expanded", "true");
+    await expect(popover(page)).toContainText("8 players on 2 courts");
+    await expect(popover(page)).toContainText("nobody sits out");
+    await expect(popover(page).getByRole("button")).toHaveCount(0);
+
+    // Tapping inside the popover keeps it open.
+    await popover(page).click();
+    await expect(popover(page)).toBeVisible();
+
+    await icon(page).click();
+    await expect(popover(page)).toHaveCount(0);
+    await expect(icon(page)).toHaveAttribute("aria-expanded", "false");
+  });
+
+  test("tapping outside or pressing Escape closes the popover", async ({ page }) => {
+    await startSession(page, { players: 8, courts: 2 });
+
+    await openPopover(page);
+    await page.getByRole("heading", { level: 2, name: "Courts" }).click();
+    await expect(popover(page)).toHaveCount(0);
+    await expect(icon(page)).toHaveAttribute("aria-expanded", "false");
+
+    await openPopover(page);
+    await page.keyboard.press("Escape");
+    await expect(popover(page)).toHaveCount(0);
+    await expect(icon(page)).toHaveAttribute("aria-expanded", "false");
+  });
+
+  test("with plenty of Spare players there is no icon", async ({ page }) => {
+    await startSession(page, { players: 8, courts: 1 });
+    await expect(court(page, 1)).toBeVisible();
+    await expect(icon(page)).toHaveCount(0);
+    await expect(popover(page)).toHaveCount(0);
+  });
+
+  test("goes away and comes back live as players and Courts change, with no toast", async ({
+    page,
+  }) => {
+    // 8 players on 2 Courts: no Spare players, so the icon already shows.
+    await startSession(page, { players: 8, courts: 2 });
+    await expect(await openPopover(page)).toContainText("8 players on 2 courts");
+    await page.keyboard.press("Escape");
 
     await addPlayers(page, ["Kim", "Lou"]);
-    await expect(note(page)).toContainText("10 players on 2 courts");
-    await expect(note(page)).toContainText("only 2 sit out");
-    await expect(note(page)).toContainText("Use 1 court or add players");
-    // It's a note, not a toast or an alert.
+    await expect(icon(page)).toBeVisible();
+    // A new count doesn't open it by itself.
+    await expect(popover(page)).toHaveCount(0);
+    await expect(await openPopover(page)).toContainText("10 players on 2 courts");
+    await expect(popover(page)).toContainText("only 2 sit out");
+    await expect(popover(page)).toContainText("Use 1 court or add players");
+    // It's a popover, not a toast or an alert.
     await expect(
       page.getByRole("status").filter({ hasText: /spare|sit out|players on/i }),
     ).toHaveCount(0);
     await expect(page.getByRole("alert")).toHaveCount(0);
+    await page.keyboard.press("Escape");
 
     await addPlayers(page, ["Max", "Ned"]);
     await expect(playersRegion(page).getByText("12 players", { exact: true })).toBeVisible();
-    await expect(note(page)).toHaveCount(0);
+    await expect(icon(page)).toHaveCount(0);
 
     await page.getByRole("button", { name: "Add court" }).click();
     await expect(court(page, 3)).toBeVisible();
-    await expect(note(page)).toContainText("12 players on 3 courts");
-    await expect(note(page)).toContainText("nobody sits out");
-    await expect(note(page)).toContainText("Use 2 courts or add players");
+    await expect(await openPopover(page)).toContainText("12 players on 3 courts");
+    await expect(popover(page)).toContainText("nobody sits out");
+    await expect(popover(page)).toContainText("Use 2 courts or add players");
+    await page.keyboard.press("Escape");
 
     await court(page, 3).getByRole("button", { name: "Remove court 3", exact: true }).click();
     await expect(court(page, 3)).toHaveCount(0);
-    await expect(note(page)).toHaveCount(0);
+    await expect(icon(page)).toHaveCount(0);
   });
 
-  test("Sitting out drops the count into the notice; Back in hides it", async ({ page }) => {
+  test("Sitting out drops the count into the popover; Back in removes the icon", async ({
+    page,
+  }) => {
     await startSession(page, { players: 8, courts: 2 });
     await addPlayers(page, ["Kim", "Lou", "Max"]);
     // 11 on 2 Courts: 3 Spare players.
     await expect(playersRegion(page).getByText("11 players", { exact: true })).toBeVisible();
-    await expect(note(page)).toHaveCount(0);
+    await expect(icon(page)).toHaveCount(0);
 
     await playersRegion(page).getByRole("button", { name: "Sit out Max" }).click();
     await expect(playersRegion(page).getByText("11 players · 1 sitting out")).toBeVisible();
-    await expect(note(page)).toContainText("10 players on 2 courts");
-    await expect(note(page)).toContainText("only 2 sit out");
+    await expect(icon(page)).toBeVisible();
+    await expect(await openPopover(page)).toContainText("10 players on 2 courts");
+    await expect(popover(page)).toContainText("only 2 sit out");
+    await page.keyboard.press("Escape");
 
     await playersRegion(page).getByRole("button", { name: "Back in Max" }).click();
     await expect(playersRegion(page).getByRole("button", { name: "Sit out Max" })).toBeVisible();
-    await expect(note(page)).toHaveCount(0);
+    await expect(icon(page)).toHaveCount(0);
   });
 
-  test("dismissing hides it for that count, across a reload, until the count changes", async ({
-    page,
-  }) => {
+  test("the popover starts closed again after a reload", async ({ page }) => {
     await startSession(page, { players: 8, courts: 2 });
     await addPlayers(page, ["Kim", "Lou"]);
-    await expect(note(page)).toContainText("10 players on 2 courts");
-    const sessionId = (await storedSession(page)).id;
-
-    await note(page).getByRole("button", { name: "Dismiss" }).click();
-    await expect(note(page)).toHaveCount(0);
-    expect(await page.evaluate((key) => localStorage.getItem(key), dismissedKey(sessionId))).toBe(
-      JSON.stringify({ version: 1, data: "10/2" }),
-    );
+    await openPopover(page);
 
     await page.reload();
     await expect(playersRegion(page).getByText("10 players", { exact: true })).toBeVisible();
-    await expect(note(page)).toHaveCount(0);
+    await expect(icon(page)).toBeVisible();
+    await expect(popover(page)).toHaveCount(0);
 
-    // Another count that shows the notice brings it back.
+    // Another count that shows the warning still shows it.
     await removePlayer(page, "Lou");
-    await expect(note(page)).toContainText("9 players on 2 courts");
-    await expect(note(page)).toContainText("only 1 sits out");
+    await expect(await openPopover(page)).toContainText("9 players on 2 courts");
+    await expect(popover(page)).toContainText("only 1 sits out");
   });
 
   test("with 1 Court: 6 players show nothing; 5 show the 1-Court text without a Use suggestion", async ({
@@ -497,7 +639,7 @@ test.describe("Spare players notice", () => {
   }) => {
     await startSession(page, { players: 6, courts: 1 });
     await expect(playersRegion(page).getByText("6 players", { exact: true })).toBeVisible();
-    await expect(note(page)).toHaveCount(0);
+    await expect(icon(page)).toHaveCount(0);
 
     // Remove one of the two players who aren't in the Lineup.
     const inLineup = playersOf(await lineupOf(court(page, 1)));
@@ -505,10 +647,10 @@ test.describe("Spare players notice", () => {
     expect(free).toHaveLength(2);
     await removePlayer(page, free[0]!);
 
-    await expect(note(page)).toContainText("5 players on 1 court");
-    await expect(note(page)).toContainText("only 1 sits out each match");
-    await expect(note(page)).toContainText("Add players to give everyone more rests");
-    await expect(note(page)).not.toContainText("Use ");
+    await expect(await openPopover(page)).toContainText("5 players on 1 court");
+    await expect(popover(page)).toContainText("only 1 sits out each match");
+    await expect(popover(page)).toContainText("Add players to give everyone more rests");
+    await expect(popover(page)).not.toContainText("Use ");
   });
 });
 

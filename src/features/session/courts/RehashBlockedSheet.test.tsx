@@ -206,4 +206,107 @@ describe("Rehash on a Court", () => {
     renderCourt(makeSession(5, 1), { readOnly: true });
     expect(screen.queryByRole("button", { name: "Rehash" })).not.toBeInTheDocument();
   });
+
+  it("offers Rehash all in the blocked sheet only when another Idle Court holds a Lineup", async () => {
+    block.value = { reason: "rest", newTeams: true };
+    // Court 2 is Idle but waiting for players.
+    const session = makeSession(6, 2);
+    expect(session.courts[1]!.lineup).toBeNull();
+    renderCourt(session);
+    await userEvent.click(screen.getByRole("button", { name: "Rehash" }));
+    expect(
+      within(sheet()!).queryByRole("button", { name: "Rehash all idle courts" }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("Rehash with another Idle Court holding a Lineup", () => {
+  const choice = () => screen.queryByRole("dialog", { name: "Rehash Court 1" });
+
+  beforeEach(() => {
+    block.value = null;
+  });
+
+  it("asks: Just this court leads and has the focus, and rehashes only this Court", async () => {
+    const { actions, courtId } = renderCourt(makeSession(10, 2));
+    await userEvent.click(screen.getByRole("button", { name: "Rehash" }));
+    const dialog = choice()!;
+    expect(actions.rehashCourt).not.toHaveBeenCalled();
+    const justThis = within(dialog).getByRole("button", { name: "Just this court" });
+    expect(justThis).toHaveClass("btn-primary");
+    expect(justThis).toHaveFocus();
+    expect(within(dialog).queryByRole("button", { name: "Swap anyway" })).not.toBeInTheDocument();
+
+    await userEvent.click(justThis);
+    expect(actions.rehashCourt).toHaveBeenCalledWith(courtId);
+    expect(actions.rehashAll).not.toHaveBeenCalled();
+    expect(choice()).toBeNull();
+  });
+
+  it("Rehash all idle courts names the other Courts it changes", async () => {
+    const { actions } = renderCourt(makeSession(12, 3));
+    await userEvent.click(screen.getByRole("button", { name: "Rehash" }));
+    const rehashAll = within(choice()!).getByRole("button", { name: "Rehash all idle courts" });
+    expect(rehashAll).toHaveClass("btn-outline");
+    expect(rehashAll).toHaveAccessibleDescription("Also changes Courts 2 and 3.");
+    await userEvent.click(rehashAll);
+    expect(actions.rehashAll).toHaveBeenCalled();
+    expect(actions.rehashCourt).not.toHaveBeenCalled();
+    expect(choice()).toBeNull();
+  });
+
+  it("closes on any choice even when the engine refuses", async () => {
+    const { actions } = renderCourt(makeSession(10, 2));
+    vi.mocked(actions.rehashAll).mockReturnValue(false);
+    await userEvent.click(screen.getByRole("button", { name: "Rehash" }));
+    await userEvent.click(screen.getByRole("button", { name: "Rehash all idle courts" }));
+    expect(choice()).toBeNull();
+  });
+
+  it("Cancel, Escape and the backdrop close it without changing anything", async () => {
+    const { actions } = renderCourt(makeSession(10, 2));
+    const open = () => userEvent.click(screen.getByRole("button", { name: "Rehash" }));
+
+    await open();
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(choice()).toBeNull();
+
+    await open();
+    fireEvent(choice()!, new Event("cancel", { cancelable: true }));
+    expect(choice()).toBeNull();
+
+    await open();
+    fireEvent.click(choice()!.querySelector<HTMLButtonElement>(".modal-backdrop button")!);
+    expect(choice()).toBeNull();
+
+    for (const action of Object.values(actions)) expect(action).not.toHaveBeenCalled();
+  });
+
+  it("names the Court it was opened from", async () => {
+    renderCourt(makeSession(10, 2), { court: 2 });
+    await userEvent.click(screen.getByRole("button", { name: "Rehash" }));
+    expect(screen.getByRole("dialog", { name: "Rehash Court 2" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Rehash all idle courts" }),
+    ).toHaveAccessibleDescription("Also changes the Lineup on Court 1.");
+  });
+
+  it("rehashes at once when the other Court waits for players", async () => {
+    const { actions, courtId } = renderCourt(makeSession(6, 2));
+    await userEvent.click(screen.getByRole("button", { name: "Rehash" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(actions.rehashCourt).toHaveBeenCalledWith(courtId);
+  });
+
+  it("rehashes at once when the other Court is Busy", async () => {
+    const session = makeSession(10, 2);
+    const busy: Session = {
+      ...session,
+      courts: session.courts.map((c) => (c.number === 2 ? { ...c, activeMatchId: "m1" } : c)),
+    };
+    const { actions, courtId } = renderCourt(busy);
+    await userEvent.click(screen.getByRole("button", { name: "Rehash" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(actions.rehashCourt).toHaveBeenCalledWith(courtId);
+  });
 });

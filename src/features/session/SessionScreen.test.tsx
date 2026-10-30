@@ -255,39 +255,40 @@ describe("SessionScreen", () => {
     const before = getSession()!.courts[0]!.lineup;
     const other = getSession()!.courts[1]!.lineup;
     await userEvent.click(court(1).getByRole("button", { name: "Rehash" }));
+    // Court 2 holds a Lineup too, so Rehash asks which.
+    const sheet = screen.getByRole("dialog", { name: "Rehash Court 1" });
+    await userEvent.click(within(sheet).getByRole("button", { name: "Just this court" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(getSession()!.courts[0]!.lineup).not.toEqual(before);
     expect(getSession()!.courts[1]!.lineup).toEqual(other);
   });
 
-  it("enables Rehash all only with at least 2 Idle courts", async () => {
+  it("rehashes all Idle courts from the Rehash sheet; the header has no Rehash all", async () => {
     setSession(makeSession({ players: 12, courts: 2 }));
     renderAt();
-    const rehashAll = screen.getByRole("button", { name: "Rehash all" });
-    expect(rehashAll).toBeEnabled();
+    expect(screen.queryByRole("button", { name: /^Rehash all/ })).not.toBeInTheDocument();
+    const before = getSession()!.courts.map((c) => c.lineup);
+    await userEvent.click(court(1).getByRole("button", { name: "Rehash" }));
+    const rehashAll = within(screen.getByRole("dialog", { name: "Rehash Court 1" })).getByRole(
+      "button",
+      { name: "Rehash all idle courts" },
+    );
+    expect(rehashAll).toHaveAccessibleDescription("Also changes the Lineup on Court 2.");
     await userEvent.click(rehashAll);
-    expect(getSession()!.courts.every((c) => c.lineup !== null)).toBe(true);
-
-    await userEvent.click(court(1).getByRole("button", { name: "Start match" }));
-    expect(screen.getByRole("button", { name: "Rehash all" })).toBeDisabled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    const after = getSession()!.courts.map((c) => c.lineup);
+    expect(after.every((lineup) => lineup !== null)).toBe(true);
+    expect(after).not.toEqual(before);
   });
 
-  it("hides Rehash all with a single court", async () => {
-    setSession(makeSession({ players: 4, courts: 1 }));
+  it("rehashes at once when no other Idle court holds a Lineup", async () => {
+    setSession(makeSession({ players: 12, courts: 2 }));
     renderAt();
-    expect(screen.queryByRole("button", { name: "Rehash all" })).not.toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole("button", { name: "Add court" }));
-    expect(screen.getByRole("button", { name: "Rehash all" })).toBeEnabled();
-
-    await userEvent.click(court(1).getByRole("button", { name: "Start match" }));
-    expect(screen.getByRole("button", { name: "Rehash all" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Rehash all" })).toHaveAttribute(
-      "title",
-      "Needs at least 2 idle courts",
-    );
-
-    await userEvent.click(court(2).getByRole("button", { name: "Remove court 2" }));
-    expect(screen.queryByRole("button", { name: "Rehash all" })).not.toBeInTheDocument();
+    await userEvent.click(court(2).getByRole("button", { name: "Start match" }));
+    const before = getSession()!.courts[0]!.lineup;
+    await userEvent.click(court(1).getByRole("button", { name: "Rehash" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(getSession()!.courts[0]!.lineup).not.toEqual(before);
   });
 
   it("adds Courts up to 10 and removes Idle ones without asking", async () => {
