@@ -94,6 +94,10 @@ _Avoid_: Pair, side
 **Partner**:
 The other Session player on your Team.
 
+**Opponent**:
+A Session player on the other Team in your Match.
+_Avoid_: Rival, enemy
+
 **Ended match**:
 A Match that finished and counts toward history, Streaks and fairness. May have a Score; a Match ended without a Score has no winner.
 
@@ -148,8 +152,19 @@ The number of Matches a Session player has played back-to-back without a Rest.
 **Rest**:
 A Match starting without a Session player while that player was free to play. Resets their Streak to zero.
 
+**Rests in a row**:
+The number of Rests a Session player has had back-to-back since they last played. Resets to zero when they play or are Sitting out.
+_Avoid_: Wait count, bench time
+
 **Fairness window**:
 The recent stretch of time used to judge who has played least: 15 minutes while the Session's Point system is 21, 30 minutes while it is 31.
+
+**Wait**:
+How long a Session player has been free since their last Ended match (or since joining, if they have not played yet).
+
+**Mixing**:
+Preferring Lineups whose four Session players have shared the fewest Matches with each other, as Partners or Opponents, over the whole Session. Keeps the same groups of four from forming again and again.
+_Avoid_: Shuffling, variety
 
 **Team balance**:
 The difference between the two Teams' total Skill values. Balanced means a difference of at most 1.

@@ -3,11 +3,10 @@ import { SKILL_VALUE } from "../types.ts";
 import type { EngineContext } from "./context.ts";
 import { buildHistory, matchPlayerIds, type History } from "./stats.ts";
 
-/** The tie pool is cut to this many longest-waiting players before enumerating combinations. */
+/** The field is cut to this many best-placed players before enumerating combinations. */
 const MAX_POOL = 12;
 
 export type Split = [Team, Team];
-type Key = readonly [rest: number, recent: number, total: number];
 type Score = number[];
 
 /** Everything selection needs, computed once per operation. */
@@ -15,6 +14,8 @@ export interface Env {
   history: History;
   skill: ReadonlyMap<string, number>;
   rng: () => number;
+  /** Rests in a row at which a player is picked before Mixing gets a say: 2 × Courts. */
+  restsLimit: number;
 }
 
 export function makeEnv(session: Session, ctx: EngineContext): Env {
@@ -22,6 +23,7 @@ export function makeEnv(session: Session, ctx: EngineContext): Env {
     history: buildHistory(session, ctx.now),
     skill: new Map(session.players.map((player) => [player.id, SKILL_VALUE[player.skill]])),
     rng: ctx.rng,
+    restsLimit: 2 * session.courts.length,
   };
 }
 
@@ -64,11 +66,30 @@ export function candidatesFor(session: Session, courtId: string): string[] {
 }
 
 // --------------------------------------------------------------------- ranking
+//
+// Soft rules in strict priority (ADR-0009): Rest, Rests in a row, Fairness with a one-Match
+// tolerance ("owed a place"), Team balance exists, Mixing, exact Fairness counts, Wait,
+// new partners, exact balance, random.
 
-export function rankKey(env: Env, id: string): Key {
-  const h = env.history.byPlayer.get(id)!;
-  // Graded Rest: a Streak of 1 is fine, longer Streaks are progressively rested first.
-  return [Math.max(0, h.streak - 1), h.recent, h.total];
+/** Graded Rest: a Streak of 1 is fine, longer Streaks are progressively rested first. */
+export function restKey(env: Env, id: string): number {
+  return Math.max(0, env.history.byPlayer.get(id)!.streak - 1);
+}
+
+/** Rests in a row beyond the limit: 0 until `rests` reaches 2 × Courts, then 1, 2, … */
+export function restsTier(env: Env, id: string): number {
+  return Math.max(0, env.history.byPlayer.get(id)!.rests - env.restsLimit + 1);
+}
+
+/**
+ * `x` is owed a place before `c`: 2+ fewer Matches in the Fairness window, or the same or
+ * fewer in the window and 2+ fewer overall. Only meaningful between players of the same Rest
+ * group and Rests-in-a-row group. A strict partial order.
+ */
+export function owes(env: Env, x: string, c: string): boolean {
+  const a = env.history.byPlayer.get(x)!;
+  const b = env.history.byPlayer.get(c)!;
+  return a.recent <= b.recent - 2 || (a.recent <= b.recent && a.total <= b.total - 2);
 }
 
 export function compareNumbers(a: readonly number[], b: readonly number[]): number {
@@ -79,24 +100,61 @@ export function compareNumbers(a: readonly number[], b: readonly number[]): numb
   return 0;
 }
 
-export function rankCandidates(candidates: readonly string[], env: Env): string[] {
-  return [...candidates].sort((a, b) => compareNumbers(rankKey(env, a), rankKey(env, b)));
+/**
+ * Split `ids` by `keyOf` ascending. Whole groups before the one holding the `count`-th player
+ * are `inn`; that group is the field, with `slots` places left in it (it may fit exactly).
+ */
+function cutBy(
+  ids: readonly string[],
+  count: number,
+  keyOf: (id: string) => number,
+): { inn: string[]; field: string[]; slots: number } {
+  const groups = new Map<number, string[]>();
+  for (const id of ids) {
+    const key = keyOf(id);
+    groups.set(key, [...(groups.get(key) ?? []), id]);
+  }
+  const inn: string[] = [];
+  for (const key of [...groups.keys()].sort((a, b) => a - b)) {
+    const group = groups.get(key)!;
+    if (inn.length + group.length >= count) {
+      return { inn, field: group, slots: count - inn.length };
+    }
+    inn.push(...group);
+  }
+  return { inn, field: [], slots: count - inn.length };
 }
 
 /**
- * Strict-priority selection of `count` players: everybody with a better key than the
- * `count`-th ranked candidate is in; the rest come from the tie pool.
+ * Rest, then Rests in a row: everybody in a better Rest group (and, inside the cut Rest group,
+ * in a higher Rests-in-a-row tier) is in; the group where the cut falls is the field with
+ * `slots` places left. Candidates must number at least `count`.
  */
-export function selectionPool(
+export function restCut(
   candidates: readonly string[],
   count: number,
   env: Env,
-): { inn: string[]; pool: string[] } {
-  const ranked = rankCandidates(candidates, env);
-  const cutoff = rankKey(env, ranked[count - 1]!);
-  const inn = ranked.filter((id) => compareNumbers(rankKey(env, id), cutoff) < 0);
-  const pool = ranked.filter((id) => compareNumbers(rankKey(env, id), cutoff) === 0);
-  return { inn, pool };
+): { inn: string[]; field: string[]; slots: number } {
+  const byRest = cutBy(candidates, count, (id) => restKey(env, id));
+  const byTier = cutBy(byRest.field, byRest.slots, (id) => -restsTier(env, id));
+  return { inn: [...byRest.inn, ...byTier.inn], field: byTier.field, slots: byTier.slots };
+}
+
+/** `dom(p)`: field players owed a place before `p`. */
+export type Dom = ReadonlyMap<string, ReadonlySet<string>>;
+
+export function domOf(field: readonly string[], env: Env): Dom {
+  return new Map(
+    field.map((p) => [p, new Set(field.filter((x) => x !== p && owes(env, x, p)))] as const),
+  );
+}
+
+/** True when everyone owed a place before a chosen player is chosen too. */
+export function isAllowed(dom: Dom, chosen: ReadonlySet<string>): boolean {
+  for (const c of chosen) {
+    for (const x of dom.get(c) ?? []) if (!chosen.has(x)) return false;
+  }
+  return true;
 }
 
 /** Every k-combination of `items` (callers keep `items` small). */
@@ -119,23 +177,33 @@ export function waitOf(env: Env, id: string): number {
   return env.history.byPlayer.get(id)!.wait;
 }
 
-/** Longest Wait first; players with equal Wait are ordered randomly. */
-export function orderByWait(ids: readonly string[], env: Env): string[] {
-  const tiebreak = new Map(ids.map((id) => [id, env.rng()]));
-  return [...ids].sort(
-    (a, b) => waitOf(env, b) - waitOf(env, a) || tiebreak.get(a)! - tiebreak.get(b)!,
-  );
-}
-
 /**
- * Candidate 4-sets under the strict rule: Rest, then Fairness (recent, total, then Wait).
- * Everybody with a better key is in; the remaining slots come from the 12 longest-waiting
- * players of the tie pool, with every combination enumerated.
+ * Candidate 4-sets: Rest and Rests in a row decide who is in; inside the field, every set in
+ * which nobody is left out for someone they are owed a place behind. Large fields are cut to
+ * the 12 best by (recent, total), then longest Wait, then random; anyone owed a place before
+ * a kept player sorts earlier and is kept too, so the cut stays allowed.
  */
-export function strictSets(candidates: readonly string[], env: Env): string[][] {
-  const { inn, pool } = selectionPool(candidates, 4, env);
-  const cut = pool.length > MAX_POOL ? orderByWait(pool, env).slice(0, MAX_POOL) : pool;
-  return combinations(cut, 4 - inn.length).map((chosen) => [...inn, ...chosen]);
+export function fairSets(candidates: readonly string[], env: Env): string[][] {
+  const { inn, field, slots } = restCut(candidates, 4, env);
+  const dom = domOf(field, env);
+  const fits = field.filter((p) => dom.get(p)!.size < slots);
+  let cut = fits;
+  if (fits.length > MAX_POOL) {
+    const tiebreak = new Map(fits.map((id) => [id, env.rng()]));
+    const h = (id: string) => env.history.byPlayer.get(id)!;
+    cut = [...fits]
+      .sort(
+        (a, b) =>
+          h(a).recent - h(b).recent ||
+          h(a).total - h(b).total ||
+          waitOf(env, b) - waitOf(env, a) ||
+          tiebreak.get(a)! - tiebreak.get(b)!,
+      )
+      .slice(0, MAX_POOL);
+  }
+  return combinations(cut, slots)
+    .filter((chosen) => isAllowed(dom, new Set(chosen)))
+    .map((chosen) => [...inn, ...chosen]);
 }
 
 // ---------------------------------------------------------------------- splits
@@ -179,35 +247,64 @@ export function splitSignature(teams: Split): string {
   return [teamKey(teams[0]), teamKey(teams[1])].sort().join("/");
 }
 
-function scoreSplit(env: Env, teams: Split, withWait: boolean): Score {
-  const balance = balanceOf(env, teams);
-  const rest = [balance > 1 ? 1 : 0, partnerRepeats(env, teams), balance, env.rng()];
-  if (!withWait) return rest;
-  // Wait is part of Fairness, so longest total Wait outranks balance and partners. The "in"
-  // players are common to every compared set, so summing all four ranks the same as summing
-  // only the pool players.
-  const wait = [...teams[0], ...teams[1]].reduce((sum, id) => sum + waitOf(env, id), 0);
-  return [-wait, ...rest];
+/** Past meetings (Partners or Opponents) summed over the set's pairs. */
+export function mixOf(env: Env, ids: readonly string[]): number {
+  let sum = 0;
+  for (let i = 0; i < ids.length; i++) {
+    for (let j = i + 1; j < ids.length; j++) sum += env.history.met(ids[i]!, ids[j]!);
+  }
+  return sum;
+}
+
+/** Σrecent, Σtotal, −Σwait of `ids`: the exact Fairness tie-breakers, Wait last. */
+export function fairnessTerms(env: Env, ids: readonly string[]): [number, number, number] {
+  let recent = 0;
+  let total = 0;
+  let wait = 0;
+  for (const id of ids) {
+    const h = env.history.byPlayer.get(id)!;
+    recent += h.recent;
+    total += h.total;
+    wait += h.wait;
+  }
+  return [recent, total, -wait];
 }
 
 interface BestOptions {
-  /** Rank by longest total Wait first (Lineup selection, not replacements). */
-  withWait: boolean;
   /** Splits to ignore. */
   skip?: (teams: Split) => boolean;
 }
 
-/** Best (set, split) over the given 4-sets: [wait], balance, partners, then random. */
+/**
+ * Best (set, split) over the given 4-sets, smallest first:
+ * [unbalanced, Mixing, Σrecent, Σtotal, −Σwait, partner repeats, balance, random].
+ *
+ * A split that can be balanced outranks Mixing (Team balance exists). Mixing outranks the exact
+ * Fairness counts and Wait, because Wait only breaks ties among players who are level; the four
+ * are common to every split of a set, so the set terms are computed once per set.
+ */
 export function bestSplitOf(
   sets: readonly (readonly string[])[],
   env: Env,
-  options: BestOptions,
+  options: BestOptions = {},
 ): Lineup | null {
   let best: { teams: Split; score: Score } | null = null;
   for (const set of sets) {
+    const mix = mixOf(env, set);
+    const [recent, total, wait] = fairnessTerms(env, set);
     for (const teams of splitsOf(set)) {
       if (options.skip?.(teams)) continue;
-      const score = scoreSplit(env, teams, options.withWait);
+      const balance = balanceOf(env, teams);
+      const score = [
+        balance > 1 ? 1 : 0,
+        mix,
+        recent,
+        total,
+        wait,
+        partnerRepeats(env, teams),
+        balance,
+        env.rng(),
+      ];
       if (!best || compareNumbers(score, best.score) < 0) best = { teams, score };
     }
   }
@@ -220,7 +317,7 @@ export function bestSplitOf(
 export function pickLineup(session: Session, courtId: string, env: Env): Lineup | null {
   const candidates = candidatesFor(session, courtId);
   if (candidates.length < 4) return null;
-  return bestSplitOf(strictSets(candidates, env), env, { withWait: true });
+  return bestSplitOf(fairSets(candidates, env), env);
 }
 
 function sameSet(a: readonly string[], b: readonly string[]): boolean {
@@ -235,16 +332,23 @@ function swapNeighbours(candidates: readonly string[], current: readonly string[
   );
 }
 
-function sortedKeys(env: Env, set: readonly string[]): number[] {
-  return set
-    .map((id) => rankKey(env, id))
-    .sort(compareNumbers)
-    .flat();
+/** Same Rest group and same Rests-in-a-row tier: the only players `owes` compares. */
+function sameGroup(env: Env, a: string, b: string): boolean {
+  return restKey(env, a) === restKey(env, b) && restsTier(env, a) === restsTier(env, b);
+}
+
+/** [sorted rest keys, how many chosen players are owed a place by someone left out]. */
+function swapKey(env: Env, candidates: readonly string[], set: readonly string[]): number[] {
+  const left = candidates.filter((id) => !set.includes(id));
+  const passedOver = set.filter((c) =>
+    left.some((x) => sameGroup(env, x, c) && owes(env, x, c)),
+  ).length;
+  return [...set.map((id) => restKey(env, id)).sort((a, b) => a - b), passedOver];
 }
 
 /**
  * Rehash: a Lineup that differs from the Court's current one whenever possible.
- * Prefers a different set of players (best by the usual rules), otherwise a different split.
+ * Prefers a different allowed set of players (best by the usual rules), otherwise a different split.
  */
 export function pickDifferentLineup(session: Session, court: Court, env: Env): Lineup | null {
   const current = court.lineup;
@@ -253,14 +357,14 @@ export function pickDifferentLineup(session: Session, court: Court, env: Env): L
   if (candidates.length < 4) return null;
   const currentSet = lineupPlayerIds(current);
 
-  const strict = strictSets(candidates, env).filter((set) => !sameSet(set, currentSet));
-  const fromStrict = bestSplitOf(strict, env, { withWait: true });
-  if (fromStrict) return fromStrict;
+  const different = fairSets(candidates, env).filter((set) => !sameSet(set, currentSet));
+  const fromFair = bestSplitOf(different, env);
+  if (fromFair) return fromFair;
 
-  // The strict best set *is* the current one: relax to the best single-player swap.
+  // The only allowed set *is* the current one: relax to the best single-player swap.
   const neighbours = swapNeighbours(candidates, currentSet).map((set) => ({
     set,
-    keys: sortedKeys(env, set),
+    keys: swapKey(env, candidates, set),
   }));
   if (neighbours.length > 0) {
     const bestKeys = neighbours.reduce(
@@ -270,21 +374,22 @@ export function pickDifferentLineup(session: Session, court: Court, env: Env): L
     const group = neighbours
       .filter((entry) => compareNumbers(entry.keys, bestKeys) === 0)
       .map((entry) => entry.set);
-    const fromSwap = bestSplitOf(group, env, { withWait: true });
+    const fromSwap = bestSplitOf(group, env);
     if (fromSwap) return fromSwap;
   }
 
   // Exactly four Candidates: choose the best different split.
   const currentSplit = splitSignature(current.teams);
   return bestSplitOf([currentSet], env, {
-    withWait: true,
     skip: (teams) => splitSignature(teams) === currentSplit,
   });
 }
 
 /**
- * Replace only `leavingId` in a Court's Lineup with the best Candidate (rank key, then longest
- * Wait, then the split rule), re-splitting the four. Null when there is no Candidate.
+ * Replace only `leavingId` in a Court's Lineup with the best Candidate, re-splitting the four.
+ * Rest and Rests in a row give the field (one place); level Candidates are those nobody else in
+ * the field is owed a place before. They are scored like any set: Mixing reduces to the
+ * meetings with the three who stay. Null when there is no Candidate.
  */
 export function replaceInLineup(
   session: Session,
@@ -296,13 +401,11 @@ export function replaceInLineup(
   const held = heldPlayerIds(session);
   const candidates = freePlayerIds(session).filter((id) => id !== leavingId && !held.has(id));
   if (candidates.length === 0) return null;
-  // Rank key first, then longest Wait (part of Fairness); the split rule only breaks ties.
-  const tied = selectionPool(candidates, 1, env).pool;
-  const longest = Math.max(...tied.map((id) => waitOf(env, id)));
-  const best = tied.filter((id) => waitOf(env, id) === longest);
+  const { field } = restCut(candidates, 1, env);
+  const dom = domOf(field, env);
+  const level = field.filter((id) => dom.get(id)!.size === 0);
   return bestSplitOf(
-    best.map((id) => [...rest, id]),
+    level.map((id) => [...rest, id]),
     env,
-    { withWait: false },
   );
 }

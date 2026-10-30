@@ -165,8 +165,14 @@ describe("fairness", () => {
   });
 
   it("uses a 30 minute window for 31 points: the 20-minute-old match counts", () => {
+    // Group A now has 1 recent Match and group B none: that is a one-Match difference, so
+    // neither group is owed a place before the other and Mixing decides (ADR-0009). In the
+    // 21-point case above, A is owed a place (2 fewer overall, same window count).
     for (const seed of seeds) {
-      expect(lineupSet(fill(history(31), makeCtx(seed)), 1)).toEqual(["p5", "p6", "p7", "p8"]);
+      const picked = lineupSet(fill(history(31), makeCtx(seed)), 1);
+      expect(picked).not.toEqual(["p1", "p2", "p3", "p4"]);
+      expect(picked.some((id) => ["p1", "p2", "p3", "p4"].includes(id))).toBe(true);
+      expect(picked.some((id) => ["p5", "p6", "p7", "p8"].includes(id))).toBe(true);
     }
   });
 });

@@ -20,6 +20,11 @@ export interface PlayerHistory {
   total: number;
   /** Ended matches only. */
   played: number;
+  /**
+   * Rests in a row: Match starts since the player's last Match at which they were free and
+   * didn't play. Resets when they play, and at a Sitting-out reset.
+   */
+  rests: number;
   /** `now − (endedAt of last Ended match ?? joinedAt)`. */
   wait: number;
 }
@@ -28,6 +33,8 @@ export interface History {
   byPlayer: ReadonlyMap<string, PlayerHistory>;
   /** How many previous started Matches these two played as Partners. */
   partnered(a: string, b: string): number;
+  /** Ended Matches where these two both played, as Partners or Opponents. */
+  met(a: string, b: string): number;
 }
 
 function pairKey(a: string, b: string): string {
@@ -40,8 +47,9 @@ export function buildHistory(session: Session, now: number): History {
   const byPlayer = new Map<string, PlayerHistory>();
   const lastEnded = new Map<string, number>();
   const partners = new Map<string, number>();
+  const meetings = new Map<string, number>();
   for (const player of session.players) {
-    byPlayer.set(player.id, { streak: 0, recent: 0, total: 0, played: 0, wait: 0 });
+    byPlayer.set(player.id, { streak: 0, recent: 0, total: 0, played: 0, rests: 0, wait: 0 });
   }
 
   const ordered = [...session.matches].sort((a, b) => a.startedAt - b.startedAt);
@@ -51,6 +59,15 @@ export function buildHistory(session: Session, now: number): History {
     for (const team of match.teams) {
       const key = pairKey(team[0], team[1]);
       partners.set(key, (partners.get(key) ?? 0) + 1);
+    }
+    if (match.status === "ended") {
+      const four = [...inMatch];
+      for (let i = 0; i < four.length; i++) {
+        for (let j = i + 1; j < four.length; j++) {
+          const key = pairKey(four[i]!, four[j]!);
+          meetings.set(key, (meetings.get(key) ?? 0) + 1);
+        }
+      }
     }
     for (const player of session.players) {
       const entry = byPlayer.get(player.id)!;
@@ -69,8 +86,13 @@ export function buildHistory(session: Session, now: number): History {
       // Sitting out resets the Streak: only Matches started after the reset count.
       const resetAt = session.streakResetAt[player.id] ?? -Infinity;
       if (match.startedAt <= resetAt) continue;
-      if (played) entry.streak += 1;
-      else if (free.has(player.id)) entry.streak = 0;
+      if (played) {
+        entry.streak += 1;
+        entry.rests = 0;
+      } else if (free.has(player.id)) {
+        entry.streak = 0;
+        entry.rests += 1;
+      }
     }
   }
   for (const player of session.players) {
@@ -79,6 +101,7 @@ export function buildHistory(session: Session, now: number): History {
   return {
     byPlayer,
     partnered: (a, b) => partners.get(pairKey(a, b)) ?? 0,
+    met: (a, b) => meetings.get(pairKey(a, b)) ?? 0,
   };
 }
 

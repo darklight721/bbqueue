@@ -188,7 +188,7 @@ describe("graded rest", () => {
 
 // ---------------------------------------------------------------- rehashAll
 
-describe("rehash all keeps the strict selection", () => {
+describe("rehash all keeps Rest and Fairness", () => {
   // p9–p12 have never played; p1–p8 each played one recent match.
   const history = () =>
     session({
@@ -333,9 +333,10 @@ describe("wait is part of fairness", () => {
     }
   });
 
-  it("outranks team balance", () => {
-    // The four longest-waiting are 3 advanced + 1 beginner (unbalanceable) even though
-    // another set would split evenly.
+  it("is outranked by team balance: a balanceable four beats longer Waits", () => {
+    // The four longest-waiting (p5–p8) are 3 advanced + 1 beginner and cannot be balanced
+    // (ADR-0009 puts "balance exists" above Wait), so the longest-waiting balanceable four
+    // is picked instead: two advanced and two beginners.
     const skills: SessionPlayer["skill"][] = [
       "beginner",
       "beginner",
@@ -349,7 +350,7 @@ describe("wait is part of fairness", () => {
     const players = withJoined([1, 2, 3, 4, 50, 60, 70, 80], skills);
     for (const seed of seedList(20)) {
       expect(lineupSet(fill(session({ players }), makeCtx(seed)), 1)).toEqual([
-        "p5",
+        "p4",
         "p6",
         "p7",
         "p8",
@@ -663,20 +664,18 @@ describe("validateCreateSessionInput", () => {
   });
 });
 
-describe("partial replacements prefer the longest Wait", () => {
-  it("picks the longer-waiting of two equally keyed Candidates, even against balance", () => {
-    // Replacing x leaves a1, a2, b1: the beginner Candidate would balance the Teams, but the
-    // advanced one has waited longer and Wait (Fairness) outranks the split rule.
-    const players = [
-      player("a1", "advanced"),
-      player("a2", "advanced"),
-      player("b1", "beginner"),
-      player("x", "intermediate"),
-      player("long", "advanced", T0 - 60 * MIN),
-      player("short", "beginner", T0 - 5 * MIN),
-    ];
-    const base = session({ players });
-    const withLineup: Session = {
+describe("partial replacements", () => {
+  const players = (long: SessionPlayer["skill"], short: SessionPlayer["skill"]) => [
+    player("a1", "advanced"),
+    player("a2", "advanced"),
+    player("b1", "beginner"),
+    player("x", "intermediate"),
+    player("long", long, T0 - 60 * MIN),
+    player("short", short, T0 - 5 * MIN),
+  ];
+  const withLineup = (list: SessionPlayer[]): Session => {
+    const base = session({ players: list });
+    return {
       ...base,
       courts: [
         {
@@ -690,9 +689,25 @@ describe("partial replacements prefer the longest Wait", () => {
         },
       ],
     };
+  };
+
+  it("prefer the longer-waiting of two level Candidates when balance ties", () => {
     for (const seed of seedList(20)) {
-      const next = unwrap(removePlayer(withLineup, "x", makeCtx(seed)));
+      const next = unwrap(
+        removePlayer(withLineup(players("advanced", "advanced")), "x", makeCtx(seed)),
+      );
       expect(lineupSet(next, 1)).toEqual(["a1", "a2", "b1", "long"]);
+    }
+  });
+
+  it("let a Candidate who balances the Teams outrank a longer Wait", () => {
+    // Replacing x leaves a1, a2, b1: the beginner Candidate balances the Teams, the advanced
+    // one waited longer. ADR-0009 ranks "balance exists" above Wait.
+    for (const seed of seedList(20)) {
+      const next = unwrap(
+        removePlayer(withLineup(players("advanced", "beginner")), "x", makeCtx(seed)),
+      );
+      expect(lineupSet(next, 1)).toEqual(["a1", "a2", "b1", "short"]);
     }
   });
 });

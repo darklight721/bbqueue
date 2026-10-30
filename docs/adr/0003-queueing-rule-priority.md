@@ -1,5 +1,7 @@
 # Queueing rule priority: Rest before fairness
 
+> **Superseded in part by [ADR-0009](0009-mixing-within-one-match-fairness-tolerance.md)**: the soft-rule priority order and the role of Wait. The hard rules, Rest and the latecomer principle still stand.
+
 Hard rules: a Match has exactly four Session players in two Teams of two, and nobody is on two Courts at once. Soft rules are applied in strict priority order:
 
 1. **Rest**: no third back-to-back Match. Graded: the longer a player's Streak beyond one, the stronger the preference to rest them (key `max(0, streak − 1)`), so when several players are over the limit, the longest Streak rests first.
