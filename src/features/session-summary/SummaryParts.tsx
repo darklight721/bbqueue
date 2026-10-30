@@ -1,6 +1,6 @@
 import { useId, useState, type CSSProperties, type ReactNode } from "react";
 import { Link } from "wouter";
-import { ChevronRightIcon } from "../../components/icons.tsx";
+import { ChevronRightIcon, UsersIcon } from "../../components/icons.tsx";
 import { SkillBadge } from "../../components/SkillBadge.tsx";
 import type { SessionSummary, StandingsEntry, TopWinner } from "../../domain/types.ts";
 import { countLabel, formatSessionDuration, MEDAL, ordinal, rise } from "./summaryFormat.ts";
@@ -59,7 +59,7 @@ function TotalValue({ value }: { value: string }) {
 }
 
 /**
- * The Club's name on a court-green hero or banner: a short volt rule, then the name in small
+ * The Club's name on a court-green hero or banner: Home's Clubs icon in volt, then the name in small
  * spaced capitals. Long names wrap instead of being cut (it is also part of the shared image).
  */
 export function ClubLine({
@@ -76,10 +76,7 @@ export function ClubLine({
       className={`flex items-start gap-2.5 leading-tight font-bold tracking-[0.12em] text-line uppercase ${className}`}
       style={style}
     >
-      <span
-        aria-hidden="true"
-        className="mt-[calc(0.5lh-1.5px)] h-[3px] w-[1.1em] shrink-0 rounded-full bg-volt"
-      />
+      <UsersIcon className="size-[1lh] shrink-0 text-volt" />
       <span className="min-w-0 break-words">{name}</span>
     </p>
   );
