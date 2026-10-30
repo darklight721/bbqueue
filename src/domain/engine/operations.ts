@@ -14,7 +14,7 @@ import { fillLineups, releasePlayers, rehashLineup, setLineup, updateCourt } fro
 import { canMoveQueue, clearPlayerFromQueues, queueTeams } from "./queues.ts";
 import { rehashAllLineups } from "./rehashAll.ts";
 import { validateScore } from "./scoring.ts";
-import { busyPlayerIds, freePlayerIds } from "./select.ts";
+import { busyPlayerIds, freePlayerIds, heldPlayerIds } from "./select.ts";
 import { toEndedSession } from "./endedSession.ts";
 import { isIdle } from "./stats.ts";
 
@@ -147,6 +147,15 @@ export function rehashAll(session: Session, ctx: EngineContext): Result<"not-eno
 
 // --------------------------------------------------------------------- matches
 
+/**
+ * Players who get a Rest from a Match starting now: Free, not in it, and not held by another
+ * Court's Lineup (a player already lined up for another Court is on their way to play).
+ */
+function restingAtStart(session: Session, courtId: string, inMatch: ReadonlySet<string>): string[] {
+  const held = heldPlayerIds(session, courtId);
+  return freePlayerIds(session).filter((id) => !inMatch.has(id) && !held.has(id));
+}
+
 function beginMatch(
   session: Session,
   court: Court,
@@ -159,7 +168,7 @@ function beginMatch(
     number: null,
     courtNumber: court.number,
     teams,
-    freeAtStart: freePlayerIds(session).filter((id) => !inMatch.has(id)),
+    freeAtStart: restingAtStart(session, court.id, inMatch),
     startedAt: ctx.now,
     target: session.pointSystem,
     endedAt: null,
@@ -213,8 +222,20 @@ export function moveQueueToCourt(
     ),
     queues: session.queues.filter((candidate) => candidate.id !== queueId),
   };
-  const started = beginMatch(setLineup(back, court.id, null), court, teams, ctx);
-  return ok(fillLineups(releasePlayers(started, [...queued], ctx), ctx));
+  const cleared = setLineup(back, court.id, null);
+  const started = beginMatch(cleared, court, teams, ctx);
+  const released = releasePlayers(started, [...queued], ctx);
+  // The Lineups other Courts hold once the queued players have left them decide who rests.
+  // Players left in this Court's own Lineup are Free, so they still get the Rest.
+  const matchId = started.matches.at(-1)!.id;
+  const rested = restingAtStart({ ...cleared, courts: released.courts }, court.id, queued);
+  const settled: Session = {
+    ...released,
+    matches: released.matches.map((match) =>
+      match.id === matchId ? { ...match, freeAtStart: rested } : match,
+    ),
+  };
+  return ok(fillLineups(settled, ctx));
 }
 
 function renumberEnded(matches: readonly Match[]): Match[] {

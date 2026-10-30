@@ -150,7 +150,7 @@ _Avoid_: Paused, inactive, benched
 The number of Matches a Session player has played back-to-back without a Rest.
 
 **Rest**:
-A Match starting without a Session player while that player was free to play. Resets their Streak to zero.
+A Match starting without a Session player while that player was free to play and not in another Court's Lineup. Resets their Streak to zero.
 
 **Rests in a row**:
 The number of Rests a Session player has had back-to-back since they last played. Resets to zero when they play or are Sitting out.

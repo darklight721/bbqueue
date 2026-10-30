@@ -534,3 +534,63 @@ describe("latecomer over a whole evening", () => {
     }
   });
 });
+
+describe("Courts that start at the same instant", () => {
+  /**
+   * Matches last a fixed time and every Court restarts the moment its Match ends, so a player
+   * is "back to back" when their next Match starts exactly when the previous one ended. Longest
+   * such run and longest Streak replayed from `freeAtStart`.
+   */
+  function realRunAndStreak(r: StaggeredResult): { run: number; streak: number } {
+    const ended = r.session.matches
+      .filter((m) => m.status === "ended")
+      .sort((a, b) => a.startedAt - b.startedAt);
+    const run = new Map<string, number>();
+    const streak = new Map<string, number>();
+    const lastEnd = new Map<string, number>();
+    let maxRun = 0;
+    let maxStreak = 0;
+    for (const m of ended) {
+      const four = new Set([...m.teams[0], ...m.teams[1]]);
+      const free = new Set(m.freeAtStart);
+      for (const id of r.originals) {
+        if (four.has(id)) {
+          const back = lastEnd.get(id) === m.startedAt;
+          run.set(id, back ? (run.get(id) ?? 0) + 1 : 1);
+          streak.set(id, (streak.get(id) ?? 0) + 1);
+          lastEnd.set(id, m.endedAt!);
+          maxRun = Math.max(maxRun, run.get(id)!);
+          maxStreak = Math.max(maxStreak, streak.get(id)!);
+        } else if (free.has(id)) streak.set(id, 0);
+      }
+    }
+    return { run: maxRun, streak: maxStreak };
+  }
+
+  it("count every Match a player is lined up for: no back-to-back run beyond the Streak", () => {
+    // Before the fix, Court 2's players got a Rest from Court 1's start and these showed
+    // Streak 2 for real runs of 9–13 Matches.
+    for (const [players, courts] of [
+      [9, 2],
+      [10, 2],
+      [13, 3],
+      [14, 3],
+    ] as const) {
+      for (const seed of [1, 2, 3, 4, 5]) {
+        const r = playStaggered({
+          players,
+          courts,
+          matches: Math.ceil(2.5 * players),
+          stagger: 0,
+          seed,
+          mixedSkill: seed % 2 === 0,
+        });
+        const { run, streak } = realRunAndStreak(r);
+        expect([`${players}p/${courts}C seed ${seed}`, run <= streak]).toEqual([
+          `${players}p/${courts}C seed ${seed}`,
+          true,
+        ]);
+      }
+    }
+  });
+});

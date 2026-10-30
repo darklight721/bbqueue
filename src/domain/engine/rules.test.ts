@@ -96,16 +96,19 @@ describe("rest with staggered match ends", () => {
     return worst;
   };
 
+  // Limits are the worst of 30 seeds. They rose by 1 (5 → 6, 5 → 6, 3 → 4) when a player in
+  // another Court's Lineup stopped getting a false Rest from a Match starting on a Court that
+  // started in the same minute: the same evenings now show their real Streaks.
   it("keeps Streaks small for 13 players on 3 courts", () => {
-    expect(run("13/3", 13, 3)).toBeLessThanOrEqual(5);
+    expect(run("13/3", 13, 3)).toBeLessThanOrEqual(6);
   });
 
   it("keeps Streaks small for 9 players on 2 courts", () => {
-    expect(run("9/2", 9, 2)).toBeLessThanOrEqual(5);
+    expect(run("9/2", 9, 2)).toBeLessThanOrEqual(6);
   });
 
   it("keeps Streaks very small for 14 players on 3 courts", () => {
-    expect(run("14/3", 14, 3)).toBeLessThanOrEqual(3);
+    expect(run("14/3", 14, 3)).toBeLessThanOrEqual(4);
   });
 
   it("reports the observed maxima", () => {

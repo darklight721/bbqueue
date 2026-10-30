@@ -21,6 +21,7 @@ import {
 import { addQueue, removeQueue, setQueueSlot } from "./queues.ts";
 import { allPlayerStats } from "./playerStats.ts";
 import { lineupPlayerIds } from "./select.ts";
+import { buildHistory } from "./stats.ts";
 import { buildSummary } from "./summary.ts";
 import {
   MIN,
@@ -122,9 +123,63 @@ describe("startMatch", () => {
     expect([...m.teams[0], ...m.teams[1]].sort()).toEqual(lineupSet(s, 1));
     expect(next.courts[0]).toMatchObject({ lineup: null, activeMatchId: m.id });
     expect(next.courts[1]!.lineup).toEqual(other);
-    // The other Lineup's players were Free when this started.
-    expect(m.freeAtStart.sort()).toEqual(lineupSet(s, 2));
+    // The other Lineup's players are held by that Lineup, so they get no Rest from this Match.
+    expect(m.freeAtStart).toEqual([]);
     expect(violations(next)).toEqual([]);
+  });
+
+  describe("Rest while in another Court's Lineup", () => {
+    /** 10 players, 2 Courts: both started and ended, so both Courts hold a fresh Lineup. */
+    function twoIdleCourts() {
+      const { ctx, session: first } = created(10, 2, 3);
+      let s = first;
+      for (const court of s.courts) s = unwrap(startMatch(s, court.id, at(ctx, T0)));
+      for (const m of s.matches) s = unwrap(endMatch(s, m.id, null, at(ctx, T0 + 15 * MIN)));
+      return { ctx, s, now: T0 + 15 * MIN };
+    }
+
+    it("keeps the Streak and Rests in a row of a player held by another Court's Lineup", () => {
+      const { ctx, s, now } = twoIdleCourts();
+      const lineup1 = lineupSet(s, 1);
+      const lineup2 = lineupSet(s, 2);
+      const before = buildHistory(s, now);
+      const afterFirst = unwrap(startMatch(s, s.courts[0]!.id, at(ctx, now)));
+      const mid = buildHistory(afterFirst, now);
+      for (const id of lineup2) {
+        expect(mid.byPlayer.get(id)!.streak).toBe(before.byPlayer.get(id)!.streak);
+        expect(mid.byPlayer.get(id)!.rests).toBe(before.byPlayer.get(id)!.rests);
+      }
+      expect(afterFirst.matches.at(-1)!.freeAtStart.filter((id) => lineup2.includes(id))).toEqual(
+        [],
+      );
+
+      const afterBoth = unwrap(startMatch(afterFirst, s.courts[1]!.id, at(ctx, now)));
+      const end = buildHistory(afterBoth, now);
+      for (const id of [...lineup1, ...lineup2]) {
+        expect(end.byPlayer.get(id)!.streak).toBe(before.byPlayer.get(id)!.streak + 1);
+      }
+    });
+
+    it("still gives a Rest to a free player who is in no Lineup", () => {
+      const { ctx, s, now } = twoIdleCourts();
+      const lined = new Set([...lineupSet(s, 1), ...lineupSet(s, 2)]);
+      const spare = s.players.map((p) => p.id).filter((id) => !lined.has(id));
+      expect(spare).toHaveLength(2);
+      const before = buildHistory(s, now);
+      const afterFirst = unwrap(startMatch(s, s.courts[0]!.id, at(ctx, now)));
+      expect(afterFirst.matches.at(-1)!.freeAtStart.sort()).toEqual(spare.sort());
+      const mid = buildHistory(afterFirst, now);
+      for (const id of spare) {
+        expect(mid.byPlayer.get(id)!.streak).toBe(0);
+        expect(mid.byPlayer.get(id)!.rests).toBe(before.byPlayer.get(id)!.rests + 1);
+      }
+    });
+
+    it("still gives a Rest to free players when no other Court holds a Lineup", () => {
+      const { ctx, session: s } = created(5, 1);
+      const next = unwrap(startMatch(s, s.courts[0]!.id, at(ctx, T0)));
+      expect(next.matches[0]!.freeAtStart).toHaveLength(1);
+    });
   });
 
   it("is rejected without a Lineup, on a busy Court, or for unknown Courts", () => {
@@ -471,6 +526,42 @@ describe("moveQueueToCourt", () => {
     for (const id of kept) expect(after2).toContain(id);
     for (const id of queued) expect(after2).not.toContain(id);
     expect(violations(next)).toEqual([]);
+  });
+
+  it("gives a Rest only to players in no other Court's Lineup once the queued players have left", () => {
+    const ctx = makeCtx(5);
+    const s = createSession(input(10, 2), ctx);
+    const lineup1 = lineupSet(s, 1);
+    const lineup2 = lineupSet(s, 2);
+    const lined = new Set([...lineup1, ...lineup2]);
+    const spare = s.players.map((p) => p.id).filter((id) => !lined.has(id));
+    // Court 1 is the target: two players from Court 2's Lineup plus two players with no Lineup.
+    const queued = [lineup2[0]!, lineup2[1]!, spare[0]!, spare[1]!];
+    let current = addQueue(s, ctx);
+    const queueId = current.queues[0]!.id;
+    const slots: [0 | 1, 0 | 1][] = [
+      [0, 0],
+      [0, 1],
+      [1, 0],
+      [1, 1],
+    ];
+    queued.forEach((id, i) => {
+      current = unwrap(setQueueSlot(current, queueId, ...slots[i]!, id));
+    });
+    const next = unwrap(moveQueueToCourt(current, queueId, current.courts[0]!.id, at(ctx, T0)));
+    const m = next.matches[0]!;
+    const held = lineupSet(next, 2);
+    // Court 2 refilled from Court 1's old Lineup (those players were Free); they are now held.
+    expect(held.some((id) => lineup1.includes(id))).toBe(true);
+    const expected = s.players
+      .map((p) => p.id)
+      .filter((id) => !queued.includes(id) && !held.includes(id));
+    expect(m.freeAtStart.sort()).toEqual(expected.sort());
+    // Players left over from Court 1's own Lineup are Free and in no Lineup, so they rest.
+    const leftOver = lineup1.filter((id) => !held.includes(id));
+    expect(leftOver.length).toBeGreaterThan(0);
+    for (const id of leftOver) expect(m.freeAtStart).toContain(id);
+    for (const id of held) expect(m.freeAtStart).not.toContain(id);
   });
 
   it("brings Sitting-out queued players back in", () => {
