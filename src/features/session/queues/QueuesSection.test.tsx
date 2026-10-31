@@ -131,6 +131,25 @@ describe("QueuesSection", () => {
     expect(pickerNames()).toHaveLength(9);
   });
 
+  it("has no Queued subheading before the first Match, while Up next is hidden", () => {
+    renderSession(makeSession());
+    expect(screen.queryByRole("heading", { name: "Queued" })).not.toBeInTheDocument();
+    expect(screen.getByText(/Pick the next four players by hand/)).toBeInTheDocument();
+  });
+
+  it("once a Match starts, lists the Queues under Queued, below Up next", async () => {
+    let session = makeSession();
+    session = ok(startMatch(session, session.courts[0]!.id, ctx()));
+    renderSession(session);
+    expect(screen.getByRole("region", { name: "Up next" })).toBeInTheDocument();
+    const queued = () => within(screen.getByRole("region", { name: "Queued" }));
+    expect(queued().getByRole("heading", { level: 3, name: "Queued" })).toBeInTheDocument();
+    expect(queued().getByText(/Pick the next four players by hand/)).toBeInTheDocument();
+    await userEvent.click(queued().getByRole("button", { name: "Add queue" }));
+    expect(queued().getByRole("region", { name: "Queue 1" })).toBeInTheDocument();
+    expect(queued().getByRole("button", { name: "Add queue" })).toBeInTheDocument();
+  });
+
   it("clears a filled spot", async () => {
     renderSession(withQueue(makeSession(), ["ana", null, null, null]));
     await userEvent.click(queue().getByRole("button", { name: "Clear ana" }));

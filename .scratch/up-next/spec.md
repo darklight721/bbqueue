@@ -22,6 +22,7 @@ Vocabulary per `GLOSSARY.md` (adds **Up next**).
 ### 2. Where it shows
 
 - The first block inside the Queues section, above any Queue cards (and above the empty state when there are none). Subheading "Up next".
+- Below it, the Queue cards (or the empty state) sit under their own subheading, "Queued" (amended 2026-11-01). "Queued" only shows alongside Up next. Before the first Match the section has no subheadings.
 - The section keeps its "Queues" title and its jump bar label.
 - The section is collapsible, open by default (Hide queues / Show queues). Collapsing it hides Up next too.
 - Shown to everyone who can see the Active session: the Session host and read-only viewers (Players, other Organizers).
@@ -88,6 +89,7 @@ Players on a Streak of 2 (a third Match in a row isn't allowed) go last, tagged 
 - With 1 to 3 free players, the list shows them with "The rest will come from whoever comes off court." and no "Queue these four". With nobody free, "Everyone's on court or in a Lineup."
 - After a Match ends, players who played 2 in a row show at the bottom tagged "Resting".
 - Up next stays above Queue cards after Add queue, and above the empty state when the Queues are removed again.
+- The Queued subheading appears together with Up next when the first Match starts, and sits between Up next and the Queue cards.
 
 `e2e/emulator/shared-sessions.spec.ts`:
 

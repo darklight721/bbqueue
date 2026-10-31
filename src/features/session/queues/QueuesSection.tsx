@@ -1,6 +1,6 @@
-import { useId, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { ChevronDownIcon, PlusIcon } from "../../../components/icons.tsx";
-import { addQueue } from "../../../domain/engine/index.ts";
+import { addQueue, upNext } from "../../../domain/engine/index.ts";
 import { useSessionActions, useSessionView } from "../context.ts";
 import { SectionHeader } from "../SectionHeader.tsx";
 import { QueueCard } from "./QueueCard.tsx";
@@ -20,7 +20,7 @@ export function QueuesSection({
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 } = {}) {
-  const { session, readOnly } = useSessionView();
+  const { session, asOf, readOnly } = useSessionView();
   const actions = useSessionActions();
   const [ownOpen, setOwnOpen] = useState(true);
   const open = openProp ?? ownOpen;
@@ -29,7 +29,10 @@ export function QueuesSection({
     onOpenChange?.(value);
   };
   const bodyId = useId();
+  const queuedHeadingId = useId();
   const count = session.queues.length;
+  // Worked out at `asOf`, not the clock, so every device shows the same four.
+  const forecast = useMemo(() => upNext(session, asOf), [session, asOf]);
   const add = () => actions.run((s, ctx) => ({ ok: true as const, session: addQueue(s, ctx) }));
 
   return (
@@ -56,29 +59,40 @@ export function QueuesSection({
       />
 
       {open ? (
-        <div id={bodyId} className="flex flex-col gap-4">
-          <UpNext />
-          {count === 0 && readOnly ? (
-            <p className="rounded-box border-[1.5px] border-dashed border-base-300 px-4 py-5 text-center text-base-content/70">
-              No queues right now.
-            </p>
-          ) : count === 0 ? (
-            <div className="flex flex-col items-center gap-4 rounded-box border-[1.5px] border-dashed border-base-300 px-6 py-6 text-center">
-              <p className="max-w-sm text-base-content/70">
-                Pick the next four players by hand, then move them onto a free court.
+        <div id={bodyId} className="flex flex-col gap-6">
+          {forecast ? <UpNext forecast={forecast} /> : null}
+          {/* The Queued subheading only matters next to Up next (from the first Match on). */}
+          <section
+            aria-labelledby={forecast ? queuedHeadingId : undefined}
+            className="flex flex-col gap-3"
+          >
+            {forecast ? (
+              <h3 id={queuedHeadingId} className="font-display text-2xl uppercase">
+                Queued
+              </h3>
+            ) : null}
+            {count === 0 && readOnly ? (
+              <p className="rounded-box border-[1.5px] border-dashed border-base-300 px-4 py-5 text-center text-base-content/70">
+                No queues right now.
               </p>
-              <AddQueueButton onClick={add} />
-            </div>
-          ) : (
-            <>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                {session.queues.map((queue, index) => (
-                  <QueueCard key={queue.id} queue={queue} number={index + 1} />
-                ))}
+            ) : count === 0 ? (
+              <div className="flex flex-col items-center gap-4 rounded-box border-[1.5px] border-dashed border-base-300 px-6 py-6 text-center">
+                <p className="max-w-sm text-base-content/70">
+                  Pick the next four players by hand, then move them onto a free court.
+                </p>
+                <AddQueueButton onClick={add} />
               </div>
-              {readOnly ? null : <AddQueueButton onClick={add} dashed />}
-            </>
-          )}
+            ) : (
+              <>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  {session.queues.map((queue, index) => (
+                    <QueueCard key={queue.id} queue={queue} number={index + 1} />
+                  ))}
+                </div>
+                {readOnly ? null : <AddQueueButton onClick={add} dashed />}
+              </>
+            )}
+          </section>
         </div>
       ) : null}
     </section>

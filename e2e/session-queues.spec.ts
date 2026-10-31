@@ -106,6 +106,9 @@ test.describe("Queues section", () => {
     await openSeeded(page);
     await expect(page.getByRole("heading", { level: 2, name: "Queues" })).toBeVisible();
     await expect(
+      queuesRegion(page).getByRole("heading", { level: 3, name: "Queued" }),
+    ).toBeVisible();
+    await expect(
       queuesRegion(page).getByText(
         "Pick the next four players by hand, then move them onto a free court.",
       ),
@@ -200,10 +203,13 @@ test.describe("Up next", () => {
       activeMatchId: null,
     };
     await openSeeded(page, session);
+    const queued = queuesRegion(page).getByRole("heading", { level: 3, name: "Queued" });
     await expect(upNext(page)).toHaveCount(0);
+    await expect(queued).toHaveCount(0);
 
     await court(page, 1).getByRole("button", { name: "Start match" }).click();
     await expect(upNext(page)).toBeVisible();
+    await expect(queued).toBeVisible();
     expect((await upNextNames(page, NAMES)).sort()).toEqual(["Ivy", "Jon"]);
     await expect(
       upNext(page).getByText("The rest will come from whoever comes off court."),
@@ -228,9 +234,12 @@ test.describe("Up next", () => {
     const nameOf = new Map(stored.players.map((p) => [p.id, p.name]));
     const slots = stored.queues[0]!.slots.map((team) => team.map((id) => nameOf.get(id!)!));
     expect(slots.flat().sort()).toEqual([...four].sort());
-    // Up next stays above the Queue card.
+    // Up next stays above the Queued subsection and its Queue card.
     const upNextBox = (await upNext(page).boundingBox())!;
-    expect((await q.boundingBox())!.y).toBeGreaterThan(upNextBox.y + upNextBox.height - 1);
+    const queuedHeading = queuesRegion(page).getByRole("heading", { level: 3, name: "Queued" });
+    const queuedBox = (await queuedHeading.boundingBox())!;
+    expect(queuedBox.y).toBeGreaterThan(upNextBox.y + upNextBox.height - 1);
+    expect((await q.boundingBox())!.y).toBeGreaterThan(queuedBox.y + queuedBox.height - 1);
 
     const dialog = await openScoreDialog(page, 1);
     await dialog.getByRole("button", { name: "End without score" }).click();

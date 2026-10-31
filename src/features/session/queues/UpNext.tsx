@@ -1,6 +1,6 @@
-import { useId, useMemo } from "react";
+import { useId } from "react";
 import { PlusIcon } from "../../../components/icons.tsx";
-import { addQueue, upNext } from "../../../domain/engine/index.ts";
+import { addQueue, type UpNext as Forecast } from "../../../domain/engine/index.ts";
 import { useAccount } from "../../../storage/store.ts";
 import { useNow } from "../clock.ts";
 import { useSessionActions, useSessionView } from "../context.ts";
@@ -11,18 +11,15 @@ import { upNextReasonLabel } from "./upNextText.ts";
 /**
  * Up next: the four players the app would put on the next free Court (fewer when fewer are free).
  * A forecast for everyone watching; the Session host can turn the four into a Queue.
- * Nothing until the first Match has started.
+ * The parent works out `forecast` (`upNext` at `asOf`) and leaves this out until the first Match.
  */
-export function UpNext() {
+export function UpNext({ forecast }: { forecast: Forecast }) {
   const view = useSessionView();
-  const { session, playerById, asOf, readOnly } = view;
+  const { playerById, asOf, readOnly } = view;
   const actions = useSessionActions();
   const account = useAccount();
   const now = useNow();
   const headingId = useId();
-  // Worked out at `asOf`, not the clock, so every device shows the same four.
-  const forecast = useMemo(() => upNext(session, asOf), [session, asOf]);
-  if (!forecast) return null;
   const { rows, lineup } = forecast;
 
   const queueThese = () => {
