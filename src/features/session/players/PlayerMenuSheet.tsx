@@ -37,7 +37,6 @@ export function PlayerMenuSheet({
       title={player?.name ?? ""}
       description={status ? `${status.label} · ${played} played` : undefined}
       onClose={onClose}
-      closeLabel="Close"
     >
       {player && status ? (
         <PlayerMenu
@@ -45,6 +44,7 @@ export function PlayerMenuSheet({
           player={player}
           onCourt={status.tone === "on-court"}
           onDone={onClose}
+          onCancel={onClose}
           onRemove={() => onRemove(player)}
         />
       ) : null}
@@ -56,11 +56,13 @@ function PlayerMenu({
   player,
   onCourt,
   onDone,
+  onCancel,
   onRemove,
 }: {
   player: SessionPlayer;
   onCourt: boolean;
   onDone: () => void;
+  onCancel: () => void;
   onRemove: () => void;
 }) {
   const { session } = useSessionView();
@@ -155,21 +157,26 @@ function PlayerMenu({
         <button type="button" className="btn w-full btn-primary" onClick={save}>
           Save
         </button>
-        <button
-          type="button"
-          className={`btn w-full btn-outline ${
-            onCourt
-              ? "border-base-300 text-base-content/40 pointer-events-auto!"
-              : "border-error/50 text-error hover:border-error hover:bg-error/10"
-          }`}
-          aria-disabled={onCourt ? true : undefined}
-          aria-describedby={onCourt ? blockedId : undefined}
-          onClick={() => {
-            if (!onCourt) onRemove();
-          }}
-        >
-          Remove from session
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            className={`btn flex-1 btn-outline px-3 ${
+              onCourt
+                ? "border-base-300 text-base-content/40 pointer-events-auto!"
+                : "border-error/50 text-error hover:border-error hover:bg-error/10"
+            }`}
+            aria-disabled={onCourt ? true : undefined}
+            aria-describedby={onCourt ? blockedId : undefined}
+            onClick={() => {
+              if (!onCourt) onRemove();
+            }}
+          >
+            Remove from session
+          </button>
+          <button type="button" className="btn shrink-0 px-5 btn-ghost" onClick={onCancel}>
+            Cancel
+          </button>
+        </div>
         {onCourt ? (
           <p id={blockedId} className="text-sm text-base-content/70">
             On court. {messageForReason("player-in-active-match")}

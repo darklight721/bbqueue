@@ -196,7 +196,7 @@ test.describe("Remove player", () => {
     // dispatchEvent: Playwright won't click an aria-disabled button; a real tap still reaches it.
     await remove.dispatchEvent("click");
     await expect(page.getByRole("dialog", { name: /^Remove Ben/ })).toHaveCount(0);
-    await menu.getByRole("button", { name: "Close" }).click();
+    await menu.getByRole("button", { name: "Cancel" }).click();
     await expect(menu).toBeHidden();
     await expect(row(page, "Ben")).toBeVisible();
     expect((await storedSession(page)).players.find((p) => p.name === "Ben")!.removed).toBe(false);
@@ -367,6 +367,27 @@ test.describe("Add players", () => {
     ).toHaveCount(1);
   });
 
+  test("Cancel closes the sheet and nobody joins; the next open starts empty", async ({ page }) => {
+    const club = makeClub({ name: "Thursday Club", players: [makeClubPlayer({ name: "Carla" })] });
+    await seedStorage(page, { clubs: [club] });
+    await openSeeded(page, buildSession({ clubId: club.id, clubName: club.name }));
+    const before = (await storedSession(page)).players.length;
+
+    let sheet = await openAddPlayers(page);
+    await expect(sheet.getByRole("button", { name: "Close" })).toHaveCount(0);
+    await sheet.getByRole("checkbox", { name: "Carla" }).check();
+    await lineUpGuest(sheet, "Kim");
+    await sheet.getByRole("button", { name: "Cancel" }).click();
+    await expect(sheet).toBeHidden();
+    await expect(row(page, "Carla")).toHaveCount(0);
+    await expect(row(page, "Kim")).toHaveCount(0);
+    expect((await storedSession(page)).players).toHaveLength(before);
+
+    sheet = await openAddPlayers(page);
+    await expect(sheet.getByRole("checkbox", { name: "Carla" })).not.toBeChecked();
+    await expect(sheet.getByRole("list", { name: "Guests to add" })).toHaveCount(0);
+  });
+
   test("a Club player who left shows Left earlier and comes back with their history", async ({
     page,
   }) => {
@@ -462,7 +483,7 @@ test.describe("Add players", () => {
 });
 
 test.describe("Skill level", () => {
-  test("Save changes the Session player and their badge; Close changes nothing; the Club stays as it was", async ({
+  test("Save changes the Session player and their badge; Cancel changes nothing; the Club stays as it was", async ({
     page,
   }) => {
     const club = makeClub({ name: "Thursday Club", players: [makeClubPlayer({ name: "Ivy" })] });
@@ -475,7 +496,7 @@ test.describe("Skill level", () => {
     let menu = await openMenu(page, "Ivy");
     await expect(menu.getByRole("radio", { name: "Intermediate" })).toBeChecked();
     await menu.getByText("Beginner", { exact: true }).click();
-    await menu.getByRole("button", { name: "Close" }).click();
+    await menu.getByRole("button", { name: "Cancel" }).click();
     await expect(menu).toBeHidden();
     expect((await storedSession(page)).players.find((p) => p.name === "Ivy")!.skill).toBe(
       "intermediate",
@@ -512,7 +533,7 @@ test.describe("Skill level", () => {
 
     const guest = await openMenu(page, "Jon");
     await expect(guest.getByRole("checkbox", { name: /^Also update in / })).toHaveCount(0);
-    await guest.getByRole("button", { name: "Close" }).click();
+    await guest.getByRole("button", { name: "Cancel" }).click();
 
     const menu = await openMenu(page, "Ivy");
     await menu.getByText("Beginner", { exact: true }).click();

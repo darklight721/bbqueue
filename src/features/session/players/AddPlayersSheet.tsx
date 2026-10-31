@@ -19,13 +19,13 @@ import { addPlayersLabel, joinNames, rosterChoices, rosterNameMessage } from "./
  */
 export function AddPlayersSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   return (
-    <Modal open={open} title="Add players" onClose={onClose} closeLabel="Close" focusTitle>
-      {open ? <AddPlayersForm onDone={onClose} /> : null}
+    <Modal open={open} title="Add players" onClose={onClose} focusTitle>
+      {open ? <AddPlayersForm onDone={onClose} onCancel={onClose} /> : null}
     </Modal>
   );
 }
 
-function AddPlayersForm({ onDone }: { onDone: () => void }) {
+function AddPlayersForm({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
   const { session } = useSessionView();
   const actions = useSessionActions();
   const clubs = useClubs();
@@ -197,6 +197,9 @@ function AddPlayersForm({ onDone }: { onDone: () => void }) {
           onClick={add}
         >
           {addPlayersLabel(count)}
+        </button>
+        <button type="button" className="btn w-full btn-ghost" onClick={onCancel}>
+          Cancel
         </button>
       </div>
     </div>

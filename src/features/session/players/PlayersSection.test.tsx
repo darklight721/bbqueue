@@ -200,6 +200,8 @@ describe("PlayersSection", () => {
     let sheet = await openAddPlayers();
     expect(sheet.queryByRole("heading", { name: /^From / })).not.toBeInTheDocument();
     expect(sheet.queryByRole("checkbox", { name: "Save to club" })).not.toBeInTheDocument();
+    // The sheet holds a draft, so it is left with Cancel, not a ×.
+    expect(sheet.queryByRole("button", { name: "Close" })).not.toBeInTheDocument();
 
     await userEvent.click(sheet.getByRole("button", { name: "Add players" }));
     expect(sheet.getByRole("alert")).toHaveTextContent("Add a guest first.");
@@ -381,7 +383,7 @@ describe("Changing a Skill level", () => {
     resetStoreForTests();
   });
 
-  it("Save changes the Session player only; Close changes nothing", async () => {
+  it("Save changes the Session player only; Cancel changes nothing", async () => {
     let session = makeSession();
     session = ok(startMatch(session, session.courts[0]!.id, ctx()));
     renderSession(session);
@@ -391,8 +393,10 @@ describe("Changing a Skill level", () => {
     expect(menu.getByRole("radio", { name: "Intermediate" })).toBeChecked();
     // No Club: nothing to update there.
     expect(menu.queryByRole("checkbox", { name: /^Also update in / })).not.toBeInTheDocument();
+    // The menu holds a draft, so it is left with Cancel, not a ×.
+    expect(menu.queryByRole("button", { name: "Close" })).not.toBeInTheDocument();
     await userEvent.click(menu.getByRole("radio", { name: "Beginner" }));
-    await userEvent.click(menu.getByRole("button", { name: "Close" }));
+    await userEvent.click(menu.getByRole("button", { name: "Cancel" }));
     expect(getSession()!.players.find((p) => p.name === "Ivy")!.skill).toBe("intermediate");
 
     menu = await openMenu("Ivy");
@@ -431,7 +435,7 @@ describe("Changing a Skill level", () => {
     expect(
       (await openMenu("Dan")).queryByRole("checkbox", { name: /^Also update in / }),
     ).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Close" }));
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
     let menu = await openMenu("ana");
     const also = menu.getByRole("checkbox", { name: "Also update in Riverside" });
