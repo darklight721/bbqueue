@@ -495,6 +495,9 @@ test.describe("Skill level", () => {
 
     let menu = await openMenu(page, "Ivy");
     await expect(menu.getByRole("radio", { name: "Intermediate" })).toBeChecked();
+    // Opening focuses the title, not the first Skill level (iOS would ring it).
+    await expect(menu.getByRole("heading", { name: "Ivy" })).toBeFocused();
+    await expect(menu.getByRole("radio", { name: "Beginner" })).not.toBeFocused();
     await menu.getByText("Beginner", { exact: true }).click();
     await menu.getByRole("button", { name: "Cancel" }).click();
     await expect(menu).toBeHidden();
@@ -536,8 +539,12 @@ test.describe("Skill level", () => {
     await guest.getByRole("button", { name: "Cancel" }).click();
 
     const menu = await openMenu(page, "Ivy");
+    const also = menu.getByRole("checkbox", { name: "Also update in Thursday Club" });
+    // Nothing to copy to the Club until the Skill level changes.
+    await expect(also).toBeDisabled();
     await menu.getByText("Beginner", { exact: true }).click();
-    await menu.getByRole("checkbox", { name: "Also update in Thursday Club" }).check();
+    await expect(also).toBeEnabled();
+    await also.check();
     await menu.getByRole("button", { name: "Save" }).click();
     await expect(menu).toBeHidden();
 

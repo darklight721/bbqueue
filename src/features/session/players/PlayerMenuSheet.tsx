@@ -37,6 +37,8 @@ export function PlayerMenuSheet({
       title={player?.name ?? ""}
       description={status ? `${status.label} · ${played} played` : undefined}
       onClose={onClose}
+      // Focusing the first Skill level on open shows its focus ring on iOS, though nothing was typed.
+      focusTitle
     >
       {player && status ? (
         <PlayerMenu
@@ -75,6 +77,8 @@ function PlayerMenu({
     club.players.some((p) => p.id === player.clubPlayerId);
   const [skill, setSkillChoice] = useState<SkillLevel>(player.skill);
   const [alsoClub, setAlsoClub] = useState(false);
+  // Nothing to copy to the Club until the Skill level changes.
+  const changed = skill !== player.skill;
   const groupName = useId();
   const clubBoxId = useId();
   const blockedId = useId();
@@ -82,7 +86,7 @@ function PlayerMenu({
   function save() {
     if (!actions.run((s, ctx) => setSkill(s, player.id, skill, ctx))) return;
     onDone();
-    if (club && onRoster && alsoClub) updateClubPlayer(club.id, club.name);
+    if (club && onRoster && changed && alsoClub) updateClubPlayer(club.id, club.name);
   }
 
   function updateClubPlayer(clubId: string, clubName: string) {
@@ -138,13 +142,14 @@ function PlayerMenu({
         {onRoster && club ? (
           <label
             htmlFor={clubBoxId}
-            className="-ml-2 flex min-h-11 cursor-pointer items-center gap-2 rounded-field pr-1 pl-2"
+            className="-ml-2 flex min-h-11 cursor-pointer items-center gap-2 rounded-field pr-1 pl-2 has-[:disabled]:cursor-default has-[:disabled]:text-base-content/40"
           >
             <input
               id={clubBoxId}
               type="checkbox"
               className="checkbox shrink-0 checkbox-primary"
-              checked={alsoClub}
+              checked={changed && alsoClub}
+              disabled={!changed}
               onChange={(event) => setAlsoClub(event.target.checked)}
             />
             <span className="text-base">Also update in {club.name}</span>

@@ -432,7 +432,18 @@ describe("Changing a Skill level", () => {
     let menu = await openMenu("ana");
     const also = menu.getByRole("checkbox", { name: "Also update in Riverside" });
     expect(also).not.toBeChecked();
+    // Nothing to copy to the Club until the Skill level changes.
+    expect(also).toBeDisabled();
+    await userEvent.click(menu.getByRole("radio", { name: "Advanced" }));
+    expect(also).toBeEnabled();
+    await userEvent.click(also);
+    // Back to where it was: no change, so the tick no longer counts.
+    await userEvent.click(menu.getByRole("radio", { name: "Intermediate" }));
+    expect(also).toBeDisabled();
+    expect(also).not.toBeChecked();
     await userEvent.click(menu.getByRole("radio", { name: "Beginner" }));
+    expect(also).toBeChecked();
+    await userEvent.click(also);
     await userEvent.click(menu.getByRole("button", { name: "Save" }));
     expect(getClubs()[0]!.players.find((p) => p.id === "cp-ana")!.skill).toBe("intermediate");
 
