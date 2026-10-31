@@ -87,16 +87,6 @@ export function PlayersSection({
 
       {open ? (
         <div id={bodyId} className="flex flex-col gap-4">
-          {readOnly ? null : (
-            <button
-              type="button"
-              className="btn w-full border-base-300 bg-base-100 btn-outline"
-              onClick={() => setAdding(true)}
-            >
-              <PlusIcon className="size-5" />
-              Add players
-            </button>
-          )}
           <LeftNotice />
 
           {players.length > 0 ? (
@@ -121,6 +111,17 @@ export function PlayersSection({
             <p className="rounded-box border-[1.5px] border-dashed border-base-300 px-4 py-5 text-center text-base-content/70">
               No players in this session.
             </p>
+          )}
+
+          {readOnly ? null : (
+            <button
+              type="button"
+              className="btn btn-lg w-full border-[1.5px] border-dashed border-base-300 bg-transparent shadow-none"
+              onClick={() => setAdding(true)}
+            >
+              <PlusIcon className="size-5" />
+              Add players
+            </button>
           )}
         </div>
       ) : null}
