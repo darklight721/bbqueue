@@ -392,28 +392,62 @@ export function addPlayer(
   input: NewPlayerInput,
   ctx: EngineContext,
 ): Result<"name-required" | "duplicate-name"> {
+  const joined = joinPlayer(session, input, ctx);
+  return joined.ok ? ok(fillLineups(joined.session, ctx)) : joined;
+}
+
+/**
+ * Add several players in one change (late Club players and Guests together). All or nothing:
+ * any player who can't join stops the whole change.
+ */
+export function addPlayers(
+  session: Session,
+  inputs: readonly NewPlayerInput[],
+  ctx: EngineContext,
+): Result<"name-required" | "duplicate-name"> {
+  let next = session;
+  for (const input of inputs) {
+    const joined = joinPlayer(next, input, ctx);
+    if (!joined.ok) return joined;
+    next = joined.session;
+  }
+  return ok(fillLineups(next, ctx));
+}
+
+function joinPlayer(
+  session: Session,
+  input: NewPlayerInput,
+  ctx: EngineContext,
+): Result<"name-required" | "duplicate-name"> {
   const name = normalizeName(input.name);
   if (name === "") return fail("name-required");
   const others = session.players.filter((player) => !player.removed).map((player) => player.name);
   if (findDuplicateName(name, others) !== -1) return fail("duplicate-name");
-  // A removed player with the same name comes back as themselves (same id and history).
-  const returning = session.players.find(
-    (candidate) => candidate.removed && namesEqual(candidate.name, name),
-  );
+  // A removed player comes back as themselves (same id and history): the same Club player,
+  // or else the same name.
+  const removed = session.players.filter((candidate) => candidate.removed);
+  const returning =
+    (input.clubPlayerId
+      ? removed.find((candidate) => candidate.clubPlayerId === input.clubPlayerId)
+      : undefined) ?? removed.find((candidate) => namesEqual(candidate.name, name));
   if (returning) {
+    const { accountId: _previous, ...rest } = returning;
+    // A Club player is copied again as they are now (ADR-0002), Account included.
+    const accountId = input.clubPlayerId ? input.accountId : returning.accountId;
     const restored: SessionPlayer = {
-      ...returning,
+      ...rest,
       name,
       skill: input.skill,
       clubPlayerId: input.clubPlayerId ?? returning.clubPlayerId,
+      ...(accountId ? { accountId } : {}),
       removed: false,
       sittingOut: false,
     };
     const players = session.players.map((p) => (p.id === returning.id ? restored : p));
-    return ok(fillLineups({ ...session, players }, ctx));
+    return ok({ ...session, players });
   }
   const player = snapshotPlayer({ ...input, name }, ctx);
-  return ok(fillLineups({ ...session, players: [...session.players, player] }, ctx));
+  return ok({ ...session, players: [...session.players, player] });
 }
 
 function findPlayer(session: Session, playerId: string): SessionPlayer | undefined {
@@ -464,6 +498,25 @@ export function setSittingOut(
   };
   const released = resetNow ? releasePlayers(changed, [playerId], ctx) : changed;
   return ok(fillLineups(released, ctx));
+}
+
+/**
+ * Change a Session player's Skill level. It counts from the next Lineup the app picks: Lineups
+ * already shown, Queues and Active matches stay as they are.
+ */
+export function setSkill(
+  session: Session,
+  playerId: string,
+  skill: SkillLevel,
+  _ctx: EngineContext,
+): Result<"player-not-found"> {
+  const player = findPlayer(session, playerId);
+  if (!player) return fail("player-not-found");
+  if (player.skill === skill) return ok(session);
+  return ok({
+    ...session,
+    players: session.players.map((p) => (p.id === playerId ? { ...p, skill } : p)),
+  });
 }
 
 // ---------------------------------------------------------------- point system

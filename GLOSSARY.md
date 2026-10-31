@@ -47,11 +47,11 @@ A person taking part in a Session. A snapshot of a Club player taken when they j
 _Avoid_: Participant, attendee
 
 **Guest**:
-A Session player who was not on the Session's Club roster when the Session started (every Session player, when the Session has no Club).
+A Session player who was not on the Session's Club roster when the Session started (every Session player, when the Session has no Club). A Club player who joins after the Start is not a Guest.
 _Avoid_: Extra player, additional player
 
 **Skill level**:
-A player's ability: Beginner (1), Intermediate (2), or Advanced (3). The number is the player's Skill value.
+A player's ability: Beginner (1), Intermediate (2), or Advanced (3). The number is the player's Skill value. A Session player's Skill level can be changed during the Session; that changes the Club player too only when the Session host chooses to.
 _Avoid_: Rank, grade, rating
 
 ## Sessions

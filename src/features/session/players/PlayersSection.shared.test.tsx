@@ -69,9 +69,11 @@ describe("Adding a player to a running Session of a Shared club", () => {
   }
 
   async function addKimToClub() {
+    await userEvent.click(screen.getByRole("button", { name: "Add players" }));
     await userEvent.type(screen.getByRole("textbox", { name: "Player name" }), "Kim");
     await userEvent.click(screen.getByRole("checkbox", { name: "Save to club" }));
-    await userEvent.click(screen.getByRole("button", { name: "Add player" }));
+    await userEvent.click(screen.getByRole("button", { name: "Add guest" }));
+    await userEvent.click(screen.getByRole("button", { name: "Add 1 player" }));
   }
 
   it("online: Kim joins and is saved to the Club", async () => {

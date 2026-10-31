@@ -482,26 +482,34 @@ test.describe("Spare players warning", () => {
   const playersRegion = (page: Page) => page.getByRole("region", { name: "Players" });
 
   async function addPlayers(page: Page, names: string[]) {
-    const region = playersRegion(page);
+    await playersRegion(page).getByRole("button", { name: "Add players" }).click();
+    const sheet = page.getByRole("dialog", { name: "Add players" });
     for (const name of names) {
-      await region.getByRole("textbox", { name: "Player name" }).fill(name);
-      await region.getByRole("button", { name: "Add player" }).click();
+      await sheet.getByRole("textbox", { name: "Player name" }).fill(name);
+      await sheet.getByRole("button", { name: "Add guest" }).click();
+    }
+    await sheet.getByRole("button", { name: `Add ${names.length} player` }).click();
+    for (const name of names) {
       await expect(
-        region.getByRole("button", { name: `Remove ${name}`, exact: true }),
+        playersRegion(page).getByRole("button", { name: `More for ${name}`, exact: true }),
       ).toBeVisible();
     }
   }
 
   async function removePlayer(page: Page, name: string) {
     await playersRegion(page)
-      .getByRole("button", { name: `Remove ${name}`, exact: true })
+      .getByRole("button", { name: `More for ${name}`, exact: true })
+      .click();
+    await page
+      .getByRole("dialog", { name })
+      .getByRole("button", { name: "Remove from session" })
       .click();
     await page
       .getByRole("dialog", { name: `Remove ${name} from this session?` })
       .getByRole("button", { name: "Remove", exact: true })
       .click();
     await expect(
-      playersRegion(page).getByRole("button", { name: `Remove ${name}`, exact: true }),
+      playersRegion(page).getByRole("button", { name: `More for ${name}`, exact: true }),
     ).toHaveCount(0);
   }
 

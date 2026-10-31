@@ -76,9 +76,14 @@ test.describe("Players ask the Session host", () => {
     await expect(anaPage.getByRole("button", { name: /Ask to|Leave this session/ })).toHaveCount(0);
     expect(playersOf(await lineupOf(court(page, 1)))).not.toContain("Ana Bell");
 
-    // Only the Organizer can bring her back: adding her by name restores her.
-    await page.getByRole("textbox", { name: "Player name" }).fill("Ana Bell");
-    await page.getByRole("button", { name: "Add player" }).click();
+    // Only the Organizer can bring her back: picking her from the Club restores her, with her
+    // Account copied again, so she gets her own controls back.
+    await page.getByRole("button", { name: "Add players" }).click();
+    const sheet = page.getByRole("dialog", { name: "Add players" });
+    const ana = sheet.getByRole("checkbox", { name: "Ana Bell" });
+    await expect(ana).toHaveAccessibleDescription("Left earlier");
+    await ana.check();
+    await sheet.getByRole("button", { name: "Add 1 player" }).click();
     await expect(hostRow(page, "Ana Bell")).toBeVisible();
     await expect(anaPage.getByRole("button", { name: "Ask to sit out" })).toBeVisible({
       timeout: 25_000,

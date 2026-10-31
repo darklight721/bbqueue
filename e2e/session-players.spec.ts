@@ -1,6 +1,12 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import type { Session } from "../src/domain/types.ts";
-import { makeClub, makeMidMatchSession, readStoredData, seedStorage } from "./fixtures.ts";
+import {
+  makeClub,
+  makeClubPlayer,
+  makeMidMatchSession,
+  readStoredData,
+  seedStorage,
+} from "./fixtures.ts";
 import {
   court,
   lineupOf,
@@ -58,21 +64,44 @@ const rowNames = (page: Page) =>
 const notice = (page: Page, text: string | RegExp) =>
   page.getByRole("status").filter({ hasText: text });
 
-async function removePlayer(page: Page, name: string) {
+async function openMenu(page: Page, name: string) {
   await playersRegion(page)
-    .getByRole("button", { name: `Remove ${name}`, exact: true })
+    .getByRole("button", { name: `More for ${name}`, exact: true })
     .click();
+  const menu = page.getByRole("dialog", { name, exact: true });
+  await expect(menu).toBeVisible();
+  return menu;
+}
+
+async function removePlayer(page: Page, name: string) {
+  const menu = await openMenu(page, name);
+  await menu.getByRole("button", { name: "Remove from session" }).click();
   await page
     .getByRole("dialog", { name: `Remove ${name} from this session?` })
     .getByRole("button", { name: "Remove", exact: true })
     .click();
 }
 
+async function openAddPlayers(page: Page) {
+  await playersRegion(page).getByRole("button", { name: "Add players" }).click();
+  const sheet = page.getByRole("dialog", { name: "Add players" });
+  await expect(sheet).toBeVisible();
+  return sheet;
+}
+
+/** Line up a Guest in the open Add players sheet. */
+async function lineUpGuest(sheet: Locator, name: string, options: { saveToClub?: boolean } = {}) {
+  await sheet.getByRole("textbox", { name: "Player name" }).fill(name);
+  if (options.saveToClub) await sheet.getByRole("checkbox", { name: "Save to club" }).check();
+  await sheet.getByRole("button", { name: "Add guest" }).click();
+}
+
+/** Add one Guest through the Add players sheet. */
 async function addPlayer(page: Page, name: string, options: { saveToClub?: boolean } = {}) {
-  const region = playersRegion(page);
-  await region.getByRole("textbox", { name: "Player name" }).fill(name);
-  if (options.saveToClub) await region.getByRole("checkbox", { name: "Save to club" }).check();
-  await region.getByRole("button", { name: "Add player" }).click();
+  const sheet = await openAddPlayers(page);
+  await lineUpGuest(sheet, name, options);
+  await sheet.getByRole("button", { name: "Add 1 player" }).click();
+  await expect(sheet).toBeHidden();
 }
 
 test.describe("Players list", () => {
@@ -157,33 +186,27 @@ test.describe("Sit out / Back in", () => {
 });
 
 test.describe("Remove player", () => {
-  test("is blocked while on court", async ({ page }) => {
+  test("is blocked while on court, and the menu says why", async ({ page }) => {
     await openSeeded(page);
-    const remove = playersRegion(page).getByRole("button", { name: "Remove Ben" });
+    const menu = await openMenu(page, "Ben");
+    const remove = menu.getByRole("button", { name: "Remove from session" });
     await expect(remove).toHaveAttribute("aria-disabled", "true");
+    await expect(menu.getByText("On court. End or remove their match first.")).toBeVisible();
 
-    // dispatchEvent: see the pointer-events note on the real-tap test below.
+    // dispatchEvent: Playwright won't click an aria-disabled button; a real tap still reaches it.
     await remove.dispatchEvent("click");
-    await expect(page.getByRole("dialog")).toHaveCount(0);
-    await expect(notice(page, "End or remove their match first.")).toBeVisible();
+    await expect(page.getByRole("dialog", { name: /^Remove Ben/ })).toHaveCount(0);
+    await menu.getByRole("button", { name: "Close" }).click();
+    await expect(menu).toBeHidden();
     await expect(row(page, "Ben")).toBeVisible();
     expect((await storedSession(page)).players.find((p) => p.name === "Ben")!.removed).toBe(false);
   });
 
-  // daisyUI sets pointer-events: none on `.btn[aria-disabled="true"]`; the blocked Remove button
-  // re-enables pointer events so a real tap still explains why it's blocked.
-  test("tapping the blocked Remove button explains why", async ({ page }) => {
-    await openSeeded(page);
-    const remove = playersRegion(page).getByRole("button", { name: "Remove Ben" });
-    await remove.scrollIntoViewIfNeeded();
-    const box = (await remove.boundingBox())!;
-    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-    await expect(notice(page, "End or remove their match first.")).toBeVisible({ timeout: 2000 });
-  });
-
   test("a free player: Cancel keeps them; Remove takes them out", async ({ page }) => {
     await openSeeded(page);
-    await playersRegion(page).getByRole("button", { name: "Remove Ivy" }).click();
+    const menu = await openMenu(page, "Ivy");
+    await menu.getByRole("button", { name: "Remove from session" }).click();
+    await expect(menu).toBeHidden();
     const dialog = page.getByRole("dialog", { name: "Remove Ivy from this session?" });
     await expect(dialog).toBeVisible();
     await dialog.getByRole("button", { name: "Cancel" }).click();
@@ -212,23 +235,30 @@ test.describe("Remove player", () => {
   });
 });
 
-test.describe("Add player", () => {
-  test("appears in the list, and gets picked for a Court that was waiting for players", async ({
+test.describe("Add players", () => {
+  test("Guests appear in the list, and get picked for a Court that was waiting for players", async ({
     page,
   }) => {
     await startSession(page);
     await page.getByRole("button", { name: "Add court" }).click();
     await expect(court(page, 3).getByText("Waiting for players")).toBeVisible();
 
-    const added = ["Kim", "Lou", "Max", "Ned"];
     await addPlayer(page, "Kim");
     await expect(row(page, "Kim")).toBeVisible();
     await expect(row(page, "Kim").getByText("Free", { exact: true })).toBeVisible();
     await expect(row(page, "Kim").getByText("0 played")).toBeVisible();
     await expect(playersRegion(page).getByText("9 players", { exact: true })).toBeVisible();
-    await expect(playersRegion(page).getByRole("textbox", { name: "Player name" })).toHaveValue("");
 
-    for (const name of added.slice(1)) await addPlayer(page, name);
+    // Several Guests at once: nobody joins until the sheet's Add button.
+    const added = ["Kim", "Lou", "Max", "Ned"];
+    const sheet = await openAddPlayers(page);
+    for (const name of added.slice(1)) await lineUpGuest(sheet, name);
+    await expect(
+      sheet.getByRole("list", { name: "Guests to add" }).getByRole("listitem"),
+    ).toHaveCount(3);
+    await expect(row(page, "Lou")).toHaveCount(0);
+    await sheet.getByRole("button", { name: "Add 3 players" }).click();
+    await expect(sheet).toBeHidden();
 
     await expect(court(page, 3).getByText("Lineup", { exact: true })).toBeVisible();
     expect(playersOf(await lineupOf(court(page, 3)))).toEqual(added);
@@ -245,62 +275,140 @@ test.describe("Add player", () => {
 
   test("duplicate names are rejected; skill level is kept", async ({ page }) => {
     await openSeeded(page);
-    const region = playersRegion(page);
-    await region.getByRole("textbox", { name: "Player name" }).fill("kim");
-    await region.getByRole("combobox", { name: "Skill level" }).selectOption({ label: "Advanced" });
-    await region.getByRole("button", { name: "Add player" }).click();
+    let sheet = await openAddPlayers(page);
+    await sheet.getByRole("textbox", { name: "Player name" }).fill("kim");
+    await sheet.getByRole("combobox", { name: "Skill level" }).selectOption({ label: "Advanced" });
+    await sheet.getByRole("button", { name: "Add guest" }).click();
+    await sheet.getByRole("button", { name: "Add 1 player" }).click();
     await expect(row(page, "kim")).toBeVisible();
 
-    await region.getByRole("textbox", { name: "Player name" }).fill("KIM");
-    await region.getByRole("button", { name: "Add player" }).click();
-    await expect(region.getByText("Name already used")).toBeVisible();
+    sheet = await openAddPlayers(page);
+    await sheet.getByRole("textbox", { name: "Player name" }).fill("KIM");
+    await sheet.getByRole("button", { name: "Add guest" }).click();
+    await expect(sheet.getByText("Name already used")).toBeVisible();
 
     const stored = await storedSession(page);
     expect(stored.players.filter((p) => p.name.toLowerCase() === "kim")).toHaveLength(1);
     expect(stored.players.find((p) => p.name === "kim")!.skill).toBe("advanced");
   });
 
-  test("Enter in the name field adds the player and leaves the field empty and focused; duplicates are rejected", async ({
+  test("Enter in the name field lines up the Guest and leaves the field empty and focused; duplicates are rejected", async ({
     page,
   }) => {
     await openSeeded(page);
-    const field = playersRegion(page).getByRole("textbox", { name: "Player name" });
+    const sheet = await openAddPlayers(page);
+    const field = sheet.getByRole("textbox", { name: "Player name" });
     await field.fill("Kim");
     await field.press("Enter");
-    await expect(row(page, "Kim")).toBeVisible();
-    await expect(playersRegion(page).getByText("11 players", { exact: true })).toBeVisible();
+    await expect(sheet.getByText("Kim", { exact: true })).toBeVisible();
     await expect(field).toHaveValue("");
     await expect(field).toBeFocused();
 
     // The next player can be typed straight away.
     await field.pressSequentially("Lou");
     await field.press("Enter");
-    await expect(row(page, "Lou")).toBeVisible();
+    await expect(sheet.getByText("Lou", { exact: true })).toBeVisible();
     await expect(field).toBeFocused();
 
     await field.fill("KIM");
     await field.press("Enter");
-    await expect(playersRegion(page).getByText("Name already used")).toBeVisible();
+    await expect(sheet.getByText("Name already used")).toBeVisible();
     await expect(field).toBeFocused();
+
+    await sheet.getByRole("button", { name: "Add 2 players" }).click();
+    await expect(row(page, "Kim")).toBeVisible();
+    await expect(row(page, "Lou")).toBeVisible();
     const stored = await storedSession(page);
     expect(stored.players.filter((p) => p.name.toLowerCase() === "kim")).toHaveLength(1);
     expect(stored.players).toHaveLength(12);
   });
 
-  test("Save to club adds the player to the Club; unchecked does not", async ({ page }) => {
+  test("Club players not in the Session join from the sheet with a Guest", async ({ page }) => {
+    const club = makeClub({
+      name: "Thursday Club",
+      players: [
+        makeClubPlayer({ name: "Carla", skill: "advanced" }),
+        makeClubPlayer({ name: "Eli", skill: "beginner" }),
+        makeClubPlayer({ name: "Mo", skill: "intermediate" }),
+      ],
+    });
+    await seedStorage(page, { clubs: [club] });
+    await openSeeded(page, buildSession({ clubId: club.id, clubName: club.name }));
+
+    const sheet = await openAddPlayers(page);
+    const roster = sheet.getByRole("list", { name: "Players in Thursday Club" });
+    await expect(roster.getByRole("checkbox")).toHaveCount(3);
+    await roster.getByRole("checkbox", { name: "Carla" }).check();
+    await roster.getByRole("checkbox", { name: "Eli" }).check();
+
+    // A Guest can't take the name of a Club player who could join.
+    await lineUpGuest(sheet, "mo");
+    await expect(sheet.getByText("Mo is in Thursday Club. Pick them above.")).toBeVisible();
+    await lineUpGuest(sheet, "Ken");
+    await sheet.getByRole("button", { name: "Add 3 players" }).click();
+    await expect(sheet).toBeHidden();
+
+    for (const name of ["Carla", "Eli", "Ken"]) await expect(row(page, name)).toBeVisible();
+    const stored = await storedSession(page);
+    expect(stored.players.find((p) => p.name === "Carla")).toMatchObject({
+      skill: "advanced",
+      clubPlayerId: club.players[0]!.id,
+    });
+    expect(stored.players.find((p) => p.name === "Eli")).toMatchObject({
+      skill: "beginner",
+      clubPlayerId: club.players[1]!.id,
+    });
+    expect(stored.players.find((p) => p.name === "Ken")!.clubPlayerId).toBeNull();
+
+    // Only Mo is left to pick.
+    const again = await openAddPlayers(page);
+    await expect(
+      again.getByRole("list", { name: "Players in Thursday Club" }).getByRole("checkbox"),
+    ).toHaveCount(1);
+  });
+
+  test("a Club player who left shows Left earlier and comes back with their history", async ({
+    page,
+  }) => {
+    const club = makeClub({ name: "Thursday Club", players: [makeClubPlayer({ name: "Ivy" })] });
+    const session = buildSession({ clubId: club.id, clubName: club.name });
+    const ivy = session.players.find((player) => player.name === "Ivy")!;
+    ivy.clubPlayerId = club.players[0]!.id;
+    await seedStorage(page, { clubs: [club] });
+    await openSeeded(page, session);
+
+    await removePlayer(page, "Ivy");
+    await expect(row(page, "Ivy")).toHaveCount(0);
+
+    const sheet = await openAddPlayers(page);
+    const tile = sheet.getByRole("checkbox", { name: "Ivy" });
+    await expect(tile).toHaveAccessibleDescription("Left earlier");
+    await tile.check();
+    await sheet.getByRole("button", { name: "Add 1 player" }).click();
+    await expect(notice(page, "Welcome back, Ivy")).toBeVisible();
+    await expect(row(page, "Ivy")).toBeVisible();
+
+    const stored = await storedSession(page);
+    expect(stored.players.filter((player) => player.name === "Ivy")).toEqual([
+      expect.objectContaining({ id: ivy.id, removed: false, clubPlayerId: club.players[0]!.id }),
+    ]);
+  });
+
+  test("Save to club adds the Guest to the Club; unchecked does not", async ({ page }) => {
     const club = makeClub({ name: "Thursday Club", players: [] });
     await seedStorage(page, { clubs: [club] });
     await openSeeded(page, buildSession({ clubId: club.id }));
 
-    const saveToClub = playersRegion(page).getByRole("checkbox", { name: "Save to club" });
-    await expect(saveToClub).not.toBeChecked();
+    const sheet = await openAddPlayers(page);
+    await expect(sheet.getByText("Thursday Club has no players yet.")).toBeVisible();
+    await expect(sheet.getByRole("checkbox", { name: "Save to club" })).not.toBeChecked();
 
-    await playersRegion(page).getByRole("combobox", { name: "Skill level" }).selectOption({
-      label: "Advanced",
-    });
-    await addPlayer(page, "Saved Sam", { saveToClub: true });
+    await sheet.getByRole("combobox", { name: "Skill level" }).selectOption({ label: "Advanced" });
+    await lineUpGuest(sheet, "Saved Sam", { saveToClub: true });
+    await expect(sheet.getByText("Saves to club")).toBeVisible();
+    await lineUpGuest(sheet, "Temp Tina");
+    await sheet.getByRole("button", { name: "Add 2 players" }).click();
     await expect(row(page, "Saved Sam")).toBeVisible();
-    await addPlayer(page, "Temp Tina");
     await expect(row(page, "Temp Tina")).toBeVisible();
 
     const clubs = (await readStoredData<(typeof club)[]>(page, "clubs"))!;
@@ -314,12 +422,17 @@ test.describe("Add player", () => {
     expect(session.players.find((p) => p.name === "Temp Tina")!.clubPlayerId).toBeNull();
   });
 
-  test("without a Club there is no Save to club checkbox", async ({ page }) => {
+  test("without a Club there is no Club part and no Save to club checkbox", async ({ page }) => {
     await openSeeded(page);
-    await expect(playersRegion(page).getByRole("textbox", { name: "Player name" })).toBeVisible();
-    await expect(playersRegion(page).getByRole("checkbox", { name: "Save to club" })).toHaveCount(
-      0,
-    );
+    const sheet = await openAddPlayers(page);
+    await expect(sheet.getByRole("textbox", { name: "Player name" })).toBeVisible();
+    await expect(sheet.getByRole("heading", { name: /^From / })).toHaveCount(0);
+    await expect(sheet.getByRole("checkbox", { name: "Save to club" })).toHaveCount(0);
+
+    // Nothing to add yet: the button says so instead of closing.
+    await sheet.getByRole("button", { name: "Add players" }).click();
+    await expect(sheet.getByText("Add a guest first.")).toBeVisible();
+    await expect(sheet).toBeVisible();
   });
 
   test("re-adding a removed player's name restores them with their history", async ({ page }) => {
@@ -345,6 +458,76 @@ test.describe("Add player", () => {
     expect(bens).toHaveLength(1);
     expect(bens[0]).toMatchObject({ id: benId, removed: false, sittingOut: false });
     expect(stored.players).toHaveLength(10);
+  });
+});
+
+test.describe("Skill level", () => {
+  test("Save changes the Session player and their badge; Close changes nothing; the Club stays as it was", async ({
+    page,
+  }) => {
+    const club = makeClub({ name: "Thursday Club", players: [makeClubPlayer({ name: "Ivy" })] });
+    const session = buildSession({ clubId: club.id, clubName: club.name });
+    session.players.find((player) => player.name === "Ivy")!.clubPlayerId = club.players[0]!.id;
+    await seedStorage(page, { clubs: [club] });
+    await openSeeded(page, session);
+    const lineupBefore = await lineupOf(court(page, 2));
+
+    let menu = await openMenu(page, "Ivy");
+    await expect(menu.getByRole("radio", { name: "Intermediate" })).toBeChecked();
+    await menu.getByText("Beginner", { exact: true }).click();
+    await menu.getByRole("button", { name: "Close" }).click();
+    await expect(menu).toBeHidden();
+    expect((await storedSession(page)).players.find((p) => p.name === "Ivy")!.skill).toBe(
+      "intermediate",
+    );
+
+    menu = await openMenu(page, "Ivy");
+    await menu.getByText("Advanced", { exact: true }).click();
+    await expect(
+      menu.getByRole("checkbox", { name: "Also update in Thursday Club" }),
+    ).not.toBeChecked();
+    await menu.getByRole("button", { name: "Save" }).click();
+    await expect(menu).toBeHidden();
+    await expect(row(page, "Ivy").getByText("ADV", { exact: true })).toBeVisible();
+
+    // Lineups already shown stay as they are.
+    expect(await lineupOf(court(page, 2))).toEqual(lineupBefore);
+    const stored = await storedSession(page);
+    expect(stored.players.find((p) => p.name === "Ivy")!.skill).toBe("advanced");
+    const clubs = (await readStoredData<(typeof club)[]>(page, "clubs"))!;
+    expect(clubs[0]!.players[0]!.skill).toBe("intermediate");
+
+    await page.reload();
+    await expect(row(page, "Ivy").getByText("ADV", { exact: true })).toBeVisible();
+  });
+
+  test("Also update in the Club changes the Club player too; a Guest has no such choice", async ({
+    page,
+  }) => {
+    const club = makeClub({ name: "Thursday Club", players: [makeClubPlayer({ name: "Ivy" })] });
+    const session = buildSession({ clubId: club.id, clubName: club.name });
+    session.players.find((player) => player.name === "Ivy")!.clubPlayerId = club.players[0]!.id;
+    await seedStorage(page, { clubs: [club] });
+    await openSeeded(page, session);
+
+    const guest = await openMenu(page, "Jon");
+    await expect(guest.getByRole("checkbox", { name: /^Also update in / })).toHaveCount(0);
+    await guest.getByRole("button", { name: "Close" }).click();
+
+    const menu = await openMenu(page, "Ivy");
+    await menu.getByText("Beginner", { exact: true }).click();
+    await menu.getByRole("checkbox", { name: "Also update in Thursday Club" }).check();
+    await menu.getByRole("button", { name: "Save" }).click();
+    await expect(menu).toBeHidden();
+
+    expect((await storedSession(page)).players.find((p) => p.name === "Ivy")!.skill).toBe(
+      "beginner",
+    );
+    await expect
+      .poll(
+        async () => (await readStoredData<(typeof club)[]>(page, "clubs"))![0]!.players[0]!.skill,
+      )
+      .toBe("beginner");
   });
 });
 
@@ -423,13 +606,13 @@ test.describe("Section jump bar", () => {
   test("pop-up messages sit above the bar", async ({ page }) => {
     await openSeeded(page);
     const nav = page.getByRole("navigation", { name: "Sections" });
-    // Removing a player on court is blocked with a message (the button is aria-disabled).
-    await row(page, "Ben")
-      .getByRole("button", { name: "Remove Ben", exact: true })
-      .dispatchEvent("click");
-    const message = notice(page, "End or remove their match first.");
+    // Bringing a removed player back says "Welcome back".
+    await removePlayer(page, "Ivy");
+    await expect(row(page, "Ivy")).toHaveCount(0);
+    await addPlayer(page, "Ivy");
+    const message = notice(page, "Welcome back, Ivy");
     await expect(message).toBeVisible();
-    const text = (await message.getByText("End or remove their match first.").boundingBox())!;
+    const text = (await message.getByText("Welcome back, Ivy").boundingBox())!;
     const bar = (await nav.boundingBox())!;
     expect(text.y + text.height).toBeLessThanOrEqual(bar.y);
   });
@@ -462,8 +645,8 @@ test.describe("Section jump bar", () => {
       if (size.viewport) await page.setViewportSize(size.viewport);
       await openSeeded(page);
       const nav = page.getByRole("navigation", { name: "Sections" });
-      const field = playersRegion(page).getByRole("textbox", { name: "Player name" });
       await expect(nav).toBeVisible();
+      const field = (await openAddPlayers(page)).getByRole("textbox", { name: "Player name" });
 
       await field.focus();
       await expect(nav).toBeHidden();

@@ -21,6 +21,8 @@ export interface AddPlayerFormProps {
   /** Text on the add button. */
   addLabel?: string;
   autoFocus?: boolean;
+  /** One more check on a name that is otherwise fine: a message to show, or null to allow it. */
+  checkName?: (name: string) => string | null;
 }
 
 /**
@@ -33,6 +35,7 @@ export function AddPlayerForm({
   showSaveToClub = false,
   addLabel = "Add",
   autoFocus = false,
+  checkName,
 }: AddPlayerFormProps) {
   const [name, setName] = useState("");
   const [skill, setSkill] = useState<SkillLevel>(DEFAULT_SKILL);
@@ -43,10 +46,16 @@ export function AddPlayerForm({
   const errorId = useId();
   const saveId = useId();
 
-  const error = attempted ? validateName(name, existingNames) : null;
+  const error = attempted ? problemWith(name) : null;
+
+  function problemWith(value: string): string | null {
+    const code = validateName(value, existingNames);
+    if (code) return NAME_ERROR_MESSAGE[code];
+    return checkName?.(normalizeName(value)) ?? null;
+  }
 
   function submit() {
-    const problem = validateName(name, existingNames);
+    const problem = problemWith(name);
     if (problem) {
       setAttempted(true);
       nameRef.current?.focus();
@@ -93,7 +102,7 @@ export function AddPlayerForm({
           />
           {error ? (
             <p id={errorId} className="pl-1 text-sm font-semibold text-error">
-              {NAME_ERROR_MESSAGE[error]}
+              {error}
             </p>
           ) : null}
         </div>

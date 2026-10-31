@@ -3,6 +3,7 @@ import type { Session } from "../types.ts";
 import {
   addCourt,
   addPlayer,
+  addPlayers,
   createSession,
   endMatch,
   endSession,
@@ -15,6 +16,7 @@ import {
   removePlayer,
   setPointSystem,
   setSittingOut,
+  setSkill,
   startMatch,
   type CreateSessionInput,
 } from "./operations.ts";
@@ -321,6 +323,77 @@ describe("players", () => {
     const id = s.players.find((p) => p.name === "Player 1")!.id;
     const removed = unwrap(removePlayer(s, id, ctx));
     expect(addPlayer(removed, { name: "Player 1", skill: "advanced" }, ctx).ok).toBe(true);
+  });
+
+  it("adds several players in one change, all or nothing", () => {
+    const { ctx, session: s } = created(3, 2);
+    const next = unwrap(
+      addPlayers(
+        s,
+        [
+          { name: "Carla", skill: "advanced", clubPlayerId: "cp-carla", accountId: "carla-1x2y" },
+          { name: "Eli", skill: "beginner", clubPlayerId: "cp-eli" },
+          { name: "Ken", skill: "intermediate" },
+        ],
+        ctx,
+      ),
+    );
+    expect(next.players.slice(-3)).toEqual([
+      expect.objectContaining({ name: "Carla", clubPlayerId: "cp-carla", accountId: "carla-1x2y" }),
+      expect.objectContaining({ name: "Eli", clubPlayerId: "cp-eli", skill: "beginner" }),
+      expect.objectContaining({ name: "Ken", clubPlayerId: null }),
+    ]);
+    expect(next.players.at(-1)).not.toHaveProperty("accountId");
+    expect(next.courts[0]!.lineup).not.toBeNull();
+
+    expect(
+      addPlayers(
+        s,
+        [
+          { name: "Zed", skill: "advanced" },
+          { name: "zed", skill: "beginner" },
+        ],
+        ctx,
+      ),
+    ).toEqual({ ok: false, reason: "duplicate-name" });
+  });
+
+  it("brings a removed Club player back through their Club player link, as they are now", () => {
+    const { ctx, session: s } = created(6, 1);
+    const joined = unwrap(
+      addPlayer(
+        s,
+        { name: "Fay", skill: "beginner", clubPlayerId: "cp-fay", accountId: "fay-1a" },
+        ctx,
+      ),
+    );
+    const fayId = joined.players.at(-1)!.id;
+    const removed = unwrap(removePlayer(joined, fayId, ctx));
+    // Renamed and unlinked on the Club roster since she left.
+    const back = unwrap(
+      addPlayers(removed, [{ name: "Fay B", skill: "advanced", clubPlayerId: "cp-fay" }], ctx),
+    );
+    const fay = back.players.find((p) => p.id === fayId)!;
+    expect(fay).toMatchObject({ name: "Fay B", skill: "advanced", removed: false });
+    expect(fay).not.toHaveProperty("accountId");
+    expect(back.players).toHaveLength(joined.players.length);
+  });
+
+  it("changes a Skill level without touching Lineups or Active matches", () => {
+    const { ctx, session: s } = created(12, 2);
+    const playing = unwrap(startMatch(s, s.courts[0]!.id, ctx));
+    const onCourt = playing.matches[0]!.teams[0][0];
+    const inLineup = lineupPlayerIds(playing.courts[1]!.lineup)[0]!;
+    let next = unwrap(setSkill(playing, onCourt, "advanced", ctx));
+    next = unwrap(setSkill(next, inLineup, "beginner", ctx));
+    expect(next.players.find((p) => p.id === onCourt)!.skill).toBe("advanced");
+    expect(next.players.find((p) => p.id === inLineup)!.skill).toBe("beginner");
+    expect(next.courts).toEqual(playing.courts);
+    expect(next.matches).toEqual(playing.matches);
+    expect(setSkill(next, "nope", "advanced", ctx)).toEqual({
+      ok: false,
+      reason: "player-not-found",
+    });
   });
 
   it("rejects removing a player in an Active match", () => {

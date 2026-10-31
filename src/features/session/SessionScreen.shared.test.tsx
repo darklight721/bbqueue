@@ -133,6 +133,7 @@ describe("The Session screen for somebody who isn't the Session host", () => {
       /Move to court|Court \d · /,
       /Sit out|Back in/,
       /^Remove /,
+      /^More for /,
       /Add player/,
       /End session/,
       /change point system/,

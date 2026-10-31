@@ -1,19 +1,15 @@
 import { useId, useMemo, useState } from "react";
-import { BackendError } from "../../../backend/backend.ts";
-import { saveClubs } from "../../../backend/clubs.ts";
-import { AddPlayerForm, type NewPlayer } from "../../../components/AddPlayerForm.tsx";
 import { ConfirmDialog } from "../../../components/ConfirmDialog.tsx";
-import { ChevronDownIcon, CloseIcon } from "../../../components/icons.tsx";
-import { addPlayer, removePlayer, setSittingOut } from "../../../domain/engine/index.ts";
-import { newId } from "../../../domain/ids.ts";
-import type { ClubPlayer, SessionPlayer } from "../../../domain/types.ts";
-import { namesEqual, normalizeName } from "../../../domain/validation.ts";
+import { ChevronDownIcon, MenuDotsIcon, PlusIcon } from "../../../components/icons.tsx";
+import { removePlayer, setSittingOut } from "../../../domain/engine/index.ts";
+import type { SessionPlayer } from "../../../domain/types.ts";
 import { accountIdsEqual } from "../../../domain/accountId.ts";
-import { getClubs, useAccount } from "../../../storage/store.ts";
+import { useAccount } from "../../../storage/store.ts";
 import { useSessionActions, useSessionView } from "../context.ts";
 import { SessionPlayerChip } from "../PlayerViews.tsx";
+import { AddPlayersSheet } from "./AddPlayersSheet.tsx";
 import { OwnRequestControls } from "./OwnRequestControls.tsx";
-import { messageForReason } from "../reasons.ts";
+import { PlayerMenuSheet } from "./PlayerMenuSheet.tsx";
 import { SectionHeader } from "../SectionHeader.tsx";
 import {
   activePlayersByName,
@@ -29,7 +25,8 @@ import { STATUS_TONE_CLASS } from "./statusTone.ts";
 const PLAYERS_HEADING_ID = "session-players";
 
 /**
- * Every Session player: status, Sit out / Back in, Remove, and adding late arrivals.
+ * Every Session player: status, Sit out / Back in, a menu (Skill level, Remove), and adding late
+ * arrivals (Club players and Guests).
  * Open by default; collapsed shows only the header. Pass `open` / `onOpenChange` to control it
  * from outside (the jump bar opens it before scrolling to it).
  */
@@ -60,6 +57,10 @@ export function PlayersSection({
     ? [...sorted.filter((player) => player.id === mineId), ...sorted.filter((p) => p.id !== mineId)]
     : sorted;
   const [removing, setRemoving] = useState<SessionPlayer | null>(null);
+  const [adding, setAdding] = useState(false);
+  // By id, so the menu shows the player as they are now.
+  const [menuFor, setMenuFor] = useState<string | null>(null);
+  const menuPlayer = menuFor ? (active.find((player) => player.id === menuFor) ?? null) : null;
 
   return (
     <section aria-labelledby={PLAYERS_HEADING_ID} className="flex flex-col gap-4">
@@ -86,7 +87,16 @@ export function PlayersSection({
 
       {open ? (
         <div id={bodyId} className="flex flex-col gap-4">
-          {readOnly ? null : <AddSessionPlayer />}
+          {readOnly ? null : (
+            <button
+              type="button"
+              className="btn w-full border-base-300 bg-base-100 btn-outline"
+              onClick={() => setAdding(true)}
+            >
+              <PlusIcon className="size-5" />
+              Add players
+            </button>
+          )}
           <LeftNotice />
 
           {players.length > 0 ? (
@@ -103,7 +113,7 @@ export function PlayersSection({
                 className="overflow-hidden rounded-box border-[1.5px] border-base-300 bg-base-100 md:grid md:grid-cols-2 md:gap-x-0"
               >
                 {players.map((player) => (
-                  <PlayerRow key={player.id} player={player} onRemove={() => setRemoving(player)} />
+                  <PlayerRow key={player.id} player={player} onMenu={() => setMenuFor(player.id)} />
                 ))}
               </ul>
             </div>
@@ -114,6 +124,16 @@ export function PlayersSection({
           )}
         </div>
       ) : null}
+
+      <AddPlayersSheet open={adding} onClose={() => setAdding(false)} />
+      <PlayerMenuSheet
+        player={menuPlayer}
+        onClose={() => setMenuFor(null)}
+        onRemove={(player) => {
+          setMenuFor(null);
+          setRemoving(player);
+        }}
+      />
 
       <ConfirmDialog
         open={removing !== null}
@@ -207,7 +227,7 @@ function isOwnWhileWatching(
   );
 }
 
-function PlayerRow({ player, onRemove }: { player: SessionPlayer; onRemove: () => void }) {
+function PlayerRow({ player, onMenu }: { player: SessionPlayer; onMenu: () => void }) {
   const view = useSessionView();
   const { stats, readOnly } = view;
   const actions = useSessionActions();
@@ -265,85 +285,15 @@ function PlayerRow({ player, onRemove }: { player: SessionPlayer; onRemove: () =
           </button>
           <button
             type="button"
-            className={`btn btn-ghost btn-square shrink-0 ${
-              onCourt
-                ? "text-base-content/30 pointer-events-auto!"
-                : "text-base-content/70 hover:text-error"
-            }`}
-            aria-label={`Remove ${player.name}`}
-            aria-disabled={onCourt ? true : undefined}
-            title={onCourt ? messageForReason("player-in-active-match") : undefined}
-            onClick={() => {
-              if (onCourt) actions.notify(messageForReason("player-in-active-match"));
-              else onRemove();
-            }}
+            className="btn btn-square shrink-0 btn-ghost text-base-content/70"
+            aria-label={`More for ${player.name}`}
+            aria-haspopup="dialog"
+            onClick={onMenu}
           >
-            <CloseIcon className="size-6" />
+            <MenuDotsIcon className="size-6" />
           </button>
         </>
       )}
     </li>
-  );
-}
-
-function AddSessionPlayer() {
-  const { session } = useSessionView();
-  const actions = useSessionActions();
-  const activeNames = useMemo(
-    () => session.players.filter((player) => !player.removed).map((player) => player.name),
-    [session.players],
-  );
-
-  function add({ name, skill, saveToClub }: NewPlayer) {
-    const returning = session.players.some(
-      (player) => player.removed && namesEqual(player.name, name),
-    );
-
-    // Work out the Club roster change first, but only save it once the player is in.
-    const clubs = getClubs();
-    const club = saveToClub && session.clubId ? clubs.find((c) => c.id === session.clubId) : null;
-    let clubPlayerId: string | null = null;
-    let added: ClubPlayer | null = null;
-    if (club) {
-      const existing = club.players.find((player) => namesEqual(player.name, name));
-      if (existing) clubPlayerId = existing.id;
-      else {
-        added = { id: newId(), name: normalizeName(name), skill };
-        clubPlayerId = added.id;
-      }
-    }
-
-    const ok = actions.run((s, ctx) =>
-      addPlayer(s, { name, skill, clubPlayerId: clubPlayerId ?? undefined }, ctx),
-    );
-    if (!ok) return;
-    if (club && added) {
-      const newPlayer = added;
-      saveClubs(
-        clubs,
-        clubs.map((c) => (c.id === club.id ? { ...c, players: [...c.players, newPlayer] } : c)),
-      ).catch((error: unknown) => {
-        // The player is in the Session; only the Club's roster missed out.
-        console.error("Failed to save the player to the Club", error);
-        const who = normalizeName(name);
-        actions.notify(
-          error instanceof BackendError && error.code === "offline"
-            ? `${who} joined, but wasn't saved to ${club.name}. You're offline.`
-            : `${who} joined, but couldn't be saved to ${club.name}.`,
-        );
-      });
-    }
-    if (returning) actions.notify(`Welcome back, ${normalizeName(name)}`);
-  }
-
-  return (
-    <div className="rounded-box bg-base-200 p-4">
-      <AddPlayerForm
-        existingNames={activeNames}
-        onAdd={add}
-        showSaveToClub={session.clubId !== null}
-        addLabel="Add player"
-      />
-    </div>
   );
 }
