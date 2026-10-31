@@ -114,11 +114,11 @@ function ScoreForm({
       ) : (
         <p className="text-sm text-base-content/60">Winner needs at least {pointSystem} points.</p>
       )}
-      <div className="flex flex-col gap-2 pb-2">
+      <div className="flex flex-col gap-3 pb-2">
         <button type="button" className="btn btn-lg btn-primary w-full" onClick={save}>
           Save
         </button>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 gap-3">
           <button
             type="button"
             className="btn btn-outline border-base-300 px-3"
@@ -126,7 +126,7 @@ function ScoreForm({
           >
             End without score
           </button>
-          <button type="button" className="btn btn-ghost" onClick={onCancel}>
+          <button type="button" className="btn btn-outline border-base-300" onClick={onCancel}>
             Cancel
           </button>
         </div>

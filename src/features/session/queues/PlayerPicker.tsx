@@ -105,7 +105,7 @@ function PickerBody({
         </ul>
       )}
 
-      <button type="button" className="btn btn-ghost mb-2" onClick={onClose}>
+      <button type="button" className="btn mb-2 border-base-300 btn-outline" onClick={onClose}>
         Cancel
       </button>
     </div>

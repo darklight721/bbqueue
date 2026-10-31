@@ -153,14 +153,14 @@ function PlayerMenu({
         <p className="text-sm text-base-content/70">Counts from the next lineup.</p>
       </fieldset>
 
-      <div className="flex flex-col gap-2">
-        <button type="button" className="btn w-full btn-primary" onClick={save}>
+      <div className="flex flex-col gap-3">
+        <button type="button" className="btn w-full btn-lg btn-primary" onClick={save}>
           Save
         </button>
-        <div className="flex gap-2">
+        <div className="grid grid-cols-2 gap-3">
           <button
             type="button"
-            className={`btn flex-1 btn-outline px-3 ${
+            className={`btn btn-outline px-3 ${
               onCourt
                 ? "border-base-300 text-base-content/40 pointer-events-auto!"
                 : "border-error/50 text-error hover:border-error hover:bg-error/10"
@@ -171,9 +171,9 @@ function PlayerMenu({
               if (!onCourt) onRemove();
             }}
           >
-            Remove from session
+            Remove
           </button>
-          <button type="button" className="btn shrink-0 px-5 btn-ghost" onClick={onCancel}>
+          <button type="button" className="btn border-base-300 btn-outline" onClick={onCancel}>
             Cancel
           </button>
         </div>

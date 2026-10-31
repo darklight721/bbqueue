@@ -502,7 +502,7 @@ test.describe("Spare players warning", () => {
       .click();
     await page
       .getByRole("dialog", { name })
-      .getByRole("button", { name: "Remove from session" })
+      .getByRole("button", { name: "Remove", exact: true })
       .click();
     await page
       .getByRole("dialog", { name: `Remove ${name} from this session?` })

@@ -75,7 +75,7 @@ async function openMenu(page: Page, name: string) {
 
 async function removePlayer(page: Page, name: string) {
   const menu = await openMenu(page, name);
-  await menu.getByRole("button", { name: "Remove from session" }).click();
+  await menu.getByRole("button", { name: "Remove", exact: true }).click();
   await page
     .getByRole("dialog", { name: `Remove ${name} from this session?` })
     .getByRole("button", { name: "Remove", exact: true })
@@ -189,7 +189,7 @@ test.describe("Remove player", () => {
   test("is blocked while on court, and the menu says why", async ({ page }) => {
     await openSeeded(page);
     const menu = await openMenu(page, "Ben");
-    const remove = menu.getByRole("button", { name: "Remove from session" });
+    const remove = menu.getByRole("button", { name: "Remove", exact: true });
     await expect(remove).toHaveAttribute("aria-disabled", "true");
     await expect(menu.getByText("On court. End or remove their match first.")).toBeVisible();
 
@@ -205,7 +205,7 @@ test.describe("Remove player", () => {
   test("a free player: Cancel keeps them; Remove takes them out", async ({ page }) => {
     await openSeeded(page);
     const menu = await openMenu(page, "Ivy");
-    await menu.getByRole("button", { name: "Remove from session" }).click();
+    await menu.getByRole("button", { name: "Remove", exact: true }).click();
     await expect(menu).toBeHidden();
     const dialog = page.getByRole("dialog", { name: "Remove Ivy from this session?" });
     await expect(dialog).toBeVisible();

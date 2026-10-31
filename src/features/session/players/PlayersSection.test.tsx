@@ -163,7 +163,7 @@ describe("PlayersSection", () => {
     renderSession(session);
     const player = nameOf(session.matches[0]!.teams[1][1]);
     const menu = await openMenu(player);
-    const remove = menu.getByRole("button", { name: "Remove from session" });
+    const remove = menu.getByRole("button", { name: "Remove" });
     expect(remove).toHaveAttribute("aria-disabled", "true");
     expect(remove).toHaveAccessibleDescription("On court. End or remove their match first.");
 
@@ -174,16 +174,12 @@ describe("PlayersSection", () => {
 
   it("asks before removing a player, from the player's menu", async () => {
     renderSession(makeSession());
-    await userEvent.click(
-      (await openMenu("Gus")).getByRole("button", { name: "Remove from session" }),
-    );
+    await userEvent.click((await openMenu("Gus")).getByRole("button", { name: "Remove" }));
     const dialog = screen.getByRole("dialog", { name: "Remove Gus from this session?" });
     await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     expect(rowNames()).toContain("Gus");
 
-    await userEvent.click(
-      (await openMenu("Gus")).getByRole("button", { name: "Remove from session" }),
-    );
+    await userEvent.click((await openMenu("Gus")).getByRole("button", { name: "Remove" }));
     await userEvent.click(
       within(screen.getByRole("dialog", { name: "Remove Gus from this session?" })).getByRole(
         "button",
@@ -248,9 +244,7 @@ describe("PlayersSection", () => {
   it("restores a removed player when their name is added again", async () => {
     renderSession(makeSession());
     const id = idOf("Hal");
-    await userEvent.click(
-      (await openMenu("Hal")).getByRole("button", { name: "Remove from session" }),
-    );
+    await userEvent.click((await openMenu("Hal")).getByRole("button", { name: "Remove" }));
     await userEvent.click(
       within(screen.getByRole("dialog", { name: "Remove Hal from this session?" })).getByRole(
         "button",
@@ -348,9 +342,7 @@ describe("Club players joining late", () => {
     setLocalClubs([club]);
     renderSession(clubSession());
     const benId = idOf("Ben");
-    await userEvent.click(
-      (await openMenu("Ben")).getByRole("button", { name: "Remove from session" }),
-    );
+    await userEvent.click((await openMenu("Ben")).getByRole("button", { name: "Remove" }));
     await userEvent.click(
       within(screen.getByRole("dialog", { name: "Remove Ben from this session?" })).getByRole(
         "button",

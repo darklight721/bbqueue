@@ -95,17 +95,13 @@ export function RehashBlockedSheet({
         <div
           className={`grid grid-cols-2 gap-3 ${anyMain ? "mt-2 border-t border-base-300 pt-4" : ""}`}
         >
-          <button
-            type="button"
-            className="btn btn-lg font-semibold text-base-content/70 btn-ghost"
-            onClick={onSwapAnyway}
-          >
+          <button type="button" className="btn btn-outline border-base-300" onClick={onSwapAnyway}>
             Swap anyway
           </button>
           <button
             ref={cancelRef}
             type="button"
-            className="btn btn-lg btn-outline border-base-300"
+            className="btn btn-outline border-base-300"
             onClick={onCancel}
           >
             Cancel

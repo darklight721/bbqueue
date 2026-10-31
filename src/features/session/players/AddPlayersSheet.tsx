@@ -184,7 +184,7 @@ function AddPlayersForm({ onDone, onCancel }: { onDone: () => void; onCancel: ()
         </div>
       </Part>
 
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-3">
         {nothingPicked ? (
           <p id={hintId} role="alert" className="text-sm font-semibold text-error">
             {club ? "Pick players or add a guest first." : "Add a guest first."}
@@ -192,13 +192,13 @@ function AddPlayersForm({ onDone, onCancel }: { onDone: () => void; onCancel: ()
         ) : null}
         <button
           type="button"
-          className="btn w-full btn-primary"
+          className="btn w-full btn-lg btn-primary"
           aria-describedby={nothingPicked ? hintId : undefined}
           onClick={add}
         >
           {addPlayersLabel(count)}
         </button>
-        <button type="button" className="btn w-full btn-ghost" onClick={onCancel}>
+        <button type="button" className="btn w-full border-base-300 btn-outline" onClick={onCancel}>
           Cancel
         </button>
       </div>

@@ -47,7 +47,7 @@ export function RehashChoiceSheet({
         <div className="mt-2 border-t border-base-300 pt-4">
           <button
             type="button"
-            className="btn btn-lg w-full btn-outline border-base-300"
+            className="btn w-full btn-outline border-base-300"
             onClick={onCancel}
           >
             Cancel
