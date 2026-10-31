@@ -123,12 +123,15 @@ const storedEnded = async (page: Page) =>
   (await readStoredData<EndedSession[]>(page, "endedSessions")) ?? [];
 
 test.describe("History", () => {
-  test("with no ended matches: empty text and no toggle", async ({ page }) => {
+  test("with no ended matches: collapsed, and Show history shows the empty text", async ({
+    page,
+  }) => {
     await openSeeded(page);
     await expect(page.getByRole("heading", { level: 2, name: "History" })).toBeVisible();
-    await expect(historyRegion(page).getByText("No matches played yet.")).toBeVisible();
     await expect(historyRegion(page).getByText("0 matches")).toBeVisible();
-    await expect(historyRegion(page).getByRole("button")).toHaveCount(0);
+    await expect(historyRegion(page).getByText("No matches played yet.")).toHaveCount(0);
+    await showHistory(page).click();
+    await expect(historyRegion(page).getByText("No matches played yet.")).toBeVisible();
     await expect(historyList(page)).toHaveCount(0);
   });
 

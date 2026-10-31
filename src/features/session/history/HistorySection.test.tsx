@@ -83,12 +83,13 @@ describe("HistorySection", () => {
     resetStoreForTests();
   });
 
-  it("shows an empty state before any match has ended", () => {
+  it("before any match has ended, has the toggle and shows the empty state when opened", async () => {
     renderSession(fresh());
     const history = within(screen.getByRole("region", { name: "History" }));
-    expect(history.getByText("No matches played yet.")).toBeInTheDocument();
     expect(history.getByText("0 matches")).toBeInTheDocument();
-    expect(history.queryByRole("button", { name: "Show history" })).not.toBeInTheDocument();
+    expect(history.queryByText("No matches played yet.")).not.toBeInTheDocument();
+    await userEvent.click(history.getByRole("button", { name: "Show history" }));
+    expect(history.getByText("No matches played yet.")).toBeInTheDocument();
   });
 
   it("is collapsed by default and expands", async () => {

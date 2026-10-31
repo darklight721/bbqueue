@@ -1,4 +1,5 @@
 import { useId, useMemo, useState } from "react";
+import { ChevronDownIcon } from "../../../components/icons.tsx";
 import { MatchList, MatchRow } from "../../../components/MatchRow.tsx";
 import { usesMixedTargets } from "../../../components/matchTargets.ts";
 import { formatDuration } from "../clock.ts";
@@ -8,7 +9,8 @@ import { SectionHeader } from "../SectionHeader.tsx";
 const HEADING_ID = "session-history";
 
 /**
- * Ended matches, newest first. Collapsed by default to keep the screen short.
+ * Ended matches, newest first. Collapsed by default to keep the screen short; collapsed shows
+ * only the header, like the other sections.
  * Pass `open` / `onOpenChange` to control it from outside (the jump bar opens it).
  */
 export function HistorySection({
@@ -45,37 +47,30 @@ export function HistorySection({
         title="History"
         detail={`${count} ${count === 1 ? "match" : "matches"}`}
         action={
-          count > 0 ? (
-            <button
-              type="button"
-              className="btn btn-outline border-base-300"
-              aria-expanded={open}
-              aria-controls={listId}
-              onClick={() => setOpen(!open)}
-            >
-              {open ? "Hide history" : "Show history"}
-              <svg
-                viewBox="0 0 24 24"
-                className={`size-5 transition-transform ${open ? "rotate-180" : ""}`}
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2.25}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M6 9l6 6 6-6" />
-              </svg>
-            </button>
-          ) : null
+          <button
+            type="button"
+            className="btn shrink-0 btn-square border-base-300 btn-outline sm:w-auto sm:px-4"
+            aria-expanded={open}
+            aria-controls={listId}
+            onClick={() => setOpen(!open)}
+          >
+            {/* Phones: just the chevron, like Players. */}
+            <span className="sr-only sm:not-sr-only">{open ? "Hide history" : "Show history"}</span>
+            <ChevronDownIcon
+              className={`size-6 transition-transform sm:size-5 ${open ? "rotate-180" : ""}`}
+            />
+          </button>
         }
       />
 
-      {count === 0 ? (
-        <p className="rounded-box border-[1.5px] border-dashed border-base-300 px-4 py-5 text-center text-base-content/70">
+      {!open ? null : count === 0 ? (
+        <p
+          id={listId}
+          className="rounded-box border-[1.5px] border-dashed border-base-300 px-4 py-5 text-center text-base-content/70"
+        >
           No matches played yet.
         </p>
-      ) : open ? (
+      ) : (
         <MatchList id={listId} label="Match history">
           {ended.map((match) => (
             <MatchRow
@@ -89,7 +84,7 @@ export function HistorySection({
             />
           ))}
         </MatchList>
-      ) : null}
+      )}
     </section>
   );
 }
