@@ -18,7 +18,7 @@ Same behaviour: one long Active session page, buttons scroll to a section (openi
 ### 2. Shape and position
 
 - A capsule (`rounded-full`) that hugs its four buttons, centred horizontally.
-- Floats at the bottom with a gap of about 8px above the bottom safe area (home indicator).
+- Floats at the bottom, dipping about 8px into the bottom safe area so it sits just above the home indicator, like native iOS bottom bars (at least 12px above the edge on screens without one).
 - Never wider than the screen minus the 16px side gutters; below 360px the buttons' side padding shrinks so all four still fit on a 320px phone.
 - Buttons stay 44px tall.
 

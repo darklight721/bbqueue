@@ -10,7 +10,8 @@ export interface JumpTarget {
 /*
  * Bar geometry. Everything below is derived from it, so change them together:
  *   buttons 2.75rem, padding 0.375rem all round, 1px border → ~3.6rem tall,
- *   floating max(0.75rem, bottom safe area + 0.5rem) above the bottom edge
+ *   floating max(0.75rem, bottom safe area - 0.5rem) above the bottom edge: like native iOS
+ *   bottom bars it dips into the safe area, just clearing the home indicator
  */
 
 /** Offset so a section lands below the top bar (the jump bar floats at the bottom). */
@@ -20,10 +21,12 @@ export const SECTION_SCROLL_MARGIN = "scroll-mt-[calc(5rem+env(safe-area-inset-t
  * Space to leave at the end of the page so the floating jump bar never covers the last
  * thing on it (End session). The bar's height plus a little breathing room.
  */
-export const JUMP_BAR_BOTTOM_SPACE = "h-[calc(4.5rem+env(safe-area-inset-bottom))]";
+export const JUMP_BAR_BOTTOM_SPACE =
+  "h-[calc(max(0.75rem,calc(env(safe-area-inset-bottom)_-_0.5rem))+4rem)]";
 
 /** Bottom offset for pop-up messages: above the jump bar. */
-export const NOTICE_BOTTOM = "bottom-[calc(5.25rem+env(safe-area-inset-bottom))]";
+export const NOTICE_BOTTOM =
+  "bottom-[calc(max(0.75rem,calc(env(safe-area-inset-bottom)_-_0.5rem))+4.75rem)]";
 
 /** Input types that bring up the on-screen keyboard. */
 const TYPING_INPUTS = new Set(["text", "search", "email", "tel", "url", "number", "password"]);
@@ -149,7 +152,7 @@ export function SectionJumpBar({
 
   return (
     <div
-      className={`px-safe pointer-events-none fixed inset-x-0 bottom-[max(0.75rem,calc(env(safe-area-inset-bottom)+0.5rem))] z-30 justify-center ${typing ? "hidden" : "flex"}`}
+      className={`px-safe pointer-events-none fixed inset-x-0 bottom-[max(0.75rem,calc(env(safe-area-inset-bottom)_-_0.5rem))] z-30 justify-center ${typing ? "hidden" : "flex"}`}
     >
       <nav
         aria-label="Sections"
