@@ -61,6 +61,7 @@ Same behaviour: one long Active session page, buttons scroll to a section (openi
 - On a phone and on a 1024px screen: jumping to Players lands its heading clear of both the top bar and the floating bar; `aria-current` moves to Players.
 - Scrolled to the bottom, the bar never covers End session.
 - Pop-up messages sit above the bar.
+- Jumping from Courts to History moves the pill straight to History: `aria-current` never passes through the sections scrolled past.
 - On a 1024px screen, focusing a text field (Add player name) hides the bar; blurring it brings it back.
 
 `e2e/session-history-end.spec.ts`, "Jump bar": update its "not hidden under the jump bar" check if it assumes the top position on wider screens.

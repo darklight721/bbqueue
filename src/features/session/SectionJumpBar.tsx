@@ -28,6 +28,12 @@ export const JUMP_BAR_BOTTOM_SPACE =
 export const NOTICE_BOTTOM =
   "bottom-[calc(max(0.75rem,calc(env(safe-area-inset-bottom)_-_0.5rem))+4.75rem)]";
 
+/**
+ * How long the page must stop scrolling before a jump counts as finished. Until then the
+ * pill stays on the tapped section instead of following the sections scrolled past.
+ */
+const JUMP_SETTLE_MS = 150;
+
 /** Input types that bring up the on-screen keyboard. */
 const TYPING_INPUTS = new Set(["text", "search", "email", "tel", "url", "number", "password"]);
 
@@ -108,6 +114,8 @@ export function SectionJumpBar({
   const typing = useTyping();
   const listRef = useRef<HTMLUListElement>(null);
   const pill = usePill(listRef, active, typing);
+  // While a jump is scrolling (until this time), scrolling doesn't change the current section.
+  const holdUntil = useRef(0);
 
   useEffect(() => {
     const last = targets.at(-1);
@@ -124,7 +132,16 @@ export function SectionJumpBar({
       if (first) setActive(first.id);
     };
 
-    window.addEventListener("scroll", update, { passive: true });
+    const held = () => performance.now() < holdUntil.current;
+    const onScroll = () => {
+      if (held()) {
+        holdUntil.current = performance.now() + JUMP_SETTLE_MS;
+        return;
+      }
+      update();
+    };
+
+    window.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("resize", update);
 
     let observer: IntersectionObserver | null = null;
@@ -132,7 +149,7 @@ export function SectionJumpBar({
       observer = new IntersectionObserver(
         (entries) => {
           for (const entry of entries) visible.set(entry.target.id, entry.isIntersecting);
-          update();
+          if (!held()) update();
         },
         // A band in the upper part of the screen decides which section is "current".
         { rootMargin: "-30% 0px -60% 0px" },
@@ -144,7 +161,7 @@ export function SectionJumpBar({
     }
 
     return () => {
-      window.removeEventListener("scroll", update);
+      window.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", update);
       observer?.disconnect();
     };
@@ -180,6 +197,7 @@ export function SectionJumpBar({
                   }`}
                   onClick={() => {
                     setActive(target.id);
+                    holdUntil.current = performance.now() + JUMP_SETTLE_MS;
                     // Open a collapsed section and let it render before measuring the scroll.
                     if (onJump) flushSync(() => onJump(target.id));
                     const element = document.getElementById(target.id);

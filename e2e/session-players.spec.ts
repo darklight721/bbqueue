@@ -598,6 +598,44 @@ test.describe("Section jump bar", () => {
     );
   });
 
+  test("the current-section pill goes straight to the tapped section, not via the ones scrolled past", async ({
+    page,
+  }) => {
+    await openSeeded(page);
+    const nav = page.getByRole("navigation", { name: "Sections" });
+    // Record every button that becomes current while the jump scrolls.
+    await nav.evaluate((element) => {
+      const seen: string[] = [];
+      (window as unknown as { currentSections: string[] }).currentSections = seen;
+      new MutationObserver((records) => {
+        for (const record of records) {
+          const button = record.target as HTMLElement;
+          if (button.getAttribute("aria-current") === "true") seen.push(button.textContent ?? "");
+        }
+      }).observe(element, { subtree: true, attributeFilter: ["aria-current"] });
+    });
+
+    await nav.getByRole("button", { name: "History" }).click();
+    await expect(page.getByRole("heading", { level: 2, name: "History" })).toBeInViewport();
+    // Let the smooth scroll settle.
+    await expect
+      .poll(async () => {
+        const before = await page.evaluate(() => window.scrollY);
+        await page.waitForTimeout(200);
+        return (await page.evaluate(() => window.scrollY)) === before;
+      })
+      .toBe(true);
+
+    const seen = await page.evaluate(
+      () => (window as unknown as { currentSections: string[] }).currentSections,
+    );
+    expect(seen).toEqual(["History"]);
+    await expect(nav.getByRole("button", { name: "History" })).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
+  });
+
   for (const size of JUMP_BAR_SIZES) {
     test(`on ${size.name} it floats at the bottom and never covers End session`, async ({
       page,
