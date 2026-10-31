@@ -5,11 +5,6 @@ import { upNext } from "./upNext.ts";
 import { MIN, T0, lineupSet, match, player, playersNamed, session } from "./test-utils.ts";
 
 const ids = (s: Session, now = T0) => upNext(s, now)!.rows.map((row) => row.playerId);
-const likely = (s: Session, now = T0) =>
-  upNext(s, now)!
-    .rows.filter((row) => row.likelyNext)
-    .map((row) => row.playerId)
-    .sort();
 const reasonOf = (s: Session, id: string, now = T0) =>
   upNext(s, now)!.rows.find((row) => row.playerId === id)!.reason;
 
@@ -38,23 +33,21 @@ describe("upNext", () => {
     s = setLineup(s, "c2", { teams: teams("p5", "p6", "p7", "p8") });
     expect(ids(s).sort()).toEqual(["p10", "p11", "p9"]);
     expect(upNext(s, T0)!.lineup).toBeNull();
-    expect(likely(s)).toEqual([]);
   });
 
-  it("marks the first four as Likely next; level players are in the order they joined", () => {
+  it("shows only the four the app would pick; level players in the order they joined", () => {
     const players = playersNamed(9).map((p, i) => ({ ...p, joinedAt: T0 - (9 - i) * MIN }));
     // p9 joined last, p5 first among the free.
     const s = session({
       players,
       matches: [match({ id: "m1", teams: teams("p1", "p2", "p3", "p4"), startedAt: T0 - MIN })],
     });
-    expect(ids(s)).toEqual(["p5", "p6", "p7", "p8", "p9"]);
-    expect(likely(s)).toEqual(["p5", "p6", "p7", "p8"]);
+    expect(ids(s)).toEqual(["p5", "p6", "p7", "p8"]);
     const lineup = upNext(s, T0)!.lineup!;
     expect([...lineup.teams[0], ...lineup.teams[1]].sort()).toEqual(["p5", "p6", "p7", "p8"]);
   });
 
-  it("puts players on a Streak of 2 last, tagged Resting; Rests in a row at the limit first", () => {
+  it("tags Resting on a Streak of 2, Sat out at the Rests in a row limit, which go first", () => {
     const four = teams("p1", "p2", "p3", "p4");
     const s = session({
       players: playersNamed(6),
@@ -64,12 +57,11 @@ describe("upNext", () => {
       ],
     });
     const order = ids(s);
+    expect(order).toHaveLength(4);
     expect(order.slice(0, 2).sort()).toEqual(["p5", "p6"]);
     expect(reasonOf(s, "p5")).toEqual({ kind: "sat-out", count: 2 });
-    // Two of the resting players fill the four; the other two come last.
-    const rest = order.slice(4);
-    expect(rest).toHaveLength(2);
-    for (const id of rest) expect(reasonOf(s, id)).toEqual({ kind: "resting" });
+    // Only two can rest: the other two of the four are on a Streak of 2.
+    for (const id of order.slice(2)) expect(reasonOf(s, id)).toEqual({ kind: "resting" });
   });
 
   it("tags Played N fewer against the most-played, else the Wait", () => {
@@ -77,10 +69,10 @@ describe("upNext", () => {
       players: playersNamed(6),
       matches: [ended("m1", T0 - 20 * MIN, teams("p1", "p2", "p3", "p4"), ["p5", "p6"])],
     });
-    expect(ids(s).slice(0, 2).sort()).toEqual(["p5", "p6"]);
-    expect(likely(s)).toEqual(expect.arrayContaining(["p5", "p6"]));
+    const order = ids(s);
+    expect(order.slice(0, 2).sort()).toEqual(["p5", "p6"]);
     expect(reasonOf(s, "p5")).toEqual({ kind: "played-fewer", count: 1 });
-    expect(reasonOf(s, "p1")).toEqual({ kind: "waiting", ms: 10 * MIN });
+    expect(reasonOf(s, order[2]!)).toEqual({ kind: "waiting", ms: 10 * MIN });
   });
 
   it("does not count Sitting-out players towards the most-played", () => {
@@ -94,7 +86,7 @@ describe("upNext", () => {
     expect(reasonOf(s, "p5").kind).toBe("waiting");
   });
 
-  it("likely four is what a Court freeing up now would get, when nobody comes off court", () => {
+  it("the four are what a Court freeing up now would get, when nobody comes off court", () => {
     for (let seed = 1; seed <= 20; seed++) {
       const players = playersNamed(14).map((p, i) => ({
         ...p,
@@ -114,7 +106,7 @@ describe("upNext", () => {
         ],
       });
       const filled = fillLineups(s, { now: T0, rng: () => 0 });
-      expect(likely(s)).toEqual(lineupSet(filled, 2));
+      expect(ids(s).sort()).toEqual(lineupSet(filled, 2));
     }
   });
 });

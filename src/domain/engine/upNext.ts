@@ -20,41 +20,38 @@ export type UpNextReason =
 
 export interface UpNextRow {
   playerId: string;
-  /** One of the four the app would pick if a Court freed up now. */
-  likelyNext: boolean;
   reason: UpNextReason;
 }
 
 export interface UpNext {
+  /** The next four, or every free player when fewer than four are free; best placed first. */
   rows: UpNextRow[];
-  /** The Likely next four, split into Teams as a Lineup; null with fewer than four free. */
+  /** The four split into Teams as a Lineup; null with fewer than four free. */
   lineup: Lineup | null;
 }
 
 /**
- * Up next (see GLOSSARY): the free players not in a Lineup, in the order the app would pick them,
- * the Likely next four first. Null until the Session's first Match has started.
+ * Up next (see GLOSSARY): the four players the app would put in a Lineup if a Court freed up
+ * now, picked from the free players not in a Lineup. Null until the Session's first Match has
+ * started.
  *
- * Ties are settled without randomness, so every device shows the same list for the same Session
+ * Ties are settled without randomness, so every device shows the same four for the same Session
  * and `now`.
  */
 export function upNext(session: Session, now: number): UpNext | null {
   if (session.matches.length === 0) return null;
   const env = makeEnv(session, { now, rng: () => 0 });
   const held = heldPlayerIds(session);
+  // Roster order, as a Lineup sees its Candidates, so ties settle the way a Lineup's would.
+  const candidates = freePlayerIds(session).filter((id) => !held.has(id));
+  const lineup = candidates.length >= 4 ? bestSplitOf(fairSets(candidates, env), env) : null;
+  const shown = lineup ? [...lineup.teams[0], ...lineup.teams[1]] : candidates;
+
   const joinedAt = new Map(session.players.map((player) => [player.id, player.joinedAt]));
   const rankOf = (id: string) => {
     const h = env.history.byPlayer.get(id)!;
     return [restKey(env, id), -restsTier(env, id), h.recent, h.total, -h.wait, joinedAt.get(id)!];
   };
-  // Roster order, as a Lineup sees its Candidates, so ties settle the way a Lineup's would.
-  const candidates = freePlayerIds(session).filter((id) => !held.has(id));
-  const free = [...candidates].sort((a, b) => compareNumbers(rankOf(a), rankOf(b)));
-
-  const lineup = free.length >= 4 ? bestSplitOf(fairSets(candidates, env), env) : null;
-  const likely = new Set(lineup ? [...lineup.teams[0], ...lineup.teams[1]] : []);
-  const ordered = [...free.filter((id) => likely.has(id)), ...free.filter((id) => !likely.has(id))];
-
   const mostPlayed = Math.max(
     0,
     ...session.players
@@ -62,11 +59,9 @@ export function upNext(session: Session, now: number): UpNext | null {
       .map((player) => env.history.byPlayer.get(player.id)!.total),
   );
   return {
-    rows: ordered.map((playerId) => ({
-      playerId,
-      likelyNext: likely.has(playerId),
-      reason: reasonFor(env, playerId, mostPlayed),
-    })),
+    rows: [...shown]
+      .sort((a, b) => compareNumbers(rankOf(a), rankOf(b)))
+      .map((playerId) => ({ playerId, reason: reasonFor(env, playerId, mostPlayed) })),
     lineup,
   };
 }

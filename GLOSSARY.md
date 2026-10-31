@@ -143,7 +143,7 @@ A hand-built pair of Teams (four Session players) waiting to be moved onto an Id
 _Avoid_: Manual match, waiting list
 
 **Up next**:
-The free Session players (not in an Active match, not Sitting out, not in a Lineup) in the order the app would pick them for the next Lineup. The first four are the Lineup the app would pick from them if a Court freed up now. Players coming off court can still change who is picked, so Up next is a forecast, not a promise. Players level on everything are in the order they joined the Session.
+The four Session players the app would put in a Lineup if a Court freed up now, picked from the free Session players (not in an Active match, not Sitting out, not in a Lineup); all of them when fewer than four are free. Players coming off court can still change who is picked, so Up next is a forecast, not a promise.
 _Avoid_: Waiting list, wait order, next lineup, bench
 
 **Sitting out**:

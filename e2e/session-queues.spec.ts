@@ -208,23 +208,18 @@ test.describe("Up next", () => {
     await expect(
       upNext(page).getByText("The rest will come from whoever comes off court."),
     ).toBeVisible();
-    await expect(upNext(page).getByText("Likely next")).toHaveCount(0);
     await expect(upNext(page).getByRole("button", { name: "Queue these four" })).toHaveCount(0);
   });
 
-  test("Queue these four queues the Likely next four, and Move to court plays them", async ({
+  test("shows only the next four; Queue these four queues them, and Move to court plays them", async ({
     page,
   }) => {
     const session = bothCourtsBusy();
     const names = session.players.map((player) => player.name);
     await openSeeded(page, session);
-    await expect(upNextRows(page)).toHaveCount(6);
-    await expect(upNext(page).getByText("Likely next")).toHaveCount(4);
-    const likely = (await upNextNames(page, names)).slice(0, 4);
-    for (const [index, name] of likely.entries()) {
-      await expect(upNextRows(page).nth(index)).toContainText(name);
-      await expect(upNextRows(page).nth(index)).toContainText("Likely next");
-    }
+    // 6 free; only the four the app would pick are shown.
+    await expect(upNextRows(page)).toHaveCount(4);
+    const four = await upNextNames(page, names);
 
     await upNext(page).getByRole("button", { name: "Queue these four" }).click();
     const q = queue(page, 1);
@@ -232,7 +227,7 @@ test.describe("Up next", () => {
     const stored = await storedSession(page);
     const nameOf = new Map(stored.players.map((p) => [p.id, p.name]));
     const slots = stored.queues[0]!.slots.map((team) => team.map((id) => nameOf.get(id!)!));
-    expect(slots.flat().sort()).toEqual([...likely].sort());
+    expect(slots.flat().sort()).toEqual([...four].sort());
     // Up next stays above the Queue card.
     const upNextBox = (await upNext(page).boundingBox())!;
     expect((await q.boundingBox())!.y).toBeGreaterThan(upNextBox.y + upNextBox.height - 1);

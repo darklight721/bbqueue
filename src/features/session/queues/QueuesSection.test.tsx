@@ -300,7 +300,6 @@ describe("Up next", () => {
     renderSession(session);
     // 4 on court 1, 4 in court 2's Lineup: 2 free.
     expect(upNextNames()).toHaveLength(2);
-    expect(upNextRegion().queryByText("Likely next")).not.toBeInTheDocument();
     expect(
       upNextRegion().getByText("The rest will come from whoever comes off court."),
     ).toBeInTheDocument();
@@ -309,19 +308,19 @@ describe("Up next", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("marks the Likely next four, and Queue these four queues exactly them", async () => {
+  it("shows only the next four, and Queue these four queues exactly them", async () => {
     let session = makeSession();
     session = ok(startMatch(session, session.courts[0]!.id, ctx()));
     session = ok(removeCourt(session, session.courts[1]!.id, ctx()));
     renderSession(session);
     const names = upNextNames();
-    expect(names).toHaveLength(6);
-    expect(upNextRegion().getAllByText("Likely next")).toHaveLength(4);
+    // 6 free, only the four the app would pick are shown.
+    expect(names).toHaveLength(4);
 
     await userEvent.click(upNextRegion().getByRole("button", { name: "Queue these four" }));
     const queued = getSession()!.queues[0]!.slots.flat();
     expect(queued.map((id) => session.players.find((p) => p.id === id)!.name).sort()).toEqual(
-      names.slice(0, 4).sort(),
+      [...names].sort(),
     );
     expect(queue().getByText("4 of 4")).toBeInTheDocument();
   });

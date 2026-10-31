@@ -9,7 +9,7 @@ import { SessionPlayerChip } from "../PlayerViews.tsx";
 import { upNextReasonLabel } from "./upNextText.ts";
 
 /**
- * Up next: the free players in the order the app would pick them, the Likely next four first.
+ * Up next: the four players the app would put on the next free Court (fewer when fewer are free).
  * A forecast for everyone watching; the Session host can turn the four into a Queue.
  * Nothing until the first Match has started.
  */
@@ -20,7 +20,7 @@ export function UpNext() {
   const account = useAccount();
   const now = useNow();
   const headingId = useId();
-  // Worked out at `asOf`, not the clock, so every device shows the same order.
+  // Worked out at `asOf`, not the clock, so every device shows the same four.
   const forecast = useMemo(() => upNext(session, asOf), [session, asOf]);
   if (!forecast) return null;
   const { rows, lineup } = forecast;
@@ -41,11 +41,11 @@ export function UpNext() {
         </p>
       ) : (
         <>
-          <ol
+          <ul
             aria-labelledby={headingId}
             className="overflow-hidden rounded-box border-[1.5px] border-base-300 bg-base-100 md:grid md:grid-cols-2"
           >
-            {rows.map((row, index) => {
+            {rows.map((row) => {
               const player = playerById.get(row.playerId);
               const isMine = !!player && isOwnWhileWatching(player, view, account);
               const reason = upNextReasonLabel(row.reason, now - asOf);
@@ -56,20 +56,12 @@ export function UpNext() {
                     isMine ? "bg-primary/6 shadow-[inset_4px_0_0_var(--color-primary)]" : ""
                   }`}
                 >
-                  <span className="w-5 shrink-0 text-right font-display text-xl text-base-content/50 tabular-nums">
-                    {index + 1}
-                  </span>
                   <div className="flex min-w-0 flex-1 flex-col gap-1">
                     <SessionPlayerChip playerId={row.playerId} layout="inline" />
                     <div className="flex flex-wrap items-center gap-1.5">
                       {isMine ? (
                         <span className="rounded-full bg-primary px-2 py-px text-xs font-bold tracking-wider text-primary-content uppercase">
                           You
-                        </span>
-                      ) : null}
-                      {row.likelyNext ? (
-                        <span className="rounded-full border-[1.5px] border-primary/35 bg-primary/10 px-2 py-px text-xs font-semibold whitespace-nowrap text-primary">
-                          Likely next
                         </span>
                       ) : null}
                       {reason ? (
@@ -82,7 +74,7 @@ export function UpNext() {
                 </li>
               );
             })}
-          </ol>
+          </ul>
           {lineup === null ? (
             <p className="text-sm text-base-content/70">
               The rest will come from whoever comes off court.
