@@ -3,9 +3,10 @@ import { ConfirmDialog } from "../../../components/ConfirmDialog.tsx";
 import { ChevronDownIcon, MenuDotsIcon, PlusIcon } from "../../../components/icons.tsx";
 import { removePlayer, setSittingOut } from "../../../domain/engine/index.ts";
 import type { SessionPlayer } from "../../../domain/types.ts";
-import { accountIdsEqual } from "../../../domain/accountId.ts";
 import { useAccount } from "../../../storage/store.ts";
 import { useSessionActions, useSessionView } from "../context.ts";
+import { isOwnWhileWatching } from "../ownPlayer.ts";
+import { accountIdsEqual } from "../../../domain/accountId.ts";
 import { SessionPlayerChip } from "../PlayerViews.tsx";
 import { AddPlayersSheet } from "./AddPlayersSheet.tsx";
 import { OwnRequestControls } from "./OwnRequestControls.tsx";
@@ -210,21 +211,6 @@ function SortControl({
         })}
       </div>
     </fieldset>
-  );
-}
-
-/** The Account's own Session player, while watching a Shared club's Session: it gets requests. */
-function isOwnWhileWatching(
-  player: SessionPlayer,
-  { readOnly, sharedClubId }: { readOnly: boolean; sharedClubId: string | null },
-  account: { accountId: string } | null,
-): boolean {
-  return (
-    readOnly &&
-    sharedClubId !== null &&
-    !!player.accountId &&
-    !!account &&
-    accountIdsEqual(player.accountId, account.accountId)
   );
 }
 

@@ -7,7 +7,7 @@ import {
   makeSessionPlayer,
   seedStorage,
 } from "./fixtures.ts";
-import { court, lineupOf, playersOf, storedSession } from "./session-helpers.ts";
+import { court, lineupOf, openScoreDialog, playersOf, storedSession } from "./session-helpers.ts";
 
 /**
  * Seeded layout (10 players), deliberately not alphabetical:
@@ -158,6 +158,121 @@ test.describe("Collapsing Queues", () => {
     await expect(queuesRegion(page).getByText("Pick the next four players")).toHaveCount(0);
     await page.reload();
     await expect(queuesRegion(page).getByText("Pick the next four players")).toBeVisible();
+  });
+});
+
+test.describe("Up next", () => {
+  const upNext = (page: Page) => page.getByRole("region", { name: "Up next", exact: true });
+  const upNextRows = (page: Page) => upNext(page).getByRole("listitem");
+  async function upNextNames(page: Page, names: readonly string[]): Promise<string[]> {
+    const texts = await upNextRows(page).allInnerTexts();
+    return texts.map((text) => names.find((name) => text.split(/\s/).includes(name))!);
+  }
+
+  /** 14 players, both Courts Busy: 6 free. */
+  function bothCourtsBusy(): Session {
+    const names = [...NAMES, "Kim", "Lou", "Max", "Ned"];
+    const session = makeMidMatchSession({ startedAt: Date.now() - 60_000, names });
+    const ids = session.players.map((player) => player.id);
+    const first = session.matches[0]!;
+    const second: Match = {
+      ...first,
+      id: "match-court-2",
+      courtNumber: 2,
+      teams: [
+        [ids[4]!, ids[5]!],
+        [ids[6]!, ids[7]!],
+      ],
+      freeAtStart: ids.slice(8),
+    };
+    session.matches.push(second);
+    session.courts[1] = { ...session.courts[1]!, lineup: null, activeMatchId: second.id };
+    return session;
+  }
+
+  test("appears once a Match starts, listing only free players", async ({ page }) => {
+    const session = buildSession();
+    const [match] = session.matches;
+    session.matches = [];
+    session.courts[0] = {
+      ...session.courts[0]!,
+      lineup: { teams: match!.teams },
+      activeMatchId: null,
+    };
+    await openSeeded(page, session);
+    await expect(upNext(page)).toHaveCount(0);
+
+    await court(page, 1).getByRole("button", { name: "Start match" }).click();
+    await expect(upNext(page)).toBeVisible();
+    expect((await upNextNames(page, NAMES)).sort()).toEqual(["Ivy", "Jon"]);
+    await expect(
+      upNext(page).getByText("The rest will come from whoever comes off court."),
+    ).toBeVisible();
+    await expect(upNext(page).getByText("Likely next")).toHaveCount(0);
+    await expect(upNext(page).getByRole("button", { name: "Queue these four" })).toHaveCount(0);
+  });
+
+  test("Queue these four queues the Likely next four, and Move to court plays them", async ({
+    page,
+  }) => {
+    const session = bothCourtsBusy();
+    const names = session.players.map((player) => player.name);
+    await openSeeded(page, session);
+    await expect(upNextRows(page)).toHaveCount(6);
+    await expect(upNext(page).getByText("Likely next")).toHaveCount(4);
+    const likely = (await upNextNames(page, names)).slice(0, 4);
+    for (const [index, name] of likely.entries()) {
+      await expect(upNextRows(page).nth(index)).toContainText(name);
+      await expect(upNextRows(page).nth(index)).toContainText("Likely next");
+    }
+
+    await upNext(page).getByRole("button", { name: "Queue these four" }).click();
+    const q = queue(page, 1);
+    await expect(q.getByText("4 of 4")).toBeVisible();
+    const stored = await storedSession(page);
+    const nameOf = new Map(stored.players.map((p) => [p.id, p.name]));
+    const slots = stored.queues[0]!.slots.map((team) => team.map((id) => nameOf.get(id!)!));
+    expect(slots.flat().sort()).toEqual([...likely].sort());
+    // Up next stays above the Queue card.
+    const upNextBox = (await upNext(page).boundingBox())!;
+    expect((await q.boundingBox())!.y).toBeGreaterThan(upNextBox.y + upNextBox.height - 1);
+
+    const dialog = await openScoreDialog(page, 1);
+    await dialog.getByRole("button", { name: "End without score" }).click();
+    await expect(court(page, 1).getByText("Idle", { exact: true })).toBeVisible();
+    await move(q, "Court 1 · Idle").click();
+    await expect(notice(page, "Match started on court 1")).toBeVisible();
+    const after = await storedSession(page);
+    const started = after.matches.find((m) => m.status === "active" && m.courtNumber === 1)!;
+    expect(started.teams.map((team) => team.map((id) => nameOf.get(id)))).toEqual(slots);
+  });
+
+  test("players on their 2nd Match in a row are tagged Resting", async ({ page }) => {
+    await openSeeded(
+      page,
+      buildSession({
+        history: [
+          [
+            ["Ivy", "Jon"],
+            ["Eve", "Fay"],
+          ],
+          [
+            ["Ivy", "Jon"],
+            ["Gus", "Hal"],
+          ],
+        ],
+      }),
+    );
+    await expect(upNextRows(page)).toHaveCount(2);
+    for (const index of [0, 1]) {
+      await expect(upNextRows(page).nth(index)).toContainText("Resting");
+    }
+  });
+
+  test("says so when everyone is on court or in a Lineup", async ({ page }) => {
+    await openSeeded(page, buildSession({ sittingOut: ["Ivy", "Jon"] }));
+    await expect(upNext(page).getByText("Everyone’s on court or in a Lineup.")).toBeVisible();
+    await expect(upNextRows(page)).toHaveCount(0);
   });
 });
 

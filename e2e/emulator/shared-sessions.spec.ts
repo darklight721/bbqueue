@@ -48,6 +48,49 @@ test.describe("Shared active session between two people", () => {
     await anaPage.context().close();
   });
 
+  test("the Player sees the same Up next as the host, with their own row marked You", async ({
+    page,
+    browser,
+    baseURL,
+  }) => {
+    const { club, anaPage } = await twoPeople(page, browser, baseURL);
+    await startSession(page, club);
+    await watchFromHome(anaPage);
+
+    // Roy hand-queues everyone but Ana onto Court 1, so Ana is the one left free.
+    await page.getByRole("button", { name: "Add queue" }).click();
+    const q = page.getByRole("region", { name: "Queue 1", exact: true });
+    const spots = ["Team A, spot 1", "Team A, spot 2", "Team B, spot 1", "Team B, spot 2"];
+    for (const [index, name] of ["Roy Smith", "Cat", "Dan", "Eve"].entries()) {
+      await q.getByRole("button", { name: `Pick player for ${spots[index]}` }).click();
+      const picker = page.getByRole("dialog", { name: "Pick a player" });
+      await picker.getByRole("button", { name, exact: true }).click();
+      await expect(picker).toBeHidden();
+    }
+    await q
+      .getByRole("group", { name: "Move to court" })
+      .getByRole("button", { name: "Court 1 · Idle", exact: true })
+      .click();
+    await expect(court(page, 1).getByText("Playing", { exact: true })).toBeVisible();
+
+    for (const viewer of [page, anaPage]) {
+      const upNext = viewer.getByRole("region", { name: "Up next", exact: true });
+      await expect(upNext.getByRole("listitem")).toHaveCount(1);
+      await expect(upNext.getByRole("listitem")).toContainText("Ana Bell");
+      await expect(
+        upNext.getByText("The rest will come from whoever comes off court."),
+      ).toBeVisible();
+    }
+    const anaUpNext = anaPage.getByRole("region", { name: "Up next", exact: true });
+    await expect(anaUpNext.getByText("You", { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("region", { name: "Up next", exact: true }).getByText("You", { exact: true }),
+    ).toHaveCount(0);
+    await expect(anaPage.getByRole("button", { name: "Queue these four" })).toHaveCount(0);
+
+    await anaPage.context().close();
+  });
+
   test("the Spare players icon shows for the host, not for the Player watching", async ({
     page,
     browser,

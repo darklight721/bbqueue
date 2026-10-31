@@ -51,6 +51,8 @@ export type {
   SuggestionInput,
   TimeLeftSuggestionInput,
 } from "./scoring.ts";
+export { upNext } from "./upNext.ts";
+export type { UpNext, UpNextReason, UpNextRow } from "./upNext.ts";
 export { toEndedSession } from "./endedSession.ts";
 export { buildSummary, rankStandings } from "./summary.ts";
 export { fairnessWindowMs } from "./stats.ts";

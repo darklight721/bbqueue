@@ -10,6 +10,7 @@ import {
   createSession,
   endMatch,
   moveQueueToCourt,
+  removeCourt,
   setQueueSlot,
   setSittingOut,
   startMatch,
@@ -273,5 +274,70 @@ describe("QueuesSection", () => {
     expect(screen.queryByRole("region", { name: "Queue 1" })).not.toBeInTheDocument();
     expect(getSession()!.queues).toEqual([]);
     expect(screen.getByRole("button", { name: "Add queue" })).toBeInTheDocument();
+  });
+});
+
+describe("Up next", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetStoreForTests();
+  });
+
+  const upNextRegion = () => within(screen.getByRole("region", { name: "Up next" }));
+  const upNextNames = () =>
+    within(upNextRegion().getByRole("list"))
+      .getAllByRole("listitem")
+      .map((item) => NAMES.find((name) => within(item).queryByText(name, { exact: true }))!);
+
+  it("is not shown before the first Match has started", () => {
+    renderSession(makeSession());
+    expect(screen.queryByRole("region", { name: "Up next" })).not.toBeInTheDocument();
+  });
+
+  it("with fewer than four free, lists them with a note and nothing to queue", () => {
+    let session = makeSession();
+    session = ok(startMatch(session, session.courts[0]!.id, ctx()));
+    renderSession(session);
+    // 4 on court 1, 4 in court 2's Lineup: 2 free.
+    expect(upNextNames()).toHaveLength(2);
+    expect(upNextRegion().queryByText("Likely next")).not.toBeInTheDocument();
+    expect(
+      upNextRegion().getByText("The rest will come from whoever comes off court."),
+    ).toBeInTheDocument();
+    expect(
+      upNextRegion().queryByRole("button", { name: "Queue these four" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("marks the Likely next four, and Queue these four queues exactly them", async () => {
+    let session = makeSession();
+    session = ok(startMatch(session, session.courts[0]!.id, ctx()));
+    session = ok(removeCourt(session, session.courts[1]!.id, ctx()));
+    renderSession(session);
+    const names = upNextNames();
+    expect(names).toHaveLength(6);
+    expect(upNextRegion().getAllByText("Likely next")).toHaveLength(4);
+
+    await userEvent.click(upNextRegion().getByRole("button", { name: "Queue these four" }));
+    const queued = getSession()!.queues[0]!.slots.flat();
+    expect(queued.map((id) => session.players.find((p) => p.id === id)!.name).sort()).toEqual(
+      names.slice(0, 4).sort(),
+    );
+    expect(queue().getByText("4 of 4")).toBeInTheDocument();
+  });
+
+  it("says so when everyone is on court or in a Lineup", () => {
+    let session = makeSession();
+    session = ok(startMatch(session, session.courts[0]!.id, ctx()));
+    session = ok(setSittingOut(session, idOf(session, "Ivy"), true, ctx()));
+    const free = session.players.filter(
+      (p) =>
+        !p.sittingOut &&
+        !session.courts.some((c) => c.lineup?.teams.flat().includes(p.id)) &&
+        !session.matches.some((m) => m.status === "active" && m.teams.flat().includes(p.id)),
+    );
+    for (const player of free) session = ok(setSittingOut(session, player.id, true, ctx()));
+    renderSession(session);
+    expect(upNextRegion().getByText("Everyone’s on court or in a Lineup.")).toBeInTheDocument();
   });
 });

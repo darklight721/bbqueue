@@ -4,6 +4,7 @@ import { addQueue } from "../../../domain/engine/index.ts";
 import { useSessionActions, useSessionView } from "../context.ts";
 import { SectionHeader } from "../SectionHeader.tsx";
 import { QueueCard } from "./QueueCard.tsx";
+import { UpNext } from "./UpNext.tsx";
 
 const HEADING_ID = "session-queues";
 
@@ -56,6 +57,7 @@ export function QueuesSection({
 
       {open ? (
         <div id={bodyId} className="flex flex-col gap-4">
+          <UpNext />
           {count === 0 && readOnly ? (
             <p className="rounded-box border-[1.5px] border-dashed border-base-300 px-4 py-5 text-center text-base-content/70">
               No queues right now.

@@ -142,6 +142,10 @@ _Avoid_: Global shuffle, reset lineups
 A hand-built pair of Teams (four Session players) waiting to be moved onto an Idle Court, overriding that Court's Lineup. A Queue does not hold its players: they can still appear in Lineups and other Queues.
 _Avoid_: Manual match, waiting list
 
+**Up next**:
+The free Session players (not in an Active match, not Sitting out, not in a Lineup) in the order the app would pick them for the next Lineup. The first four are the Lineup the app would pick from them if a Court freed up now. Players coming off court can still change who is picked, so Up next is a forecast, not a promise. Players level on everything are in the order they joined the Session.
+_Avoid_: Waiting list, wait order, next lineup, bench
+
 **Sitting out**:
 A Session player temporarily not available to be picked for Lineups, while staying in the Session.
 _Avoid_: Paused, inactive, benched

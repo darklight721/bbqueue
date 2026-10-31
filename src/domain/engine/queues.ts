@@ -1,4 +1,4 @@
-import type { Court, Queue, Session } from "../types.ts";
+import type { Court, Lineup, Queue, Session } from "../types.ts";
 import { makeId, type EngineContext } from "./context.ts";
 import { balanceOf, makeEnv, type Split } from "./select.ts";
 import { matchPlayerIds } from "./stats.ts";
@@ -19,13 +19,16 @@ export function queueTeams(queue: Queue): Split | null {
   ];
 }
 
-export function addQueue(session: Session, ctx: EngineContext): Session {
+/** Add a Queue at the end: empty, or holding `lineup`'s Teams ("Queue these four"). */
+export function addQueue(session: Session, ctx: EngineContext, lineup?: Lineup): Session {
   const queue: Queue = {
     id: makeId(ctx),
-    slots: [
-      [null, null],
-      [null, null],
-    ],
+    slots: lineup
+      ? [[...lineup.teams[0]], [...lineup.teams[1]]]
+      : [
+          [null, null],
+          [null, null],
+        ],
   };
   return { ...session, queues: [...session.queues, queue] };
 }
