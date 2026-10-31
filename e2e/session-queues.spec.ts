@@ -136,6 +136,31 @@ test.describe("Queues section", () => {
   });
 });
 
+test.describe("Collapsing Queues", () => {
+  test("Hide queues leaves just the header; the jump bar opens it again", async ({ page }) => {
+    await openSeeded(page);
+    await addQueue(page);
+    await queuesRegion(page).getByRole("button", { name: "Hide queues" }).click();
+    await expect(queue(page, 1)).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Add queue" })).toHaveCount(0);
+    await expect(queuesRegion(page).getByText("1 queue")).toBeVisible();
+
+    const nav = page.getByRole("navigation", { name: "Sections" });
+    await nav.getByRole("button", { name: "Players" }).click();
+    await nav.getByRole("button", { name: "Queues" }).click();
+    await expect(queue(page, 1)).toBeVisible();
+    await expect(page.getByRole("heading", { level: 2, name: "Queues" })).toBeInViewport();
+  });
+
+  test("starts open again after a reload", async ({ page }) => {
+    await openSeeded(page);
+    await queuesRegion(page).getByRole("button", { name: "Hide queues" }).click();
+    await expect(queuesRegion(page).getByText("Pick the next four players")).toHaveCount(0);
+    await page.reload();
+    await expect(queuesRegion(page).getByText("Pick the next four players")).toBeVisible();
+  });
+});
+
 test.describe("Picking players", () => {
   test("picker lists everyone with status; filter narrows; Cancel closes", async ({ page }) => {
     await openSeeded(page);

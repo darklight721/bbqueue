@@ -242,6 +242,30 @@ describe("QueuesSection", () => {
     expect(newOne.filter((id) => lineupOne.includes(id)).sort()).toEqual(lineupOne.slice(1).sort());
   });
 
+  it("is open by default and collapses to just the header, keeping the queue count", async () => {
+    renderSession(withQueue(makeSession(), ["Hal", null, null, null]));
+    const region = within(screen.getByRole("region", { name: "Queues" }));
+    const toggle = region.getByRole("button", { name: "Hide queues" });
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+
+    await userEvent.click(toggle);
+    expect(region.getByRole("button", { name: "Show queues" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(region.getByText("1 queue")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Queue 1" })).not.toBeInTheDocument();
+    expect(region.queryByRole("button", { name: "Add queue" })).not.toBeInTheDocument();
+
+    await userEvent.click(
+      within(screen.getByRole("navigation", { name: "Sections" })).getByRole("button", {
+        name: "Queues",
+      }),
+    );
+    expect(queue().getByText("1 of 4")).toBeInTheDocument();
+    expect(region.getByRole("button", { name: "Hide queues" })).toBeInTheDocument();
+  });
+
   it("removes a queue without asking", async () => {
     renderSession(withQueue(makeSession(), ["ana", "Ben", null, null]));
     await userEvent.click(queue().getByRole("button", { name: "Remove queue 1" }));

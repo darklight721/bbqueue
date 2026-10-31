@@ -49,12 +49,14 @@ export function SessionScreen({ sessionId }: { sessionId?: string } = {}) {
   const readOnly = !isSessionHost(shared, account?.accountId);
   const clubs = useClubs();
   const takenOverBy = useTakenOverBy(session?.id ?? "");
-  // Not saved: Players starts open and History closed on every visit.
+  // Not saved: Queues and Players start open and History closed on every visit.
+  const [queuesOpen, setQueuesOpen] = useState(true);
   const [playersOpen, setPlayersOpen] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [pointsOpen, setPointsOpen] = useState(false);
   // No useCallback: the React compiler memoizes it.
   const openSection = (id: string) => {
+    if (id === "queues") setQueuesOpen(true);
     if (id === "players") setPlayersOpen(true);
     if (id === "history") setHistoryOpen(true);
   };
@@ -121,7 +123,7 @@ export function SessionScreen({ sessionId }: { sessionId?: string } = {}) {
             <CourtsSection />
           </div>
           <div id="queues" className={SECTION_SCROLL_MARGIN}>
-            <QueuesSection />
+            <QueuesSection open={queuesOpen} onOpenChange={setQueuesOpen} />
           </div>
           <div id="players" className={SECTION_SCROLL_MARGIN}>
             <PlayersSection open={playersOpen} onOpenChange={setPlayersOpen} />
