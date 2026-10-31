@@ -131,7 +131,7 @@ export function SessionScreen({ sessionId }: { sessionId?: string } = {}) {
           </div>
           {readOnly ? null : <EndSessionSection />}
         </div>
-        {/* Phones: room for the jump bar fixed at the bottom. */}
+        {/* Room for the jump bar floating at the bottom. */}
         <div aria-hidden="true" className={`-mt-6 ${JUMP_BAR_BOTTOM_SPACE}`} />
       </Screen>
     </SessionProvider>

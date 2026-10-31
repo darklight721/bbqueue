@@ -447,16 +447,16 @@ test.describe("Jump bar", () => {
       "aria-current",
       "true",
     );
-    // Not hidden under the top bar, nor under the jump bar (at the bottom on phones).
+    // Not hidden under the top bar, nor under the jump bar floating at the bottom.
     await expect
       .poll(async () => {
         const topBar = (await page.getByRole("banner").boundingBox())!;
         const navBox = (await nav.boundingBox())!;
         const headingBox = (await heading.boundingBox())!;
-        const navOnTop = navBox.y < topBar.y + topBar.height + 1;
-        const clearTop = navOnTop ? navBox.y + navBox.height : topBar.y + topBar.height;
-        const clearBottom = navOnTop ? Infinity : navBox.y;
-        return headingBox.y >= clearTop - 1 && headingBox.y + headingBox.height <= clearBottom + 1;
+        return (
+          headingBox.y >= topBar.y + topBar.height - 1 &&
+          headingBox.y + headingBox.height <= navBox.y + 1
+        );
       })
       .toBe(true);
   });

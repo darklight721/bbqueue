@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { flushSync } from "react-dom";
 
 export interface JumpTarget {
@@ -9,27 +9,21 @@ export interface JumpTarget {
 
 /*
  * Bar geometry. Everything below is derived from it, so change them together:
- *   buttons 2.75rem, padding 0.625rem top and bottom, 1px border
- *   → phones (fixed at the bottom): ~3.5rem + max(0.625rem, bottom safe area)
- *   → sm and up (sticky under the 4rem top bar): ~4.1rem
+ *   buttons 2.75rem, padding 0.375rem all round, 1px border → ~3.6rem tall,
+ *   floating max(0.75rem, bottom safe area + 0.5rem) above the bottom edge
  */
+
+/** Offset so a section lands below the top bar (the jump bar floats at the bottom). */
+export const SECTION_SCROLL_MARGIN = "scroll-mt-[calc(5rem+env(safe-area-inset-top))]";
 
 /**
- * Offset so a section lands below the bars at the top of the screen.
- * Phones: only the top bar (the jump bar sits at the bottom). `sm` and up: top bar + jump bar.
+ * Space to leave at the end of the page so the floating jump bar never covers the last
+ * thing on it (End session). The bar's height plus a little breathing room.
  */
-export const SECTION_SCROLL_MARGIN =
-  "scroll-mt-[calc(5rem+env(safe-area-inset-top))] sm:scroll-mt-[calc(8.5rem+env(safe-area-inset-top))]";
+export const JUMP_BAR_BOTTOM_SPACE = "h-[calc(4.5rem+env(safe-area-inset-bottom))]";
 
-/**
- * Space to leave at the end of the page on phones so the fixed jump bar never covers the
- * last thing on it (End session). The bar's height plus a little breathing room.
- */
-export const JUMP_BAR_BOTTOM_SPACE = "h-[calc(4.5rem+env(safe-area-inset-bottom))] sm:hidden";
-
-/** Bottom offset for pop-up messages: above the jump bar on phones, near the edge otherwise. */
-export const NOTICE_BOTTOM =
-  "bottom-[calc(5rem+env(safe-area-inset-bottom))] sm:bottom-[max(1rem,env(safe-area-inset-bottom))]";
+/** Bottom offset for pop-up messages: above the jump bar. */
+export const NOTICE_BOTTOM = "bottom-[calc(5.25rem+env(safe-area-inset-bottom))]";
 
 /** Input types that bring up the on-screen keyboard. */
 const TYPING_INPUTS = new Set(["text", "search", "email", "tel", "url", "number", "password"]);
@@ -41,8 +35,8 @@ function isTypingField(element: EventTarget | null): boolean {
 }
 
 /**
- * True while a text field has focus. On phones the bottom bar then gets out of the way of
- * the on-screen keyboard (iOS keeps fixed bars floating above it, over the page).
+ * True while a text field has focus. The bottom bar then gets out of the way of the
+ * on-screen keyboard (iOS keeps fixed bars floating above it, over the page).
  */
 function useTyping(): boolean {
   const [typing, setTyping] = useState(false);
@@ -67,9 +61,35 @@ function isScrolledToBottom(): boolean {
 }
 
 /**
- * Row of section shortcuts (Courts · Queues · Players · History).
- * Phones: fixed to the bottom of the screen, within thumb reach. `sm` and up: sticky under
- * the top bar. Buttons (not hash links) so jumping doesn't add browser history entries.
+ * Where the current-section pill sits: under the current button, measured from the list.
+ * Null until measured (and in jsdom, which has no layout), so it never slides in from 0.
+ */
+function usePill(
+  listRef: RefObject<HTMLUListElement | null>,
+  active: string | null,
+  hidden: boolean,
+): { left: number; width: number } | null {
+  const [pill, setPill] = useState<{ left: number; width: number } | null>(null);
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (!list || hidden) return;
+    const measure = () => {
+      const item = list.querySelector<HTMLElement>(`[data-jump="${active}"]`);
+      setPill(item?.offsetWidth ? { left: item.offsetLeft, width: item.offsetWidth } : null);
+    };
+    measure();
+    // Labels can change width (fonts loading, narrow phones crossing a padding step).
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(list);
+    return () => observer?.disconnect();
+  }, [listRef, active, hidden]);
+  return pill;
+}
+
+/**
+ * Row of section shortcuts (Courts · Queues · Players · History) in a capsule floating at
+ * the bottom of the screen, within thumb reach. A pill slides behind the current section.
+ * Buttons (not hash links) so jumping doesn't add browser history entries.
  *
  * `onJump` runs before scrolling, so a collapsed section can open first and the page can
  * scroll all the way to it.
@@ -83,6 +103,8 @@ export function SectionJumpBar({
 }) {
   const [active, setActive] = useState<string | null>(targets[0]?.id ?? null);
   const typing = useTyping();
+  const listRef = useRef<HTMLUListElement>(null);
+  const pill = usePill(listRef, active, typing);
 
   useEffect(() => {
     const last = targets.at(-1);
@@ -126,37 +148,50 @@ export function SectionJumpBar({
   }, [targets]);
 
   return (
-    <nav
-      aria-label="Sections"
-      className={`px-safe fixed inset-x-0 bottom-0 z-30 border-t border-base-300 bg-base-100/95 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-6px_20px_-12px_rgb(0_0_0/0.25)] backdrop-blur sm:sticky sm:top-[calc(4rem+env(safe-area-inset-top))] sm:bottom-auto sm:z-10 sm:-mx-4 sm:-mt-5 sm:border-t-0 sm:border-b sm:px-4 sm:py-2.5 sm:shadow-none ${typing ? "max-sm:hidden" : ""}`}
+    <div
+      className={`px-safe pointer-events-none fixed inset-x-0 bottom-[max(0.75rem,calc(env(safe-area-inset-bottom)+0.5rem))] z-30 justify-center ${typing ? "hidden" : "flex"}`}
     >
-      <ul className="flex gap-1 overflow-x-auto sm:gap-2">
-        {targets.map((target) => {
-          const current = target.id === active;
-          return (
-            <li key={target.id} className="flex-1 sm:flex-none">
-              <button
-                type="button"
-                aria-current={current ? "true" : undefined}
-                className={`btn h-11 min-h-11 w-full rounded-full px-1.5 min-[360px]:px-3 sm:px-5 ${
-                  current ? "btn-secondary" : "btn-ghost text-base-content/70"
-                }`}
-                onClick={() => {
-                  setActive(target.id);
-                  // Open a collapsed section and let it render before measuring the scroll.
-                  if (onJump) flushSync(() => onJump(target.id));
-                  const element = document.getElementById(target.id);
-                  if (element && typeof element.scrollIntoView === "function") {
-                    element.scrollIntoView({ behavior: "smooth", block: "start" });
-                  }
-                }}
-              >
-                {target.label}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-    </nav>
+      <nav
+        aria-label="Sections"
+        className="pointer-events-auto max-w-full rounded-full border border-base-300 bg-base-100/95 p-1.5 shadow-lg shadow-black/10 backdrop-blur supports-[backdrop-filter]:bg-base-100/85"
+      >
+        <ul ref={listRef} className="relative flex overflow-x-auto">
+          {pill ? (
+            <li
+              aria-hidden="true"
+              className="absolute inset-y-0 left-0 rounded-full bg-secondary transition-[translate,width] duration-300 ease-out"
+              style={{ translate: `${pill.left}px 0`, width: pill.width }}
+            />
+          ) : null}
+          {targets.map((target) => {
+            const current = target.id === active;
+            return (
+              <li key={target.id} data-jump={target.id} className="relative flex-none">
+                <button
+                  type="button"
+                  aria-current={current ? "true" : undefined}
+                  className={`btn h-11 min-h-11 rounded-full border-0 px-2.5 shadow-none transition-colors min-[360px]:px-3.5 min-[400px]:px-5 ${
+                    current
+                      ? "bg-transparent text-secondary-content hover:bg-transparent"
+                      : "btn-ghost text-base-content/70"
+                  }`}
+                  onClick={() => {
+                    setActive(target.id);
+                    // Open a collapsed section and let it render before measuring the scroll.
+                    if (onJump) flushSync(() => onJump(target.id));
+                    const element = document.getElementById(target.id);
+                    if (element && typeof element.scrollIntoView === "function") {
+                      element.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }
+                  }}
+                >
+                  {target.label}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
+    </div>
   );
 }

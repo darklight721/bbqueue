@@ -348,6 +348,12 @@ test.describe("Add player", () => {
   });
 });
 
+/** The jump bar floats at the bottom on every screen size; some checks run on both. */
+const JUMP_BAR_SIZES = [
+  { name: "phones", viewport: null },
+  { name: "wider screens", viewport: { width: 1024, height: 768 } },
+] as const;
+
 test.describe("Section jump bar", () => {
   test("Players button scrolls the Players section into view", async ({ page }) => {
     await openSeeded(page);
@@ -367,16 +373,16 @@ test.describe("Section jump bar", () => {
       "aria-current",
       "true",
     );
-    // Not hidden under the top bar, nor under the jump bar (at the bottom on phones).
+    // Not hidden under the top bar, nor under the jump bar floating at the bottom.
     await expect
       .poll(async () => {
         const topBar = (await page.getByRole("banner").boundingBox())!;
         const navBox = (await nav.boundingBox())!;
         const headingBox = (await heading.boundingBox())!;
-        const navOnTop = navBox.y < topBar.y + topBar.height + 1;
-        const clearTop = navOnTop ? navBox.y + navBox.height : topBar.y + topBar.height;
-        const clearBottom = navOnTop ? Infinity : navBox.y;
-        return headingBox.y >= clearTop - 1 && headingBox.y + headingBox.height <= clearBottom + 1;
+        return (
+          headingBox.y >= topBar.y + topBar.height - 1 &&
+          headingBox.y + headingBox.height <= navBox.y + 1
+        );
       })
       .toBe(true);
 
@@ -388,25 +394,33 @@ test.describe("Section jump bar", () => {
     );
   });
 
-  test("on phones it sits at the bottom and never covers End session", async ({ page }) => {
-    await openSeeded(page);
-    const nav = page.getByRole("navigation", { name: "Sections" });
-    const viewport = page.viewportSize()!;
-    const navBox = (await nav.boundingBox())!;
-    expect(navBox.y + navBox.height).toBeGreaterThan(viewport.height - 2);
+  for (const size of JUMP_BAR_SIZES) {
+    test(`on ${size.name} it floats at the bottom and never covers End session`, async ({
+      page,
+    }) => {
+      if (size.viewport) await page.setViewportSize(size.viewport);
+      await openSeeded(page);
+      const nav = page.getByRole("navigation", { name: "Sections" });
+      const viewport = page.viewportSize()!;
+      const navBox = (await nav.boundingBox())!;
+      // A capsule: clear of the bottom edge and narrower than the screen.
+      expect(navBox.y + navBox.height).toBeLessThan(viewport.height - 4);
+      expect(navBox.y + navBox.height).toBeGreaterThan(viewport.height - 80);
+      expect(navBox.width).toBeLessThan(viewport.width - 16);
 
-    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
-    const end = page.getByRole("button", { name: "End session" });
-    await expect
-      .poll(async () => {
-        const box = (await end.boundingBox())!;
-        const bar = (await nav.boundingBox())!;
-        return box.y + box.height <= bar.y;
-      })
-      .toBe(true);
-  });
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      const end = page.getByRole("button", { name: "End session" });
+      await expect
+        .poll(async () => {
+          const box = (await end.boundingBox())!;
+          const bar = (await nav.boundingBox())!;
+          return box.y + box.height <= bar.y;
+        })
+        .toBe(true);
+    });
+  }
 
-  test("on phones pop-up messages sit above the bar", async ({ page }) => {
+  test("pop-up messages sit above the bar", async ({ page }) => {
     await openSeeded(page);
     const nav = page.getByRole("navigation", { name: "Sections" });
     // Removing a player on court is blocked with a message (the button is aria-disabled).
@@ -420,27 +434,43 @@ test.describe("Section jump bar", () => {
     expect(text.y + text.height).toBeLessThanOrEqual(bar.y);
   });
 
-  test("on wider screens it sticks under the top bar without hiding section titles", async ({
+  test("on wider screens jumping lands a section clear of the top bar and the jump bar", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1024, height: 768 });
     await openSeeded(page);
     const nav = page.getByRole("navigation", { name: "Sections" });
-    const topBar = (await page.getByRole("banner").boundingBox())!;
-    const navBox = (await nav.boundingBox())!;
-    expect(Math.abs(navBox.y - (topBar.y + topBar.height))).toBeLessThan(2);
-
     const heading = page.getByRole("heading", { level: 2, name: "Players" });
     await nav.getByRole("button", { name: "Players" }).click();
     await expect(heading).toBeInViewport();
+    await expect(nav.getByRole("button", { name: "Players" })).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
     await expect
       .poll(async () => {
+        const topBar = (await page.getByRole("banner").boundingBox())!;
         const bar = (await nav.boundingBox())!;
         const box = (await heading.boundingBox())!;
-        return box.y >= bar.y + bar.height - 1;
+        return box.y >= topBar.y + topBar.height - 1 && box.y + box.height <= bar.y + 1;
       })
       .toBe(true);
   });
+
+  for (const size of JUMP_BAR_SIZES) {
+    test(`on ${size.name} it gets out of the way while typing a name`, async ({ page }) => {
+      if (size.viewport) await page.setViewportSize(size.viewport);
+      await openSeeded(page);
+      const nav = page.getByRole("navigation", { name: "Sections" });
+      const field = playersRegion(page).getByRole("textbox", { name: "Player name" });
+      await expect(nav).toBeVisible();
+
+      await field.focus();
+      await expect(nav).toBeHidden();
+      await field.blur();
+      await expect(nav).toBeVisible();
+    });
+  }
 
   test("jumping to a collapsed Players section opens it", async ({ page }) => {
     await openSeeded(page);
