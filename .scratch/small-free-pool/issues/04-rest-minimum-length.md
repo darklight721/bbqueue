@@ -1,6 +1,6 @@
 # Decision needed: should a Rest have a minimum length?
 
-Status: needs-triage
+Status: wontfix
 Type: grilling
 
 Vocabulary per `GLOSSARY.md`. Rule order per ADR-0009.
@@ -23,4 +23,10 @@ Any change alters what Streak means, the Rest rule tests in `simulation.test.ts`
 
 ## E2E workflows
 
-To be decided. Probably `None — pure domain logic`.
+None — no behaviour change.
+
+## Comments
+
+**2026-10-31, decision: keep it as it is.** The Rest rule is for turn-taking: a player who has played twice gives way to others. When a Match starts without a free player, someone else took a turn instead of them, however short the gap, so the current definition does its job. Recovery time ("breath") is left to the players and the host, who can swap a player out of a Lineup. A minimum length would add a time threshold to the queueing rules for a concern seen only in the sweep, not at real Sessions.
+
+Recorded as one sentence in the `Rest` entry of `GLOSSARY.md`. No ADR: nothing changes, and ADR-0009 already lists Rest as unchanged.
