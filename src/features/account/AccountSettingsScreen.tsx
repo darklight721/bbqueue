@@ -496,9 +496,6 @@ function NoAccount({ backend, announce }: { backend: Backend; announce: Announce
   const installHint = useInstallHintKind();
   const installHintDismissed = useInstallHintDismissed();
   const showInstallHint = installHint !== null && !installHintDismissed;
-  // iOS: install first, above the form, since an Account made in the browser stays behind there.
-  // Android: the installed app shares the browser's data, so only the usual tip, under the form.
-  const installFirst = showInstallHint && installHint === "ios";
 
   return (
     <>
@@ -512,9 +509,7 @@ function NoAccount({ backend, announce }: { backend: Backend; announce: Announce
         </p>
       </CourtCard>
 
-      {installFirst ? <InstallHint variant="ios-first" step={1} /> : null}
-
-      <div className="animate-rise" style={delay(installFirst ? 2 : 1)}>
+      <div className="animate-rise" style={delay(1)}>
         {online ? (
           <CreateAccountForm
             backend={backend}
@@ -526,8 +521,10 @@ function NoAccount({ backend, announce }: { backend: Backend; announce: Announce
         )}
       </div>
 
-      {showInstallHint && installHint === "android" ? (
-        <InstallHint variant="android" step={2} />
+      {/* iOS: install first, since an Account made in the browser stays behind there.
+          Android: the installed app shares the browser's data, so only the usual tip. */}
+      {showInstallHint ? (
+        <InstallHint variant={installHint === "ios" ? "ios-first" : "android"} step={2} />
       ) : null}
     </>
   );

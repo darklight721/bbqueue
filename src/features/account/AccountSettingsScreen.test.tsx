@@ -339,8 +339,12 @@ describe("Account settings", () => {
         "Then open it from there. What you set up here stays in this browser.",
       );
       expect(within(installFirst()!).getAllByRole("listitem")).toHaveLength(3);
-      // The form to add a name is still there.
-      expect(screen.getByRole("button", { name: "Add your name" })).toBeInTheDocument();
+      // The name field comes first, the tip under it.
+      expect(
+        screen
+          .getByRole("textbox", { name: "Your name" })
+          .compareDocumentPosition(installFirst()!) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
 
       await user.click(within(installFirst()!).getByRole("button", { name: "Dismiss tip" }));
       expect(installFirst()).not.toBeInTheDocument();

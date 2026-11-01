@@ -193,13 +193,17 @@ test.describe("Account settings install hint on iPhone", () => {
     await expect(hint).toHaveCount(0);
   });
 
-  test("without an Account: says to install first, above the form to add a name", async ({
+  test("without an Account: the name field comes first, then says to install first", async ({
     page,
   }) => {
     await page.goto("/account");
     const hint = page.getByRole("region", { name: "Add BBQueue to your Home Screen first" });
+    const nameField = page.getByRole("textbox", { name: "Your name" });
 
     await expect(hint).toContainText("What you set up here stays in this browser.");
-    await expect(page.getByRole("button", { name: "Add your name" })).toBeVisible();
+    await expect(nameField).toBeVisible();
+    const fieldBox = (await nameField.boundingBox())!;
+    const hintBox = (await hint.boundingBox())!;
+    expect(fieldBox.y).toBeLessThan(hintBox.y);
   });
 });
