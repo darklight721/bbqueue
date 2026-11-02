@@ -23,7 +23,6 @@ const LAYOUT = {
 export function CourtCard({
   label,
   labelledBy,
-  pill,
   layout = "right",
   animate = true,
   style,
@@ -31,8 +30,6 @@ export function CourtCard({
 }: {
   label?: string;
   labelledBy?: string;
-  /** Small all-caps pill at the top ("Stats", "Club"). */
-  pill?: string;
   layout?: keyof typeof LAYOUT;
   /** Rise in when it appears. Off when the page around it only changes mode. */
   animate?: boolean;
@@ -52,15 +49,7 @@ export function CourtCard({
         style={{ background: LAYOUT[layout].glow }}
       />
       <CourtLines className={LAYOUT[layout].lines} />
-      <div className="flex flex-col p-5">
-        {pill ? (
-          <p className="mb-4 inline-flex items-center gap-2 self-start rounded-full bg-black/20 px-3 py-1 text-xs font-bold tracking-[0.18em] uppercase">
-            <span className="size-2 rounded-full bg-volt" aria-hidden="true" />
-            {pill}
-          </p>
-        ) : null}
-        {children}
-      </div>
+      <div className="flex flex-col p-5">{children}</div>
     </section>
   );
 }

@@ -92,7 +92,7 @@ export function ClubCard({
   }
 
   return (
-    <CourtCard label="Club" pill="Club" animate={animate}>
+    <CourtCard label="Club" animate={animate}>
       {editing ? (
         <CourtCardNameForm
           inputRef={inputRef}

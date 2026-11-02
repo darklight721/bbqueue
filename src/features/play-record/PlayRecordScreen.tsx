@@ -187,7 +187,7 @@ function PlayRecordView({
 function Header({ name, clubLine }: { name: string; clubLine: string | null }) {
   const nameId = useId();
   return (
-    <CourtCard labelledBy={nameId} pill="Stats" style={rise(0)}>
+    <CourtCard labelledBy={nameId} style={rise(0)}>
       <div className="flex items-center gap-4">
         <Avatar name={name} size="lg" />
         <h2
