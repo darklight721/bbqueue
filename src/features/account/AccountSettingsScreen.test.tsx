@@ -111,8 +111,8 @@ describe("Account settings", () => {
 
     await user.click(screen.getByRole("button", { name: "Edit name" }));
     expect(sheet()).toBeInTheDocument();
+    expect(within(sheet()!).getByRole("heading", { name: "Edit name" })).toHaveFocus();
     const input = within(sheet()!).getByLabelText("Your name");
-    expect(input).toHaveFocus();
     expect(input).toHaveValue("Roy Smith");
 
     await user.clear(input);

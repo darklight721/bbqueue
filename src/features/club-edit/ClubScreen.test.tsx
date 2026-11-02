@@ -127,7 +127,7 @@ describe("Club page", () => {
     expect(nameSheet()).toBeInTheDocument();
     const field = within(nameSheet()!).getByRole("textbox", { name: "Club name" });
     expect(field).toHaveValue("Riverside");
-    expect(field).toHaveFocus();
+    expect(within(nameSheet()!).getByRole("heading", { name: "Edit club name" })).toHaveFocus();
     await userEvent.clear(field);
     await userEvent.type(field, "  Riverside   Thursdays {Enter}");
 

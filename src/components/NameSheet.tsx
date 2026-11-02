@@ -1,10 +1,11 @@
-import { useId, useRef, type Ref } from "react";
+import { useId, type Ref } from "react";
 import { createPortal } from "react-dom";
 import { Modal } from "./Modal.tsx";
 
 /**
- * A name edited in a bottom sheet: the field (focused, so the keyboard comes up with the tap that
- * opened it), one reserved line for a message, Save and the ×. ×, Escape and the backdrop close
+ * A name edited in a bottom sheet: the field, one reserved line for a message, Save and the ×.
+ * The title takes focus on open, so the iOS keyboard (which would cover the sheet) waits for a tap
+ * on the field. ×, Escape and the backdrop close
  * it without saving, except while saving. The caller checks the name and does the saving.
  */
 export function NameSheet({
@@ -42,6 +43,7 @@ export function NameSheet({
     <Modal
       open={open}
       title={title}
+      focusTitle
       closeLabel="Close"
       onClose={() => {
         // The sheet stays put while the name is being saved.
@@ -87,7 +89,6 @@ function NameForm({
 }) {
   const inputId = useId();
   const messageId = useId();
-  const caretPlaced = useRef(false);
 
   return (
     <form
@@ -115,14 +116,6 @@ function NameForm({
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? messageId : undefined}
         onChange={(event) => onChange(event.target.value)}
-        onFocus={(event) => {
-          // Caret at the end when the sheet opens: editing is mostly fixing a typo or adding a
-          // surname. Later taps put the caret where they land.
-          if (caretPlaced.current) return;
-          caretPlaced.current = true;
-          const input = event.currentTarget;
-          input.setSelectionRange(input.value.length, input.value.length);
-        }}
       />
       {/* One reserved line for any message, so an error doesn't push the button down. */}
       <div className="flex min-h-7 items-end pl-1 text-sm leading-tight font-semibold text-error">

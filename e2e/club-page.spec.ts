@@ -79,7 +79,9 @@ test.describe("Club card", () => {
     await expect(card(page)).toContainText("This device only");
 
     await card(page).getByRole("button", { name: "Edit club name" }).click();
-    await expect(nameField(page)).toBeFocused();
+    // The title takes focus, so the iOS keyboard waits for a tap on the field.
+    await expect(nameSheet(page).getByRole("heading", { name: "Edit club name" })).toBeFocused();
+    await expect(nameField(page)).not.toBeFocused();
     await expect(nameField(page)).toHaveValue("Friday Club");
     await nameField(page).fill("Saturday Club");
     await nameSheet(page).getByRole("button", { name: "Save" }).click();

@@ -26,8 +26,10 @@ test.describe("Account settings", () => {
     await expect(accountCard(page)).toContainText("roy-7k3f");
 
     await page.getByRole("button", { name: "Edit name" }).click();
+    // The title takes focus, so the iOS keyboard waits for a tap on the field.
+    await expect(nameSheet(page).getByRole("heading", { name: "Edit name" })).toBeFocused();
     const name = nameSheet(page).getByLabel("Your name");
-    await expect(name).toBeFocused();
+    await expect(name).not.toBeFocused();
     await expect(name).toHaveValue("Roy Smith");
     await name.fill("Ana Bell");
     await name.press("Enter");

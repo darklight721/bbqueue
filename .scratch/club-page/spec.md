@@ -50,6 +50,7 @@ Sections in this order:
 ## New club sheet (on `/clubs`)
 
 - The Clubs page's **Add club** button opens a bottom sheet (`Modal`) titled "New club" with one field, **Club name**, and **Create club**. A ✕ (or Escape, or the backdrop) closes it without creating anything.
+- The title takes focus on open (`Modal`'s `focusTitle`), so the keyboard waits for a tap on the field: on an iPhone a keyboard that opens with the sheet covers the field and Create club.
 - The name gets the same checks as today, shown under the field.
 - Create club makes the Club as today (a Shared club while signed in, starting with the creator's own row linked as Organizer; a Local club otherwise), closes the sheet, and opens the new Club page **in Players Edit mode** with an empty row focused (on a new Shared club, after the creator's row).
 - The Clubs page's empty state uses the same sheet.

@@ -78,7 +78,9 @@ test.describe("New club sheet", () => {
     await page.goto("/clubs");
     await page.getByRole("button", { name: "Add club" }).click();
     await expect(sheet(page)).toBeVisible();
-    await expect(sheetName(page)).toBeFocused();
+    // The title takes focus, so the iOS keyboard waits for a tap on the field.
+    await expect(sheet(page).getByRole("heading", { name: "New club" })).toBeFocused();
+    await expect(sheetName(page)).not.toBeFocused();
     await sheetName(page).fill("Tuesday Crew");
     await createClub(page).click();
 

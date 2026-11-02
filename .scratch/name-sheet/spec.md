@@ -40,8 +40,7 @@ The title matches the Edit pill's accessible name. The Account field keeps `auto
 
 ### 5. Keyboard
 
-- Opening the sheet focuses the field with the caret at the end, so the keyboard comes up on the Edit tap (as New club does, not `focusTitle`).
-- Check on a small iPhone (SE size) that Save stays above the keyboard. If it does not, fall back to `focusTitle`.
+- Opening the sheet focuses the title (`focusTitle`), so the keyboard waits for a tap on the field. Focusing the field on open was tried first, but on an iPhone the keyboard covered the field and Save: iOS covers the page with the keyboard and the sheet is pinned to the bottom.
 - Enter saves. Saving puts the keyboard away so the busy state and the result are in view.
 
 ### 6. Closing, saving and failing
@@ -73,13 +72,13 @@ On `chromium-mobile` and `webkit-mobile` unless marked otherwise. Rework the exi
 
 `e2e/account-settings.spec.ts`:
 
-1. Edit name → the "Edit name" sheet opens with "Your name" focused and filled → change the name → Enter saves → the sheet closes, the card shows the new name, focus is on Edit name, and the name survives a reload (avatar initials on Home too).
+1. Edit name → the "Edit name" sheet opens with its title focused and "Your name" filled → change the name → Enter saves → the sheet closes, the card shows the new name, focus is on Edit name, and the name survives a reload (avatar initials on Home too).
 2. ×, Escape and a backdrop tap each close the sheet without saving. An empty name keeps the sheet open with "Enter a name" and the field invalid and focused.
 3. Open the sheet, go offline, Save → "You're offline. Connect and try again." under the field and the sheet stays open; back online, Save works. (Edit turned off while offline stays as today.)
 
 `e2e/club-page.spec.ts`:
 
-4. Edit club name → the sheet opens with "Club name" focused → change it → Save → the card shows the new name, also after a reload; the roster is unchanged.
+4. Edit club name → the sheet opens with its title focused → change it → Save → the card shows the new name, also after a reload; the roster is unchanged.
 5. × and Escape keep the old name. A duplicate name ("tuesday CREW" against "Tuesday Crew") shows "Club name already used" in the sheet and isn't saved. A different-cased version of its own name is allowed.
 6. A Player (the Role) sees no Edit on the Club card (unchanged).
 

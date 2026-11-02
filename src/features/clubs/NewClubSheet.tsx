@@ -11,7 +11,8 @@ import { newClubPath } from "../club-edit/clubPaths.ts";
 /**
  * "New club" sheet on the Clubs page: a name, then Create club. The Club is made as before (a
  * Shared club while signed in, starting with the creator's own row as Organizer; a Local club
- * otherwise), and its page opens in Players Edit mode to add the players.
+ * otherwise), and its page opens in Players Edit mode to add the players. The title takes focus on
+ * open, so the iOS keyboard (which would cover the sheet) waits for a tap on the field.
  */
 export function NewClubSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   // The sheet stays put while the Club is being made.
@@ -20,6 +21,7 @@ export function NewClubSheet({ open, onClose }: { open: boolean; onClose: () => 
     <Modal
       open={open}
       title="New club"
+      focusTitle
       closeLabel="Close"
       onClose={() => {
         if (!creating) onClose();

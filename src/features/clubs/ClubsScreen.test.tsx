@@ -45,7 +45,7 @@ describe("ClubsScreen", () => {
     expect(screen.queryByRole("list")).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Add club" }));
     const sheet = screen.getByRole("dialog", { name: "New club" });
-    expect(within(sheet).getByRole("textbox", { name: "Club name" })).toHaveFocus();
+    expect(within(sheet).getByRole("heading", { name: "New club" })).toHaveFocus();
   });
 
   it("New club: Create club makes the Club and opens its page in Players Edit mode", async () => {
