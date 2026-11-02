@@ -1,5 +1,5 @@
-import { useEffect, useId, useMemo, useRef, useState, type MouseEvent } from "react";
-import { useLocation } from "wouter";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Redirect, useLocation, useSearch } from "wouter";
 import { saveClub } from "../../backend/clubs.ts";
 import { getBackend } from "../../backend/index.ts";
 import { useOnline } from "../../backend/useOnline.ts";
@@ -9,13 +9,13 @@ import { OfflineNote } from "../../components/OfflineNote.tsx";
 import { PlayerRowEditor } from "../../components/PlayerRowEditor.tsx";
 import { Screen } from "../../components/Screen.tsx";
 import { normalizeAccountId } from "../../domain/accountId.ts";
-import { canChangeRoles, organizerCount } from "../../domain/permissions.ts";
+import { canChangeRoles, canEditClub, organizerCount } from "../../domain/permissions.ts";
 import { newId } from "../../domain/ids.ts";
 import { DEFAULT_SKILL, type Club, type Role } from "../../domain/types.ts";
 import { hasClubErrors, validateClub } from "../../domain/validation.ts";
-import { useAccount } from "../../storage/store.ts";
+import { useAccount, useClubs } from "../../storage/store.ts";
+import { countLabel } from "../session-summary/summaryFormat.ts";
 import { LinkedLine, LinkStatus } from "./AccountLinkSection.tsx";
-import { ClubCard } from "./ClubCard.tsx";
 import { clubErrorMessage } from "./clubErrors.ts";
 import {
   clubFromForm,
@@ -24,7 +24,14 @@ import {
   type PlayerRow,
   type RosterForm,
 } from "./clubForm.ts";
-import { ClubSessionCards } from "./ClubSessionCards.tsx";
+import {
+  clubPath,
+  editPlayersPath,
+  isOverClubPage,
+  JUST_CREATED_PARAM,
+  leavingEditPlayers,
+  type FromEditPlayers,
+} from "./clubPaths.ts";
 import {
   accountIdFromName,
   accountIdsToLookUp,
@@ -34,7 +41,6 @@ import {
   linkStates as linkStatesOf,
   type Lookups,
 } from "./linkState.ts";
-import { PlayersHeading, PlayersHeadingButton } from "./Roster.tsx";
 
 /** A fresh, empty roster row. */
 function blankRow(): PlayerRow {
@@ -42,21 +48,43 @@ function blankRow(): PlayerRow {
 }
 
 /**
- * The Club page in Players Edit mode: the roster as a form (names, Skill levels, Account links and
- * Roles), with Add player and Save pinned below. Save sends only the roster and ends Edit mode;
- * Cancel throws the changes away. The card can't be renamed, and Make shared and the Danger zone
- * are hidden, until Edit mode ends.
+ * `/clubs/:clubId/players`: Edit players, for those who may change the roster. Unknown ids go
+ * back to the Clubs list; anyone else (or an Organizer made a Player while here) to the Club page.
  */
-export function PlayersEditing({
+export function EditPlayersScreen({ clubId }: { clubId: string }) {
+  const [, navigate] = useLocation();
+  const search = useSearch();
+  const clubs = useClubs();
+  const viewer = useAccount()?.accountId;
+  const club = clubs.find((candidate) => candidate.id === clubId);
+  const [justCreated] = useState(() => new URLSearchParams(search).get(JUST_CREATED_PARAM) === "1");
+
+  // A reload or Back to this page shouldn't add another empty row.
+  useEffect(() => {
+    if (justCreated) {
+      navigate(editPlayersPath(clubId), { replace: true, state: window.history.state });
+    }
+    // Once, on opening.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (!club) return <Redirect to="/clubs" replace />;
+  if (!canEditClub(club, viewer)) return <Redirect to={clubPath(club.id)} replace />;
+  return <EditPlayers key={club.id} club={club} startWithBlankRow={justCreated} />;
+}
+
+/**
+ * The roster as a form (names, Skill levels, Account links and Roles), with Add player and Save
+ * pinned below. Save sends only the roster and returns to the Club page; Back throws the changes
+ * away, asking first when there are any.
+ */
+function EditPlayers({
   club,
   startWithBlankRow,
-  onDone,
 }: {
   club: Club;
   /** Open with an empty row to type in, focused (a Club that was just created). */
   startWithBlankRow: boolean;
-  /** Edit mode is over: saved or cancelled. */
-  onDone: () => void;
 }) {
   const [, navigate] = useLocation();
   const account = useAccount();
@@ -96,16 +124,6 @@ export function PlayersEditing({
   }
 
   const formRef = useRef<HTMLFieldSetElement>(null);
-  const cancelRef = useRef<HTMLButtonElement>(null);
-  const playersHeadingId = useId();
-
-  // Tapping Edit moves focus to Cancel, which takes Edit's place; a new Club's blank row takes it
-  // instead (PlayerRowEditor's autoFocus).
-  useEffect(() => {
-    if (!startWithBlankRow) cancelRef.current?.focus({ preventScroll: true });
-    // Once, on entering Edit mode.
-    // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   /** Rows whose name field holds an `@Account ID` (it isn't a name, so it isn't checked as one). */
   const typingId = (row: PlayerRow) => linking && !row.link && accountIdFromName(row.name) !== null;
@@ -288,8 +306,20 @@ export function PlayersEditing({
     nameFieldOf(next.id)?.focus();
   }
 
+  /** Back to the Club page: back through history when it's underneath, else in this page's place. */
+  function leave(how: FromEditPlayers) {
+    leavingEditPlayers(club.id, how);
+    if (isOverClubPage(window.history.state)) window.history.back();
+    else navigate(clubPath(club.id), { replace: true });
+  }
+
   async function save() {
     if (saving) return;
+    // Nothing to send (an untouched empty row isn't a change).
+    if (!dirty) {
+      leave("saved");
+      return;
+    }
     if (invalid || linkProblemShown) {
       setProblem(null);
       setAttempted(true);
@@ -300,7 +330,7 @@ export function PlayersEditing({
     setProblem(null);
     try {
       await saveClub(initialClub, clubFromForm(initialClub, form));
-      onDone();
+      leave("saved");
     } catch (error) {
       console.error("Failed to save Club", error);
       setProblem(clubErrorMessage(error));
@@ -319,26 +349,15 @@ export function PlayersEditing({
     setDiscardResolver(null);
   }
 
-  /** Click handler for a link off this screen: with unsaved changes, confirm like Back first. */
-  function leaveVia(href: string) {
-    return async (event: MouseEvent<HTMLAnchorElement>) => {
-      if (saving) {
-        event.preventDefault();
-        return;
-      }
-      if (!dirty) return;
-      event.preventDefault();
-      if (await guardBack()) navigate(href);
-    };
-  }
-
   const playerCount = form.rows.length;
 
   return (
     <Screen
-      title="Club"
-      backTo="/clubs"
+      title="Edit players"
+      subtitle={`${club.name} · ${countLabel(playerCount, "player", "players")}`}
+      backTo={clubPath(club.id)}
       onBack={guardBack}
+      onLeave={() => leave("back")}
       footer={
         <div className="flex flex-col gap-2">
           {/* One line at a time, most pressing first, so the footer grows by a line at most. */}
@@ -385,19 +404,9 @@ export function PlayersEditing({
         </div>
       }
     >
-      <ClubCard club={club} viewer={viewer} canRename={false} animate={startWithBlankRow} />
-
-      <ClubSessionCards club={club} viewer={viewer} leaveVia={leaveVia} />
-
       {/* Not a <form>: Enter in a field shouldn't trigger Save. Fields are off while saving. */}
       <fieldset ref={formRef} disabled={saving} className="flex min-w-0 flex-col gap-8">
-        <section aria-labelledby={playersHeadingId} className="flex flex-col gap-3">
-          <PlayersHeading
-            id={playersHeadingId}
-            count={playerCount}
-            action={<PlayersHeadingButton buttonRef={cancelRef} editing onClick={onDone} />}
-          />
-
+        <section aria-label="Players" className="flex flex-col gap-3">
           {linking && online === false ? (
             <OfflineNote className="rounded-box bg-base-200 px-3 py-2">
               You're offline. Linking Accounts and changing Roles need a connection.

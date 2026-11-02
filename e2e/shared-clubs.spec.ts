@@ -17,9 +17,11 @@ const playerNames = (page: Page) =>
     .getByRole("textbox", { name: "Player name" })
     .evaluateAll((inputs) => inputs.map((input) => (input as HTMLInputElement).value));
 
-/** New club through the sheet, then back to the Clubs list without adding anyone. */
+/** New club through the sheet, then back to the Clubs list (via its Club page) without adding anyone. */
 async function createClub(page: Page, name: string) {
   await createClubFromSheet(page, name);
+  await page.getByRole("button", { name: "Back" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Club" })).toBeVisible();
   await page.getByRole("button", { name: "Back" }).click();
   await expect(page).toHaveURL(/\/clubs$/);
 }
@@ -30,11 +32,12 @@ test.describe("Shared clubs", () => {
   }) => {
     await seedStorage(page, { account: roy });
     await createClubFromSheet(page, "Tuesday");
-    // Players Edit mode: my own row, then an empty one.
+    // Edit players: my own row, then an empty one.
     await expect.poll(() => playerNames(page)).toEqual(["Roy Smith", ""]);
     await expect(page.getByRole("combobox", { name: "Skill level for Roy Smith" })).toHaveValue(
       "intermediate",
     );
+    await page.getByRole("button", { name: "Back" }).click();
     await expect(page.getByText("Shared club · You're an Organizer")).toBeVisible();
     await page.getByRole("button", { name: "Back" }).click();
 
@@ -106,7 +109,7 @@ test.describe("Shared clubs", () => {
     });
     await seedStorage(page, { account: roy, sharedClubs: [club] });
     await page.goto("/clubs/shared-1");
-    await page.getByRole("button", { name: "Edit players" }).click();
+    await page.getByRole("link", { name: "Edit players" }).click();
     await expect.poll(() => playerNames(page)).toEqual(["Ana", "Roy Smith"]);
     await expect(page.getByRole("button", { name: "Add player" })).toBeEnabled();
 

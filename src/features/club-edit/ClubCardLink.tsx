@@ -1,4 +1,4 @@
-import { useId, type MouseEvent, type ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { Link } from "wouter";
 import { ChevronRightIcon } from "../../components/icons.tsx";
 
@@ -15,7 +15,6 @@ export function ClubCardLink({
   detail,
   tile = false,
   className = "",
-  onClick,
 }: {
   href: string;
   tone: "plain" | "active";
@@ -24,7 +23,6 @@ export function ClubCardLink({
   detail: string;
   tile?: boolean;
   className?: string;
-  onClick?: (event: MouseEvent<HTMLAnchorElement>) => void;
 }) {
   const labelId = useId();
   const detailId = useId();
@@ -63,7 +61,6 @@ export function ClubCardLink({
   return (
     <Link
       href={href}
-      onClick={onClick}
       aria-labelledby={labelId}
       aria-describedby={detailId}
       className={`group flex rounded-box transition-transform active:scale-[0.98] ${

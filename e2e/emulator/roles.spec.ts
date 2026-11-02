@@ -22,16 +22,16 @@ async function createClubWithCat(page: Page, clubName: string): Promise<string> 
   return clubId;
 }
 
-/** Open the Club page in Players Edit mode. */
+/** Open the Club page, then Edit players. */
 async function editClub(page: Page, clubId: string) {
   await page.goto(`/clubs/${clubId}`);
-  await page.getByRole("button", { name: "Edit players" }).click();
+  await page.getByRole("link", { name: "Edit players" }).click();
 }
 
-/** Saved: out of Players Edit mode, still on the Club page. */
+/** Saved: off Edit players, back on the Club page. */
 async function expectSaved(page: Page) {
   await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Edit players" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Edit players" })).toBeVisible();
 }
 
 test.describe("Linking Accounts between two people", () => {
@@ -69,7 +69,7 @@ test.describe("Linking Accounts between two people", () => {
 
     // No editing: You on her row, no Account IDs, nothing to edit.
     await expect(anaPage.getByRole("heading", { level: 2, name: clubName })).toBeVisible();
-    await expect(anaPage.getByRole("button", { name: "Edit players" })).toHaveCount(0);
+    await expect(anaPage.getByRole("link", { name: "Edit players" })).toHaveCount(0);
     await expect(anaPage.getByText("You", { exact: true })).toHaveCount(1);
     await expect(anaPage.getByText(roy.accountId)).toHaveCount(0);
     await expect(anaPage.getByText(ana.accountId)).toHaveCount(0);
@@ -120,7 +120,7 @@ test.describe("Linking Accounts between two people", () => {
     await role(page, "Ana Bell").selectOption("organizer");
     await role(page, "Roy Smith").selectOption("player");
     await page.getByRole("button", { name: "Save" }).click();
-    // Out of Edit mode, and a Player now: no Edit any more.
+    // Back on the Club page, and a Player now: no Edit any more.
     await expect(page.getByText("Shared club · You're a Player")).toBeVisible();
     await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
 
@@ -139,7 +139,7 @@ test.describe("Linking Accounts between two people", () => {
     await expect(role(anaPage, "Ana Bell")).toHaveValue("organizer");
     await page.goto(`/clubs/${clubId}`);
     await expect(page.getByText("Shared club · You're a Player")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Edit players" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Edit players" })).toHaveCount(0);
     await expect(page.getByRole("textbox")).toHaveCount(0);
 
     await anaPage.context().close();
@@ -241,6 +241,41 @@ test.describe("Linking Accounts between two people", () => {
     expect(
       await anaPage.evaluate(() => (window as unknown as { __noReload?: number }).__noReload),
     ).toBe(1);
+
+    await anaPage.context().close();
+  });
+
+  test("an Organizer on Edit players who is made a Player lands on the Club page", async ({
+    page,
+    browser,
+    baseURL,
+  }) => {
+    await signUp(page, "Roy Smith");
+    const anaPage = await (await browser.newContext({ baseURL })).newPage();
+    const ana = await signUp(anaPage, "Ana Bell");
+
+    // Roy makes Ana an Organizer.
+    const clubId = await createClubWithCat(page, uniqueId("Monday"));
+    await editClub(page, clubId);
+    await (await catField(page)).fill(`@${ana.accountId}`);
+    await expect(page.getByText(ana.accountId, { exact: true })).toBeVisible();
+    await role(page, "Ana Bell").selectOption("organizer");
+    await page.getByRole("button", { name: "Save" }).click();
+    await expectSaved(page);
+
+    // Ana opens Edit players; Roy makes her a Player meanwhile.
+    await editClub(anaPage, clubId);
+    await expect(anaPage.getByRole("heading", { level: 1, name: "Edit players" })).toBeVisible();
+    await editClub(page, clubId);
+    await role(page, "Ana Bell").selectOption("player");
+    await page.getByRole("button", { name: "Save" }).click();
+    await expectSaved(page);
+
+    await expect(anaPage.getByText("Shared club · You're a Player")).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(anaPage).toHaveURL(new RegExp(`/clubs/${clubId}$`));
+    await expect(anaPage.getByRole("textbox")).toHaveCount(0);
 
     await anaPage.context().close();
   });

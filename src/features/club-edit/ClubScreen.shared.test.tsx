@@ -70,14 +70,14 @@ const nameInputs = () => screen.getAllByRole("textbox", { name: "Player name" })
 
 const names = () => nameInputs().map((input) => (input as HTMLInputElement).value);
 
-/** Clubs → Add club → name → Create club. */
+/** Clubs → Add club → name → Create club: Edit players for the new Club. */
 async function createFromSheet(user: ReturnType<typeof userEvent.setup>, name: string) {
   renderAt("/clubs");
   await user.click(screen.getByRole("button", { name: "Add club" }));
   const sheet = screen.getByRole("dialog", { name: "New club" });
   await user.type(within(sheet).getByRole("textbox", { name: "Club name" }), name);
   await user.click(within(sheet).getByRole("button", { name: "Create club" }));
-  await screen.findByRole("heading", { level: 1, name: "Club" });
+  await screen.findByRole("heading", { level: 1, name: "Edit players" });
 }
 
 describe("Club screens with Accounts", () => {
@@ -95,11 +95,13 @@ describe("Club screens with Accounts", () => {
         link: { accountId: expect.stringMatching(/^roy-/), role: "organizer" },
       }),
     ]);
-    expect(screen.getByText("Shared club · You're an Organizer")).toBeInTheDocument();
-    // Players Edit mode, with an empty row after mine.
+    // Edit players, with an empty row after mine.
     expect(names()).toEqual(["Roy Smith", ""]);
     expect(nameInputs()[1]).toHaveFocus();
     expect(screen.queryByRole("button", { name: "Remove Roy Smith" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Back" }));
+    expect(screen.getByText("Shared club · You're an Organizer")).toBeInTheDocument();
 
     // Shared clubs aren't "this device only".
     await user.click(screen.getByRole("button", { name: "Back" }));
@@ -115,6 +117,8 @@ describe("Club screens with Accounts", () => {
       { id: expect.any(String), name: "Tuesday", kind: "local", players: [] },
     ]);
     expect(names()).toEqual([""]);
+
+    await user.click(screen.getByRole("button", { name: "Back" }));
     expect(screen.getByText("This device only")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Back" }));
@@ -131,6 +135,7 @@ describe("Club screens with Accounts", () => {
     setWelcomeDone();
     const user = userEvent.setup();
     await createFromSheet(user, "Tuesday");
+    await user.click(screen.getByRole("button", { name: "Back" }));
     expect(screen.queryByText("This device only")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Back" }));
@@ -207,7 +212,7 @@ describe("Club screens with Accounts", () => {
     it("sends Skill level changes through the Backend", async () => {
       const user = userEvent.setup();
       renderAt("/clubs/c1");
-      await user.click(screen.getByRole("button", { name: "Edit players" }));
+      await user.click(screen.getByRole("link", { name: "Edit players" }));
 
       await user.selectOptions(
         screen.getByRole("combobox", { name: "Skill level for Ana" }),
@@ -225,7 +230,7 @@ describe("Club screens with Accounts", () => {
     it("adds a row through the Backend", async () => {
       const user = userEvent.setup();
       renderAt("/clubs/c1");
-      await user.click(screen.getByRole("button", { name: "Edit players" }));
+      await user.click(screen.getByRole("link", { name: "Edit players" }));
 
       await user.click(screen.getByRole("button", { name: "Add player" }));
       await user.type(nameInputs().at(-1)!, "Ben");
@@ -237,12 +242,9 @@ describe("Club screens with Accounts", () => {
     it("offline: Skill level changes still save, adding a row is turned off with the reason", async () => {
       const user = userEvent.setup();
       renderAt("/clubs/c1");
-      await user.click(screen.getByRole("button", { name: "Edit players" }));
+      await user.click(screen.getByRole("link", { name: "Edit players" }));
 
       act(() => backend.setOnline(false));
-      expect(screen.getByRole("link", { name: "New session" })).toHaveAccessibleDescription(
-        "Needs a connection to start",
-      );
       expect(screen.getByRole("button", { name: "Add player" })).toBeDisabled();
       expect(
         screen.getByText("You're offline. Adding players needs a connection."),
@@ -260,7 +262,7 @@ describe("Club screens with Accounts", () => {
     it("removes a row but never the Organizer's own", async () => {
       const user = userEvent.setup();
       renderAt("/clubs/c1");
-      await user.click(screen.getByRole("button", { name: "Edit players" }));
+      await user.click(screen.getByRole("link", { name: "Edit players" }));
 
       await user.click(screen.getByRole("button", { name: "Remove Ana" }));
       await user.click(screen.getByRole("button", { name: "Save" }));
@@ -322,7 +324,7 @@ describe("Club screens with Accounts", () => {
         );
         const user = userEvent.setup();
         renderAt("/clubs/c1");
-        await user.click(screen.getByRole("button", { name: "Edit players" }));
+        await user.click(screen.getByRole("link", { name: "Edit players" }));
 
         await user.selectOptions(
           screen.getByRole("combobox", { name: "Skill level for Ana" }),
@@ -335,17 +337,16 @@ describe("Club screens with Accounts", () => {
         expect(busy).toHaveAttribute("aria-busy", "true");
         expect(busy.querySelector(".loading-spinner")).toHaveAttribute("aria-hidden", "true");
         expect(screen.getByRole("button", { name: "Add player" })).toBeDisabled();
-        expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
         for (const input of nameInputs()) expect(input).toBeDisabled();
 
         // Back does nothing, not even the discard question.
         await user.click(screen.getByRole("button", { name: "Back" }));
         expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-        expect(screen.getByRole("heading", { level: 1, name: "Club" })).toBeInTheDocument();
+        expect(screen.getByRole("heading", { level: 1, name: "Edit players" })).toBeInTheDocument();
 
         await act(async () => fail(new BackendError("failed")));
 
-        // Still in Edit mode, with the message.
+        // Still on Edit players, with the message.
         expect(screen.getByRole("alert")).toHaveTextContent(
           "Couldn't save your changes. Try again.",
         );

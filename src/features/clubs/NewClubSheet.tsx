@@ -6,12 +6,12 @@ import { newId } from "../../domain/ids.ts";
 import { normalizeName, validateName } from "../../domain/validation.ts";
 import { useClubs } from "../../storage/store.ts";
 import { clubErrorMessage, clubNameMessage } from "../club-edit/clubErrors.ts";
-import { newClubPath } from "../club-edit/clubPaths.ts";
+import { clubPath, newClubPlayersPath, OVER_CLUB_PAGE_STATE } from "../club-edit/clubPaths.ts";
 
 /**
  * "New club" sheet on the Clubs page: a name, then Create club. The Club is made as before (a
  * Shared club while signed in, starting with the creator's own row as Organizer; a Local club
- * otherwise), and its page opens in Players Edit mode to add the players. The title takes focus on
+ * otherwise), and Edit players opens on top of its Club page to add the players. The title takes focus on
  * open, so the iOS keyboard (which would cover the sheet) waits for a tap on the field.
  */
 export function NewClubSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -59,7 +59,9 @@ function NewClubForm({
   // A Shared club reaches the device through the server's listener, a moment after it is created.
   useEffect(() => {
     if (createdId && clubs.some((club) => club.id === createdId)) {
-      navigate(newClubPath(createdId));
+      // Edit players on top of the new Club page: Back or Save there lands on the Club page.
+      navigate(clubPath(createdId));
+      navigate(newClubPlayersPath(createdId), { state: OVER_CLUB_PAGE_STATE });
     }
   }, [createdId, clubs, navigate]);
 

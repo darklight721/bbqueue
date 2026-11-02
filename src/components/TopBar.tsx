@@ -10,6 +10,8 @@ export interface TopBarProps {
    * Return `false` (or resolve to `false`) to stay on the screen.
    */
   onBack?: () => boolean | Promise<boolean>;
+  /** Leaves in place of going to `backTo` (e.g. back through history), once `onBack` allows. */
+  onLeave?: () => void;
   title: ReactNode;
   /** Optional small line under the title (e.g. the Club's name). */
   subtitle?: ReactNode;
@@ -17,7 +19,7 @@ export interface TopBarProps {
   right?: ReactNode;
 }
 
-export function TopBar({ backTo, onBack, title, subtitle, right }: TopBarProps) {
+export function TopBar({ backTo, onBack, onLeave, title, subtitle, right }: TopBarProps) {
   const [, navigate] = useLocation();
   const [busy, setBusy] = useState(false);
 
@@ -32,7 +34,8 @@ export function TopBar({ backTo, onBack, title, subtitle, right }: TopBarProps) 
         setBusy(false);
       }
     }
-    navigate(backTo);
+    if (onLeave) onLeave();
+    else navigate(backTo);
   }
 
   return (

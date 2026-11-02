@@ -3,6 +3,7 @@ import { Redirect, Route, Switch, useLocation } from "wouter";
 import { getBackend } from "../backend/index.ts";
 import { AccountSettingsScreen } from "../features/account/AccountSettingsScreen.tsx";
 import { ClubScreen } from "../features/club-edit/ClubScreen.tsx";
+import { EditPlayersScreen } from "../features/club-edit/EditPlayersScreen.tsx";
 import { ClubsScreen } from "../features/clubs/ClubsScreen.tsx";
 import { HomeScreen } from "../features/home/HomeScreen.tsx";
 import { NewSessionScreen } from "../features/new-session/NewSessionScreen.tsx";
@@ -78,6 +79,9 @@ function Routes() {
       </Route>
       <Route path="/clubs/:clubId/players/:clubPlayerId/stats">
         {(params) => <ClubStatsScreen clubId={params.clubId} clubPlayerId={params.clubPlayerId} />}
+      </Route>
+      <Route path="/clubs/:clubId/players">
+        {(params) => <EditPlayersScreen clubId={params.clubId} />}
       </Route>
       <Route path="/clubs/:clubId/sessions">
         {(params) => <ClubSessionsScreen clubId={params.clubId} />}

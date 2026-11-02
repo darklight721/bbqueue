@@ -10,7 +10,7 @@ export interface PlayerRow {
   link?: AccountLink;
 }
 
-/** Players Edit mode's form: the roster, one row per Club player. */
+/** Edit players' form: the roster, one row per Club player. */
 export interface RosterForm {
   rows: PlayerRow[];
 }

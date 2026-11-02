@@ -1,4 +1,3 @@
-import type { MouseEvent } from "react";
 import { useOnline } from "../../backend/useOnline.ts";
 import { HistoryIcon, PlayIcon, PlusIcon } from "../../components/icons.tsx";
 import { canStartSession, isSessionHost } from "../../domain/permissions.ts";
@@ -10,17 +9,9 @@ import { ClubCardLink } from "./ClubCardLink.tsx";
 
 /**
  * The Club page's session cards: Open active session or New session (for those who may start
- * one), and Sessions (past sessions), side by side. `leaveVia` guards each link (unsaved changes).
+ * one), and Sessions (past sessions), side by side.
  */
-export function ClubSessionCards({
-  club,
-  viewer,
-  leaveVia,
-}: {
-  club: Club;
-  viewer: string | undefined;
-  leaveVia?: (href: string) => (event: MouseEvent<HTMLAnchorElement>) => void;
-}) {
+export function ClubSessionCards({ club, viewer }: { club: Club; viewer: string | undefined }) {
   const online = useOnline();
   const endedSessions = useEndedSessions();
   const activeEntries = useActiveSessions();
@@ -59,7 +50,6 @@ export function ClubSessionCards({
                 }`
               : activeSession.name
           }
-          onClick={leaveVia?.(activeHref)}
         />
       ) : (
         <ClubCardLink
@@ -76,7 +66,6 @@ export function ClubSessionCards({
                 ? "Replaces the current session"
                 : "Pick players and courts"
           }
-          onClick={leaveVia?.(newSessionForClubPath(club.id))}
         />
       )}
       {sessionCount > 0 ? (
@@ -88,7 +77,6 @@ export function ClubSessionCards({
           icon={<HistoryIcon className="size-6" />}
           label="Sessions"
           detail={countLabel(sessionCount, "past session", "past sessions")}
-          onClick={leaveVia?.(sessionsHref)}
         />
       ) : null}
     </nav>

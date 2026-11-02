@@ -8,7 +8,7 @@ import {
   readStoredData,
   seedStorage,
 } from "./fixtures.ts";
-import { addPlayersInEditMode, createClubFromSheet } from "./club-helpers.ts";
+import { addPlayers, createClubFromSheet } from "./club-helpers.ts";
 import { court, lineupOf, openScoreDialog, storedSession } from "./session-helpers.ts";
 
 const stat = (page: Page, label: RegExp) =>
@@ -271,7 +271,7 @@ test.describe("Full journey", () => {
 
     // 1. Create a Club with 8 players.
     await createClubFromSheet(page, "Journey Club");
-    await addPlayersInEditMode(page, names);
+    await addPlayers(page, names);
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
     await page.getByRole("button", { name: "Back" }).click();

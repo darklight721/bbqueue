@@ -17,9 +17,9 @@ const cardName = (page: Page, name: string) =>
 const nameSheet = (page: Page) => page.getByRole("dialog", { name: "Edit club name" });
 const nameField = (page: Page) => nameSheet(page).getByRole("textbox", { name: "Club name" });
 const players = (page: Page) => page.getByRole("region", { name: /^Players/ });
-const rosterRows = (page: Page) => players(page).getByRole("link");
+const rosterRows = (page: Page) => players(page).getByRole("listitem").getByRole("link");
 const back = (page: Page) => page.getByRole("button", { name: "Back" });
-const editPlayers = (page: Page) => page.getByRole("button", { name: "Edit players" });
+const editPlayers = (page: Page) => page.getByRole("link", { name: "Edit players" });
 const save = (page: Page) => page.getByRole("button", { name: "Save", exact: true });
 
 /** Seeded club whose players are deliberately not in alphabetical order. */
@@ -44,28 +44,6 @@ async function expectRoster(page: Page, names: string[]) {
   await expect(rosterRows(page)).toHaveCount(names.length);
   for (const [index, name] of names.entries()) {
     await expect(rosterRows(page).nth(index)).toHaveAccessibleName(name);
-  }
-}
-
-async function expectRows(page: Page, rows: [name: string, skill: string][]) {
-  await expect(playerNames(page)).toHaveCount(rows.length);
-  for (const [index, [name, skill]] of rows.entries()) {
-    await expect(playerNames(page).nth(index)).toHaveValue(name);
-    await expect(page.getByRole("combobox", { name: `Skill level for ${name}` })).toHaveValue(
-      skill,
-    );
-  }
-}
-
-async function addPlayer(page: Page, index: number, name: string, skill?: string) {
-  await page.getByRole("button", { name: "Add player" }).click();
-  const field = playerNames(page).nth(index);
-  await expect(field).toBeFocused();
-  await field.fill(name);
-  if (skill) {
-    await page
-      .getByRole("combobox", { name: `Skill level for ${name}` })
-      .selectOption({ label: skill });
   }
 }
 
@@ -144,7 +122,7 @@ test.describe("Club card", () => {
 });
 
 test.describe("Players", () => {
-  test("lists Club players sorted by name, without a form; outside Edit mode Back leaves straight away", async ({
+  test("lists Club players sorted by name, without a form; Back leaves straight away", async ({
     page,
   }) => {
     const club = seedClub();
@@ -162,151 +140,13 @@ test.describe("Players", () => {
     await expect(page.getByRole("dialog")).toHaveCount(0);
   });
 
-  test("Edit mode: rename, change Skill level, remove one, add one → Save stays on the Club page and the list reflects it after a reload", async ({
-    page,
-  }) => {
+  test("Edit on Players opens Edit players", async ({ page }) => {
     const club = seedClub();
     await openClub(page, club);
     await editPlayers(page).click();
-
-    await expectRows(page, [
-      ["alice", "beginner"],
-      ["Mike", "intermediate"],
-      ["Zoe", "advanced"],
-    ]);
-    // While editing, the card can't be renamed and the Danger zone is hidden.
-    await expect(page.getByRole("button", { name: "Edit club name" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Delete club" })).toHaveCount(0);
-
-    // Rename alice → Bob, Mike → Advanced, remove Zoe, add Carl.
-    await playerNames(page).nth(0).fill("Bob");
-    await page
-      .getByRole("combobox", { name: "Skill level for Mike" })
-      .selectOption({ label: "Advanced" });
-    await page.getByRole("button", { name: "Remove Zoe" }).click();
-    await expect(playerNames(page)).toHaveCount(2);
-    await addPlayer(page, 2, "Carl");
-    // Added rows are appended, not re-sorted, until the next open.
-    await expect(playerNames(page).nth(2)).toHaveValue("Carl");
-
-    await save(page).click();
-    await expect(page).toHaveURL(new RegExp(`/clubs/${club.id}$`));
-    await expect(save(page)).toHaveCount(0);
-    await expect(editPlayers(page)).toBeVisible();
-    await expectRoster(page, ["Bob", "Carl", "Mike"]);
-
-    await page.reload();
-    await expectRoster(page, ["Bob", "Carl", "Mike"]);
-    await expect(rosterRows(page).nth(2)).toHaveAccessibleDescription("Advanced");
-    await back(page).click();
-    await expect(
-      page.getByRole("link", { name: "Friday Club", exact: true }),
-    ).toHaveAccessibleDescription("3 players This device only");
-  });
-
-  test("Edit → change something → Cancel: nothing changed, without asking", async ({ page }) => {
-    await openClub(page, seedClub());
-    await editPlayers(page).click();
-    await playerNames(page).nth(0).fill("Changed");
-    await page.getByRole("button", { name: "Remove Zoe" }).click();
-    await page.getByRole("button", { name: "Cancel" }).click();
-
-    await expect(page.getByRole("dialog")).toHaveCount(0);
-    await expect(playerNames(page)).toHaveCount(0);
-    await expectRoster(page, ["alice", "Mike", "Zoe"]);
-    await page.reload();
-    await expectRoster(page, ["alice", "Mike", "Zoe"]);
-  });
-
-  test("Enter in a player name moves to the next row, or appends one from the last", async ({
-    page,
-  }) => {
-    await openClub(page, seedClub());
-    await editPlayers(page).click();
+    await expect(page).toHaveURL(new RegExp(`/clubs/${club.id}/players$`));
+    await expect(page.getByRole("heading", { level: 1, name: "Edit players" })).toBeVisible();
     await expect(playerNames(page)).toHaveCount(3);
-
-    await playerNames(page).nth(0).press("Enter");
-    await expect(playerNames(page).nth(1)).toBeFocused();
-    await playerNames(page).nth(2).press("Enter");
-    await expect(playerNames(page)).toHaveCount(4);
-    await expect(playerNames(page).nth(3)).toBeFocused();
-    await expect(playerNames(page).nth(3)).toHaveValue("");
-    // An empty name doesn't add another row, and Enter never saves.
-    await playerNames(page).nth(3).press("Enter");
-    await expect(playerNames(page)).toHaveCount(4);
-    await expect(save(page)).toBeVisible();
-  });
-});
-
-test.describe("Back in Edit mode", () => {
-  test("with no changes leaves immediately", async ({ page }) => {
-    await openClub(page, seedClub());
-    await editPlayers(page).click();
-    await back(page).click();
-    await expect(page).toHaveURL(/\/clubs$/);
-    await expect(page.getByRole("dialog")).toHaveCount(0);
-  });
-
-  test("with changes asks; Keep editing keeps edits, Discard leaves without saving", async ({
-    page,
-  }) => {
-    const club = seedClub();
-    await openClub(page, club);
-    await editPlayers(page).click();
-
-    await playerNames(page).nth(0).fill("Renamed");
-    await back(page).click();
-
-    const dialog = page.getByRole("dialog", { name: "Discard changes?" });
-    await expect(dialog).toBeVisible();
-    await dialog.getByRole("button", { name: "Keep editing" }).click();
-    await expect(dialog).toBeHidden();
-    await expect(page).toHaveURL(new RegExp(`/clubs/${club.id}$`));
-    await expect(playerNames(page).nth(0)).toHaveValue("Renamed");
-
-    await back(page).click();
-    await page
-      .getByRole("dialog", { name: "Discard changes?" })
-      .getByRole("button", { name: "Discard" })
-      .click();
-    await expect(page).toHaveURL(/\/clubs$/);
-    await page.getByRole("link", { name: "Friday Club", exact: true }).click();
-    await expectRoster(page, ["alice", "Mike", "Zoe"]);
-  });
-});
-
-test.describe("Validation in Edit mode", () => {
-  test("an empty player name blocks Save", async ({ page }) => {
-    const club = makeClub({ name: "Valid Club" });
-    await openClub(page, club);
-    await editPlayers(page).click();
-    await page.getByRole("button", { name: "Add player" }).click();
-    await expect(playerNames(page)).toHaveCount(1);
-    await save(page).click();
-
-    await expect(page.getByText("Enter a name")).toBeVisible();
-    await expect(page.getByRole("alert")).toHaveText("Fix the highlighted fields to save.");
-    await expect(playerNames(page).first()).toHaveAttribute("aria-invalid", "true");
-    const stored = await readStoredData<Club[]>(page, "clubs");
-    expect(stored?.[0]?.players).toEqual([]);
-  });
-
-  test("a duplicate player name (case-insensitive) blocks Save until fixed", async ({ page }) => {
-    const club = makeClub({ name: "Valid Club" });
-    await openClub(page, club);
-    await editPlayers(page).click();
-    await addPlayer(page, 0, "Sam");
-    await addPlayer(page, 1, "sam");
-    await save(page).click();
-
-    // Both clashing rows are flagged.
-    await expect(page.getByText("Name already used")).toHaveCount(2);
-    const stored = await readStoredData<Club[]>(page, "clubs");
-    expect(stored?.[0]?.players).toEqual([]);
-
-    await playerNames(page).nth(1).fill("Sally");
-    await save(page).click();
-    await expectRoster(page, ["Sally", "Sam"]);
   });
 });
 
@@ -394,14 +234,6 @@ test.describe("Stats from the roster", () => {
     await expect(page).toHaveURL(new RegExp(`/clubs/${club.id}$`));
     await expect(cardName(page, "Alpha Club")).toBeVisible();
   });
-
-  test("in Edit mode rows don't open Stats", async ({ page }) => {
-    const { club, ended } = playedClub();
-    await openClub(page, club, [ended]);
-    await editPlayers(page).click();
-    await expect(rosterRows(page)).toHaveCount(0);
-    await expect(playerNames(page)).toHaveCount(3);
-  });
 });
 
 test.describe("Delete club", () => {
@@ -486,24 +318,5 @@ test.describe("Session cards", () => {
     const cardLink = (await page.getByRole("link", { name: "New session" }).boundingBox())!;
     const clubCard = (await card(page).boundingBox())!;
     expect(Math.abs(cardLink.width - clubCard.width)).toBeLessThan(1);
-  });
-
-  test("in Edit mode with unsaved changes, a session card asks first", async ({ page }) => {
-    const club = seedClub();
-    await openClub(page, club);
-    await editPlayers(page).click();
-    await playerNames(page).nth(0).fill("Changed");
-
-    await page.getByRole("link", { name: "New session" }).click();
-    const dialog = page.getByRole("dialog", { name: "Discard changes?" });
-    await dialog.getByRole("button", { name: "Keep editing" }).click();
-    await expect(page).toHaveURL(new RegExp(`/clubs/${club.id}$`));
-
-    await page.getByRole("link", { name: "New session" }).click();
-    await page
-      .getByRole("dialog", { name: "Discard changes?" })
-      .getByRole("button", { name: "Discard" })
-      .click();
-    await expect(page).toHaveURL(new RegExp(`/sessions/new\\?club=${club.id}$`));
   });
 });

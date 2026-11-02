@@ -11,6 +11,9 @@ test.describe("Shared clubs on the server", () => {
     const clubName = uniqueId("Tuesday");
 
     await createClubFromSheet(page, clubName);
+    // Edit players → the new Club page → Clubs.
+    await page.getByRole("button", { name: "Back" }).click();
+    await expect(page.getByRole("heading", { level: 1, name: "Club" })).toBeVisible();
     await page.getByRole("button", { name: "Back" }).click();
     await expect(page).toHaveURL(/\/clubs$/);
     await expect(page.getByRole("link", { name: new RegExp(clubName) })).toBeVisible();
@@ -32,7 +35,7 @@ test.describe("Shared clubs on the server", () => {
     await expect(page.getByRole("link", { name: new RegExp(clubName) })).toBeVisible();
   });
 
-  test("New club opens in Players Edit mode with the creator's own row; an @-linked second Account is saved in the empty row, and both see the Club", async ({
+  test("New club opens Edit players with the creator's own row; an @-linked second Account is saved in the empty row, and both see the Club", async ({
     page,
     browser,
     baseURL,
@@ -83,7 +86,7 @@ test.describe("Shared clubs on the server", () => {
     const anaRow = anaPage.getByRole("link", { name: new RegExp(clubName) });
     await expect(anaRow).toBeVisible({ timeout: 30_000 });
     await anaRow.click();
-    await anaPage.getByRole("button", { name: "Edit players" }).click();
+    await anaPage.getByRole("link", { name: "Edit players" }).click();
     await expect(anaPage.getByRole("combobox", { name: "Role for Ana Bell" })).toHaveValue(
       "organizer",
     );
@@ -139,7 +142,7 @@ test.describe("Shared clubs on the server", () => {
 
     // Roy edits while offline.
     await page.goto(`/clubs/${clubId}`);
-    await page.getByRole("button", { name: "Edit players" }).click();
+    await page.getByRole("link", { name: "Edit players" }).click();
     await expect(page.getByRole("combobox", { name: "Skill level for Cat" })).toHaveValue(
       "beginner",
     );

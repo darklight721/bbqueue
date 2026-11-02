@@ -48,7 +48,7 @@ describe("ClubsScreen", () => {
     expect(within(sheet).getByRole("heading", { name: "New club" })).toHaveFocus();
   });
 
-  it("New club: Create club makes the Club and opens its page in Players Edit mode", async () => {
+  it("New club: Create club makes the Club and opens Edit players on top of its Club page", async () => {
     setLocalClubs([{ id: "c1", name: "Riverside", kind: "local", players: [] }]);
     const location = renderScreen();
     await userEvent.click(screen.getByRole("button", { name: "Add club" }));
@@ -65,7 +65,10 @@ describe("ClubsScreen", () => {
       kind: "local",
       players: [],
     });
-    expect(location.history.at(-1)).toBe(`/clubs/${created!.id}?new=1`);
+    expect(location.history.slice(-2)).toEqual([
+      `/clubs/${created!.id}`,
+      `/clubs/${created!.id}/players?new=1`,
+    ]);
   });
 
   it("New club: an empty, too long or duplicate name blocks Create with a message", async () => {

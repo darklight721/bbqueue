@@ -24,8 +24,8 @@ const club: Club = makeClub({
 
 const role = (page: Page, who: string) => page.getByRole("combobox", { name: `Role for ${who}` });
 const catField = (page: Page) => page.getByRole("textbox", { name: "Player name" }).nth(0);
-const editPlayers = (page: Page) => page.getByRole("button", { name: "Edit players" }).click();
-/** Saved: out of Players Edit mode, still on the Club page. */
+const editPlayers = (page: Page) => page.getByRole("link", { name: "Edit players" }).click();
+/** Saved: off Edit players, back on the Club page. */
 const expectSaved = async (page: Page, clubId: string) => {
   await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
   await expect(page).toHaveURL(new RegExp(`/clubs/${clubId}$`));
@@ -73,7 +73,7 @@ test.describe("Linking Accounts (one device)", () => {
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page.getByText("Fix the highlighted fields to save.")).toBeVisible();
     await expect(page.getByText("Enter a name")).toHaveCount(0);
-    await expect(page).toHaveURL(/\/clubs\/shared-1$/);
+    await expect(page).toHaveURL(/\/clubs\/shared-1\/players$/);
 
     await catField(page).fill("@Roy-7K3F");
     await expect(page.getByText("That Account is already on this roster.")).toBeVisible();
@@ -110,9 +110,9 @@ test.describe("Linking Accounts (one device)", () => {
     await expect(page.getByRole("alert")).toContainText("A Club needs at least one Organizer.");
     await expect(role(page, roy.name)).toHaveValue("organizer");
     await expect(page.getByRole("button", { name: "Remove Roy Smith" })).toHaveCount(0);
-    // The Danger zone is hidden while editing.
+    // The Danger zone is on the Club page, not on Edit players.
     await expect(page.getByRole("button", { name: "Leave club" })).toHaveCount(0);
-    await page.getByRole("button", { name: "Cancel" }).click();
+    await page.getByRole("button", { name: "Back" }).click();
     await expect(page.getByRole("button", { name: "Leave club" })).toBeDisabled();
     await expect(page.getByText(/You're the only Organizer/)).toBeVisible();
   });
@@ -276,7 +276,7 @@ test("a Player sees the Club page without Edit, with You on their row and no Acc
   await expect(page.getByRole("textbox")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Edit club name" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Edit players" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Edit players" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: roy.name })).toHaveAccessibleDescription(
     "Organizer, Intermediate",
   );
@@ -287,6 +287,11 @@ test("a Player sees the Club page without Edit, with You on their row and no Acc
   await expect(page.getByRole("heading", { level: 2, name: roy.name })).toBeVisible();
   await page.getByRole("button", { name: "Back" }).click();
   await expect(page).toHaveURL(/\/clubs\/shared-3$/);
+
+  // Edit players isn't for a Player: its URL lands on the Club page.
+  await page.goto("/clubs/shared-3/players");
+  await expect(page).toHaveURL(/\/clubs\/shared-3$/);
+  await expect(page.getByRole("textbox")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Leave club" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Leave club" }).click();

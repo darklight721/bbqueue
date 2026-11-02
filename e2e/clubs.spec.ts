@@ -71,7 +71,7 @@ test.describe("Clubs", () => {
 });
 
 test.describe("New club sheet", () => {
-  test("Add club → name → Create club → the Club page in Players Edit mode → add 3 players → Save → the Clubs list shows 3 players", async ({
+  test("Add club → name → Create club → Edit players → add 3 players → Save → the new Club page lists them → Back → the Clubs list shows 3 players", async ({
     page,
   }) => {
     await seedStorage(page, { clubs: [makeClubWithPlayers(1, { name: "Friday Club" })] });
@@ -84,9 +84,10 @@ test.describe("New club sheet", () => {
     await sheetName(page).fill("Tuesday Crew");
     await createClub(page).click();
 
-    // The new Club's page, in Players Edit mode, with an empty row to type in.
-    await expect(page).toHaveURL(/\/clubs\/[^/?]+$/);
-    await expect(page.getByRole("heading", { level: 2, name: "Tuesday Crew" })).toBeVisible();
+    // Edit players for the new Club, with an empty row to type in.
+    await expect(page).toHaveURL(/\/clubs\/[^/?]+\/players$/);
+    await expect(page.getByRole("heading", { level: 1, name: "Edit players" })).toBeVisible();
+    await expect(page.getByText("Tuesday Crew · 1 player")).toBeVisible();
     await expect(playerNames(page)).toHaveCount(1);
     await expect(playerNames(page).first()).toBeFocused();
 
@@ -99,9 +100,13 @@ test.describe("New club sheet", () => {
     await playerNames(page).nth(2).fill("Mo");
     await page.getByRole("button", { name: "Save", exact: true }).click();
 
-    // Still on the Club page, out of Edit mode, rows sorted.
-    await expect(page.getByRole("button", { name: "Save", exact: true })).toHaveCount(0);
-    const rows = page.getByRole("region", { name: /^Players/ }).getByRole("link");
+    // The new Club's page, rows sorted.
+    await expect(page).toHaveURL(/\/clubs\/[^/?]+$/);
+    await expect(page.getByRole("heading", { level: 2, name: "Tuesday Crew" })).toBeVisible();
+    const rows = page
+      .getByRole("region", { name: /^Players/ })
+      .getByRole("listitem")
+      .getByRole("link");
     await expect(rows).toHaveCount(3);
     for (const [index, [name, skill]] of [
       ["Amy", "Beginner"],
@@ -124,8 +129,11 @@ test.describe("New club sheet", () => {
     await page.getByRole("button", { name: "Add club" }).click();
     await sheetName(page).fill("Solo");
     await sheetName(page).press("Enter");
+    await expect(page.getByRole("heading", { level: 1, name: "Edit players" })).toBeVisible();
+    // Nothing typed: Back leaves without asking, to the new Club page, then to Clubs.
+    await page.getByRole("button", { name: "Back" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(page.getByRole("heading", { level: 2, name: "Solo" })).toBeVisible();
-    // A new Club with nobody on it can be saved as it is: Back leaves without asking.
     await page.getByRole("button", { name: "Back" }).click();
     await expect(page.getByRole("link", { name: "Solo", exact: true })).toHaveAccessibleDescription(
       "No players This device only",

@@ -19,13 +19,10 @@ export function ClubCard({
   club,
   viewer,
   canRename,
-  animate,
 }: {
   club: Club;
   viewer: string | undefined;
   canRename: boolean;
-  /** Rise in: the page just opened (not a switch in or out of Players Edit mode). */
-  animate: boolean;
 }) {
   const clubs = useClubs();
   const [editing, setEditing] = useState(false);
@@ -91,7 +88,7 @@ export function ClubCard({
   }
 
   return (
-    <CourtCard label="Club" animate={animate}>
+    <CourtCard label="Club">
       <div className="flex items-start justify-between gap-3">
         <h2
           id={nameId}

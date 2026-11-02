@@ -39,7 +39,7 @@ const names = () => nameInputs().map((input) => (input as HTMLInputElement).valu
 const save = () => userEvent.click(screen.getByRole("button", { name: "Save" }));
 
 const nameSheet = () => screen.queryByRole("dialog", { name: "Edit club name" });
-const editPlayers = () => userEvent.click(screen.getByRole("button", { name: "Edit players" }));
+const editPlayers = () => userEvent.click(screen.getByRole("link", { name: "Edit players" }));
 
 describe("Club page", () => {
   beforeEach(() => {
@@ -136,7 +136,9 @@ describe("Club page", () => {
     ).toBeInTheDocument();
     expect(nameSheet()).toBeNull();
     expect(screen.getByRole("button", { name: "Edit club name" })).toHaveFocus();
-    expect(screen.getByRole("status")).toHaveTextContent("Club renamed");
+    expect(
+      within(screen.getByRole("region", { name: "Club" })).getByRole("status"),
+    ).toHaveTextContent("Club renamed");
     expect(getClubs()).toEqual([{ ...riverside, name: "Riverside Thursdays" }]);
   });
 
@@ -192,24 +194,31 @@ describe("Club page", () => {
     expect(getClubs()).toEqual([riverside]);
   });
 
-  it("Edit on Players turns the list into the roster form; Cancel takes Edit's place", async () => {
+  it("Edit on Players opens Edit players, with the roster form and nothing else; Back returns to Edit", async () => {
     setLocalClubs([riverside]);
-    renderAt("/clubs/c1");
+    const location = renderAt("/clubs/c1");
     await editPlayers();
+    expect(location.current()).toBe("/clubs/c1/players");
+    expect(screen.getByRole("heading", { level: 1, name: "Edit players" })).toBeInTheDocument();
+    expect(screen.getByText("Riverside · 3 players")).toBeInTheDocument();
     expect(names()).toEqual(["alice", "Bob", "Zed"]);
     expect(screen.getByRole("combobox", { name: "Skill level for Zed" })).toHaveValue("advanced");
-    expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
-    // The card can't be renamed, and Make shared and the Danger zone are hidden.
-    expect(screen.queryByRole("button", { name: "Edit club name" })).not.toBeInTheDocument();
+    // No Club card, session cards, Danger zone or Cancel: Back is the cancel.
+    expect(screen.queryByRole("region", { name: "Club" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "New session" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Delete club" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "alice" })).not.toBeInTheDocument();
-    // The session cards stay.
-    expect(screen.getByRole("link", { name: "New session" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await userEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(location.current()).toBe("/clubs/c1");
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Edit players" })).toHaveFocus();
+    expect(screen.getByRole("link", { name: "Edit players" })).toHaveFocus();
     expect(screen.getByRole("button", { name: "Delete club" })).toBeInTheDocument();
+  });
+
+  it("Edit players: unknown Club ids go to the Clubs list", () => {
+    const location = renderAt("/clubs/nope/players");
+    expect(location.current()).toBe("/clubs");
   });
 
   it("appends an empty Intermediate row, focuses it and keeps it in place", async () => {
@@ -267,7 +276,7 @@ describe("Club page", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("saves normalised names, stays on the Club page and leaves Edit mode", async () => {
+  it("saves normalised names and returns to the Club page, saying so", async () => {
     setLocalClubs([riverside]);
     const location = renderAt("/clubs/c1");
     await editPlayers();
@@ -282,6 +291,10 @@ describe("Club page", () => {
 
     expect(location.current()).toBe("/clubs/c1");
     expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Edit players" })).toHaveFocus();
+    expect(
+      within(screen.getByRole("region", { name: /^Players/ })).getByRole("status"),
+    ).toHaveTextContent("Players saved");
     const [saved] = getClubs();
     expect(saved?.name).toBe("Riverside");
     expect(saved?.players.map(({ name, skill }) => [name, skill])).toEqual([
@@ -294,18 +307,13 @@ describe("Club page", () => {
     expect(screen.queryByRole("link", { name: "Zed" })).not.toBeInTheDocument();
   });
 
-  it("Cancel throws the roster changes away without asking", async () => {
+  it("Save with nothing changed returns to the Club page", async () => {
     setLocalClubs([riverside]);
-    renderAt("/clubs/c1");
+    const location = renderAt("/clubs/c1");
     await editPlayers();
-    await userEvent.type(nameInputs()[0]!, "!");
-    await userEvent.click(screen.getByRole("button", { name: "Remove Zed" }));
-    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await save();
+    expect(location.current()).toBe("/clubs/c1");
     expect(getClubs()).toEqual([riverside]);
-
-    await editPlayers();
-    expect(names()).toEqual(["alice", "Bob", "Zed"]);
   });
 
   it("deletes after confirming", async () => {
@@ -324,7 +332,7 @@ describe("Club page", () => {
     expect(location.current()).toBe("/clubs");
   });
 
-  it("leaves straight away outside Edit mode, and in Edit mode with nothing changed", async () => {
+  it("Back leaves straight away from the Club page, and from Edit players with nothing changed", async () => {
     setLocalClubs([riverside]);
     let location = renderAt("/clubs/c1");
     await userEvent.click(screen.getByRole("button", { name: "Back" }));
@@ -332,11 +340,10 @@ describe("Club page", () => {
     expect(location.current()).toBe("/clubs");
     cleanup();
 
-    location = renderAt("/clubs/c1");
-    await editPlayers();
+    location = renderAt("/clubs/c1/players");
     await userEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(location.current()).toBe("/clubs");
+    expect(location.current()).toBe("/clubs/c1");
   });
 
   it("asks before discarding roster changes", async () => {
@@ -351,12 +358,12 @@ describe("Club page", () => {
         name: "Keep editing",
       }),
     );
-    expect(location.current()).toBe("/clubs/c1");
+    expect(location.current()).toBe("/clubs/c1/players");
     expect(nameInputs()[0]).toHaveValue("alice!");
 
     await userEvent.click(screen.getByRole("button", { name: "Back" }));
     await userEvent.click(screen.getByRole("button", { name: "Discard" }));
-    expect(location.current()).toBe("/clubs");
+    expect(location.current()).toBe("/clubs/c1");
     expect(getClubs()).toEqual([riverside]);
   });
 
@@ -368,10 +375,8 @@ describe("Club page", () => {
 
     await userEvent.clear(nameInputs()[0]!);
     await userEvent.type(nameInputs()[0]!, "@alice");
-    // No link line on the row (the Club card's own status is the only one).
-    expect(screen.getAllByRole("status")).toEqual([
-      within(screen.getByRole("region", { name: "Club" })).getByRole("status"),
-    ]);
+    // No link line on the row.
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
     await save();
 
     expect(getClubs()[0]?.players.find((p) => p.id === "p2")?.name).toBe("@alice");
@@ -387,12 +392,12 @@ describe("Club page", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("a Club that was just created opens in Edit mode with an empty row focused, and drops the flag from the URL", () => {
+  it("Edit players for a Club that was just created has an empty row focused, and drops the flag from the URL", () => {
     setLocalClubs([riverside]);
-    const location = renderAt("/clubs/c1?new=1");
+    const location = renderAt("/clubs/c1/players?new=1");
     expect(names()).toEqual(["alice", "Bob", "Zed", ""]);
     expect(nameInputs()[3]).toHaveFocus();
-    expect(location.current()).toBe("/clubs/c1");
+    expect(location.current()).toBe("/clubs/c1/players");
   });
 });
 
@@ -464,29 +469,7 @@ describe("Club page Sessions card", () => {
     );
   });
 
-  it("asks before discarding unsaved changes", async () => {
-    setLocalClubs([riverside]);
-    addEndedSession(endedFor("a", "c1"));
-    const location = renderAt("/clubs/c1");
-    await editPlayers();
-    await userEvent.type(nameInputs()[0]!, "!");
-
-    await userEvent.click(screen.getByRole("link", { name: "Sessions" }));
-    await userEvent.click(
-      within(screen.getByRole("dialog", { name: "Discard changes?" })).getByRole("button", {
-        name: "Keep editing",
-      }),
-    );
-    expect(location.current()).toBe("/clubs/c1");
-    expect(nameInputs()[0]).toHaveValue("alice!");
-
-    await userEvent.click(screen.getByRole("link", { name: "Sessions" }));
-    await userEvent.click(screen.getByRole("button", { name: "Discard" }));
-    expect(location.current()).toBe("/clubs/c1/sessions");
-    expect(getClubs()).toEqual([riverside]);
-  });
-
-  it("goes straight there when nothing changed", async () => {
+  it("goes straight there", async () => {
     setLocalClubs([riverside]);
     addEndedSession(endedFor("a", "c1"));
     const location = renderAt("/clubs/c1");
@@ -549,16 +532,5 @@ describe("Club page New session card", () => {
     expect(link).toHaveAttribute("href", "/sessions/live");
     await userEvent.click(link);
     expect(location.current()).toBe("/sessions/live");
-  });
-
-  it("asks before discarding unsaved changes", async () => {
-    setLocalClubs([riverside]);
-    const location = renderAt("/clubs/c1");
-    await editPlayers();
-    await userEvent.type(nameInputs()[0]!, "!");
-    await userEvent.click(screen.getByRole("link", { name: "New session" }));
-    await userEvent.click(screen.getByRole("button", { name: "Keep editing" }));
-    expect(location.current()).toBe("/clubs/c1");
-    expect(nameInputs()[0]).toHaveValue("alice!");
   });
 });

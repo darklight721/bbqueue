@@ -67,13 +67,13 @@ afterEach(() => {
 });
 
 const save = () => userEvent.click(screen.getByRole("button", { name: "Save" }));
-/** Open the Club page in Players Edit mode. */
+/** Open the Club page, then Edit players from it. */
 async function editAt(path: string) {
   const location = renderAt(path);
-  await userEvent.click(screen.getByRole("button", { name: "Edit players" }));
+  await userEvent.click(screen.getByRole("link", { name: "Edit players" }));
   return location;
 }
-/** Out of Edit mode, back on the Club page. */
+/** Off Edit players, back on the Club page. */
 const expectSaved = () =>
   expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
 /** The name field currently holding `value`. */
@@ -95,6 +95,21 @@ const clubOf = (backend: Backend, id = "c1") =>
   });
 
 describe("Club screen for an Organizer", () => {
+  it("made a Player while on Edit players, lands on the Club page", async () => {
+    await roy.linkClubPlayer("c1", CAT.id, anaAccount.accountId, "organizer");
+    const location = await editAt("/clubs/c1");
+    expect(location.current()).toBe("/clubs/c1/players");
+
+    const royRow = getClubs()[0]!.players.find(
+      (player) => player.link?.accountId === royAccount.accountId,
+    )!;
+    await act(() => ana.setClubPlayerRole("c1", royRow.id, "player"));
+
+    expect(await screen.findByText("Shared club · You're a Player")).toBeInTheDocument();
+    expect(location.current()).toBe("/clubs/c1");
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+  });
+
   it("shows the creator's row linked as Organizer, with You and the Account ID", async () => {
     await editAt("/clubs/c1");
 
@@ -351,7 +366,7 @@ describe("Club screen for an Organizer", () => {
 });
 
 describe("New club while signed in", () => {
-  /** Clubs → Add club → name → Create club: the Club page in Players Edit mode. */
+  /** Clubs → Add club → name → Create club: Edit players for the new Club. */
   async function create(user: ReturnType<typeof userEvent.setup>, name: string) {
     const location = renderAt("/clubs");
     await user.click(screen.getByRole("button", { name: "Add club" }));
@@ -379,13 +394,16 @@ describe("New club while signed in", () => {
     expect(screen.getAllByRole("textbox", { name: "Player name" })[1]).toHaveFocus();
   });
 
-  it("leaves without asking when nothing was typed", async () => {
+  it("leaves for the new Club page without asking when nothing was typed", async () => {
     const location = await create(userEvent.setup(), "Friday");
+    const created = getClubs().find((club) => club.name === "Friday")!;
+    expect(location.current()).toBe(`/clubs/${created.id}/players`);
 
     await userEvent.click(screen.getByRole("button", { name: "Back" }));
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(location.current()).toBe("/clubs");
+    expect(location.current()).toBe(`/clubs/${created.id}`);
+    expect(screen.getByRole("heading", { level: 2, name: "Friday" })).toBeInTheDocument();
   });
 
   it("links another Account with @ in the empty row, saved after the Club is made", async () => {
@@ -452,6 +470,12 @@ describe("Club screen for a Player", () => {
     signInAs(ana, anaAccount);
   });
 
+  it("opening Edit players lands on the Club page instead", () => {
+    const location = renderAt("/clubs/c1/players");
+    expect(location.current()).toBe("/clubs/c1");
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+  });
+
   it("sees the same Club page without Edit: the roster, You on their row, and no Account IDs or controls", () => {
     renderAt("/clubs/c1");
 
@@ -459,7 +483,7 @@ describe("Club screen for a Player", () => {
     expect(screen.getByRole("heading", { level: 2, name: "Tuesday" })).toBeInTheDocument();
     expect(screen.getByText("Shared club · You're a Player")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Edit club name" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Edit players" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Edit players" })).not.toBeInTheDocument();
     const rows = screen.getAllByRole("listitem");
     expect(rows.map((row) => row.textContent)).toEqual([
       expect.stringContaining("Cat"),

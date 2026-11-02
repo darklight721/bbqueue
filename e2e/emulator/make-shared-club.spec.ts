@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { addPlayersInEditMode, createClubFromSheet } from "../club-helpers.ts";
+import { addPlayers, createClubFromSheet } from "../club-helpers.ts";
 import { court } from "../session-helpers.ts";
 import { openWelcomeWayOn } from "../welcome-helpers.ts";
 import { readServerClub, signUp, uniqueId } from "./emulator.ts";
@@ -11,7 +11,7 @@ async function localClub(page: Page, name: string) {
   await page.goto("/");
   await (await openWelcomeWayOn(page)).getByRole("button", { name: "Skip for now" }).click();
   await createClubFromSheet(page, name);
-  await addPlayersInEditMode(page, ["Ana", "Roy S.", "Cat", "Dan", "Eve"]);
+  await addPlayers(page, ["Ana", "Roy S.", "Cat", "Dan", "Eve"]);
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
 }
@@ -66,7 +66,7 @@ test.describe("Making a Local club shared, between two people", () => {
 
     // He links Ana's Account to her row; she sees the Club.
     // Rows are sorted by name: Ana's comes first.
-    await page.getByRole("button", { name: "Edit players" }).click();
+    await page.getByRole("link", { name: "Edit players" }).click();
     const anaField = page.getByRole("textbox", { name: "Player name" }).first();
     await expect(anaField).toHaveValue("Ana");
     await anaField.fill(`@${ana.accountId}`);
@@ -119,7 +119,7 @@ test.describe("Making a Local club shared, between two people", () => {
       .click();
     await expect(page.getByText("This device only")).toHaveCount(0, { timeout: 30_000 });
     // Rows are sorted by name: Ana's comes first.
-    await page.getByRole("button", { name: "Edit players" }).click();
+    await page.getByRole("link", { name: "Edit players" }).click();
     const anaField = page.getByRole("textbox", { name: "Player name" }).first();
     await expect(anaField).toHaveValue("Ana");
     await anaField.fill(`@${ana.accountId}`);

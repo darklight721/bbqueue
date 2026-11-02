@@ -10,8 +10,9 @@ import { useEndedSessions } from "../../storage/store.ts";
 import { formatWinRate } from "../play-record/format.ts";
 import { clubStatsFromClubPagePath } from "../play-record/paths.ts";
 import { countLabel } from "../session-summary/summaryFormat.ts";
+import { editPlayersPath, OVER_CLUB_PAGE_STATE } from "./clubPaths.ts";
 
-/** "Players" with the count, and the section's one button (Edit, or Cancel in Edit mode). */
+/** "Players" with the count, and the section's one action (Edit). */
 export function PlayersHeading({
   id,
   count,
@@ -42,27 +43,25 @@ export function PlayersHeading({
   );
 }
 
-/** The Players heading's Edit (outside Edit mode) or Cancel (in it). */
-export function PlayersHeadingButton({
-  buttonRef,
-  editing,
-  onClick,
+/** The Players heading's Edit: opens Edit players. */
+export function EditPlayersLink({
+  club,
+  linkRef,
 }: {
-  buttonRef?: Ref<HTMLButtonElement>;
-  editing: boolean;
-  onClick: () => void;
+  club: Club;
+  linkRef?: Ref<HTMLAnchorElement>;
 }) {
   return (
-    <button
-      ref={buttonRef}
-      type="button"
+    <Link
+      ref={linkRef}
+      href={editPlayersPath(club.id)}
+      state={OVER_CLUB_PAGE_STATE}
       className="btn h-10 min-h-10 gap-1.5 rounded-full border-base-300 px-4 btn-outline"
-      aria-label={editing ? undefined : "Edit players"}
-      onClick={onClick}
+      aria-label="Edit players"
     >
-      {editing ? null : <PencilIcon className="size-4" />}
-      {editing ? "Cancel" : "Edit"}
-    </button>
+      <PencilIcon className="size-4" />
+      Edit
+    </Link>
   );
 }
 

@@ -1,6 +1,6 @@
 # Spec: Edit players on its own page
 
-Status: ready-for-agent
+Status: done
 Depends on: club-page (Players Edit mode), name-sheet
 
 Screens (new): `/clubs/:clubId/players` (Edit players).
@@ -34,8 +34,8 @@ Vocabulary per `GLOSSARY.md`: **Club**, **Club player**, **Organizer**, **Player
 ### 4. Leaving
 
 - There is no Cancel button: Back is the cancel. Back with unsaved changes asks "Discard changes?" (Keep editing / Discard), as today; without changes it leaves straight away.
-- Back and a successful Save both go to the Club page with **replace**, so Back from the Club page goes to Clubs, not into the editor again. (`TopBar` needs a way to replace instead of push.)
-- After either, focus lands on the Players heading's Edit on the Club page.
+- Back and a successful Save both return to the Club page without leaving Edit players in history, so Back from the Club page goes to Clubs, not into the editor again. When Edit players was opened on top of its Club page (the Edit link, Create club; marked in history state, which survives a reload) that is a step back through history; otherwise (a link straight to Edit players) the Club page replaces it. Replacing in both cases would leave the Club page in history twice. (`TopBar` takes an `onLeave` for this.)
+- After either, focus lands on the Players heading's Edit on the Club page (told in memory, not the URL, so a reload doesn't repeat it).
 - Save with nothing changed goes back without contacting the server.
 - A successful Save announces "Players saved" to screen readers on the Club page (live region, as "Club renamed"). Nothing visible changes beyond the roster.
 - A Save that fails stays on Edit players with the message, as today.
@@ -44,8 +44,8 @@ Vocabulary per `GLOSSARY.md`: **Club**, **Club player**, **Organizer**, **Player
 ### 5. After Create club
 
 - Create club (New club sheet) opens the new Club page and then pushes Edit players on top, with an empty row focused (on a new Shared club, after the creator's own row). Back or Save lands on the new Club page; Back from there goes to Clubs.
-- The `?new=1` param (`JUST_CREATED_PARAM`, `newClubPath`) goes away. An old link with it just opens the Club page.
-- How the blank row reaches Edit players (router state, a one-shot param stripped on open, …) is up to the implementation; a reload of Edit players must not add another blank row.
+- The Club page's `?new=1` (`newClubPath`) goes away. An old link with it just opens the Club page.
+- The blank row comes from a one-shot `?new=1` on Edit players, dropped from the URL on open, so a reload of Edit players doesn't add another blank row.
 
 ### 6. Who can open it
 
@@ -66,7 +66,7 @@ Vocabulary per `GLOSSARY.md`: **Club**, **Club player**, **Organizer**, **Player
 
 ## E2E workflows
 
-On `chromium-mobile` and `webkit-mobile` unless marked otherwise. Move the Edit-mode tests out of `e2e/club-page.spec.ts` into a new `e2e/club-players.spec.ts`. Add a helper to `e2e/club-helpers.ts` that opens Edit players from the Club page, and switch every spec that edits a roster to it (`club-roles`, `shared-clubs`, `make-shared-club`, the emulator specs): they no longer expect Save to stay on the same URL.
+On `chromium-mobile` and `webkit-mobile` unless marked otherwise. Move the Edit-mode tests out of `e2e/club-page.spec.ts` into a new `e2e/club-players.spec.ts`. `createClubFromSheet` in `e2e/club-helpers.ts` ends on Edit players. Update every spec that edits a roster (`club-roles`, `shared-clubs`, `make-shared-club`, the emulator specs): they no longer expect Save to stay on the same URL.
 
 `e2e/club-players.spec.ts`:
 
@@ -95,4 +95,4 @@ Emulator (`e2e/emulator/shared-clubs.spec.ts` or `roles.spec.ts`):
 
 - The E2E workflows above pass, and the full `pnpm e2e` passes.
 - Component tests updated: the Club page has no Edit mode; Edit players covers what the Edit-mode tests covered, plus the redirects.
-- `JUST_CREATED_PARAM`, `newClubPath` and `leaveVia` are gone.
+- The Club page's `?new=1` (`newClubPath`) and `leaveVia` are gone.

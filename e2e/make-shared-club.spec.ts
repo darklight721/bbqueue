@@ -77,7 +77,7 @@ test.describe("Make shared club", () => {
 
     // Account IDs link as for any Shared club.
     // Rows are sorted by name: Ana's comes first.
-    await page.getByRole("button", { name: "Edit players" }).click();
+    await page.getByRole("link", { name: "Edit players" }).click();
     const anaField = page.getByRole("textbox", { name: "Player name" }).first();
     await expect(anaField).toHaveValue("Ana");
     await anaField.fill(`@${ana.accountId}`);
