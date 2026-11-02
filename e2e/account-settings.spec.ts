@@ -7,9 +7,10 @@ const home = (page: Page) => page.getByRole("heading", { level: 1, name: "BBQueu
 const accountScreen = (page: Page) => page.getByRole("heading", { level: 1, name: "Account" });
 const avatar = (page: Page) => page.getByRole("link", { name: /^Account settings/ });
 const accountCard = (page: Page) => page.getByRole("region", { name: "Your Account", exact: true });
+const nameSheet = (page: Page) => page.getByRole("dialog", { name: "Edit name" });
 
 test.describe("Account settings", () => {
-  test("with an Account: the avatar shows initials, renaming in place updates them and survives a reload", async ({
+  test("with an Account: the avatar shows initials, renaming in a sheet updates them and survives a reload", async ({
     page,
   }) => {
     await seedStorage(page, { account: ROY });
@@ -25,13 +26,13 @@ test.describe("Account settings", () => {
     await expect(accountCard(page)).toContainText("roy-7k3f");
 
     await page.getByRole("button", { name: "Edit name" }).click();
-    const name = page.getByLabel("Your name");
+    const name = nameSheet(page).getByLabel("Your name");
     await expect(name).toBeFocused();
     await expect(name).toHaveValue("Roy Smith");
     await name.fill("Ana Bell");
     await name.press("Enter");
 
-    await expect(name).toHaveCount(0);
+    await expect(nameSheet(page)).toHaveCount(0);
     await expect(accountCard(page)).toContainText("Ana Bell");
     await expect(page.getByRole("button", { name: "Edit name" })).toBeFocused();
     // The Account ID never changes.
@@ -50,25 +51,66 @@ test.describe("Account settings", () => {
     });
   });
 
-  test("Escape cancels renaming; an empty name is refused", async ({ page }) => {
+  test("×, Escape and the backdrop close the sheet without saving; an empty name is refused", async ({
+    page,
+  }) => {
     await seedStorage(page, { account: ROY });
     await page.goto("/account");
+    const edit = page.getByRole("button", { name: "Edit name" });
+    const name = nameSheet(page).getByLabel("Your name");
 
-    await page.getByRole("button", { name: "Edit name" }).click();
-    const name = page.getByLabel("Your name");
+    await edit.click();
+    await name.fill("Somebody Else");
+    await nameSheet(page).getByRole("button", { name: "Close" }).click();
+    await expect(nameSheet(page)).toHaveCount(0);
+    await expect(edit).toBeFocused();
+
+    await edit.click();
+    await expect(name).toHaveValue("Roy Smith");
     await name.fill("Somebody Else");
     await name.press("Escape");
-    await expect(name).toHaveCount(0);
-    await expect(accountCard(page)).toContainText("Roy Smith");
-    await expect(page.getByRole("button", { name: "Edit name" })).toBeFocused();
+    await expect(nameSheet(page)).toHaveCount(0);
+    await expect(edit).toBeFocused();
 
-    await page.getByRole("button", { name: "Edit name" }).click();
+    await edit.click();
+    await name.fill("Somebody Else");
+    // The backdrop above the sheet.
+    await page.mouse.click(20, 20);
+    await expect(nameSheet(page)).toHaveCount(0);
+    await expect(accountCard(page)).toContainText("Roy Smith");
+
+    await edit.click();
     await name.fill("   ");
     await name.press("Enter");
     await expect(name).toBeFocused();
     await expect(name).toHaveAttribute("aria-invalid", "true");
-    await expect(page.getByText("Enter a name")).toBeVisible();
+    await expect(nameSheet(page).getByText("Enter a name")).toBeVisible();
     expect(await readFakeAccount(page)).toEqual(ROY);
+  });
+
+  test("losing the connection with the sheet open: Save says so and the sheet stays", async ({
+    page,
+    context,
+  }) => {
+    await seedStorage(page, { account: ROY });
+    await page.goto("/account");
+
+    await page.getByRole("button", { name: "Edit name" }).click();
+    const name = nameSheet(page).getByLabel("Your name");
+    await name.fill("Ana Bell");
+    await context.setOffline(true);
+    await nameSheet(page).getByRole("button", { name: "Save" }).click();
+
+    await expect(nameSheet(page).getByRole("alert")).toHaveText(
+      "You're offline. Connect and try again.",
+    );
+    await expect(name).toHaveValue("Ana Bell");
+    expect(await readFakeAccount(page)).toEqual(ROY);
+
+    await context.setOffline(false);
+    await nameSheet(page).getByRole("button", { name: "Save" }).click();
+    await expect(nameSheet(page)).toHaveCount(0);
+    await expect(accountCard(page)).toContainText("Ana Bell");
   });
 
   test("copying the Account ID confirms it was copied", async ({ page, context, browserName }) => {

@@ -1,6 +1,6 @@
 # 01 Rename the Account and the Club in a sheet
 
-Status: ready-for-agent
+Status: done
 Blocked by: none
 Spec: ../spec.md
 

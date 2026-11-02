@@ -170,7 +170,7 @@ test.describe("Shared clubs on the server", () => {
     await anaPage.context().close();
   });
 
-  test("an Organizer renames the Club from the card; the other person's Club page shows the new name", async ({
+  test("an Organizer renames the Club in the sheet; the other person's Club page shows the new name", async ({
     page,
     browser,
     baseURL,
@@ -211,8 +211,10 @@ test.describe("Shared clubs on the server", () => {
     await page.goto("/clubs");
     await page.getByRole("link", { name: new RegExp(oldName) }).click();
     await page.getByRole("button", { name: "Edit club name" }).click();
-    await page.getByRole("textbox", { name: "Club name" }).fill(newName);
-    await page.getByRole("button", { name: "Save" }).click();
+    const sheet = page.getByRole("dialog", { name: "Edit club name" });
+    await sheet.getByRole("textbox", { name: "Club name" }).fill(newName);
+    await sheet.getByRole("button", { name: "Save" }).click();
+    await expect(sheet).toHaveCount(0);
     await expect(page.getByRole("heading", { level: 2, name: newName })).toBeVisible();
 
     // Ana's page follows, without a reload.

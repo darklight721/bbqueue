@@ -1,6 +1,6 @@
 # Spec: Rename in a sheet, not on the court card
 
-Status: ready-for-agent
+Status: resolved (implemented 2026-11-03)
 Depends on: club-page (Club card), accounts (Account page)
 
 Vocabulary per `GLOSSARY.md`. No glossary change: this is UI only.

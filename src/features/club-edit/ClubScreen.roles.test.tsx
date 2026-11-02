@@ -143,7 +143,7 @@ describe("Club screen for an Organizer", () => {
 
     await typeOver(user, "Cat", `@${anaAccount.accountId}`);
 
-    expect(screen.getByRole("status")).toHaveTextContent("Checking…");
+    expect(screen.getByText("Checking…").closest("[role=status]")).toBeInTheDocument();
     await linkedLine();
   });
 

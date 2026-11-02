@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode, Ref } from "react";
 import { CourtLines } from "./CourtLines.tsx";
-import { PencilIcon, WarningIcon } from "./icons.tsx";
+import { PencilIcon } from "./icons.tsx";
 
 /** The glow and court lines: from the top left across the card (Account), or off its right edge. */
 const LAYOUT = {
@@ -55,38 +55,8 @@ export function CourtCard({
 }
 
 /** Small all-caps caption above a value on the card. */
-export function CourtCardCaption({
-  id,
-  htmlFor,
-  children,
-}: {
-  id?: string;
-  htmlFor?: string;
-  children: ReactNode;
-}) {
-  const className = "text-xs font-bold tracking-[0.14em] text-line/70 uppercase";
-  return htmlFor ? (
-    <label id={id} htmlFor={htmlFor} className={className}>
-      {children}
-    </label>
-  ) : (
-    <p id={id} className={className}>
-      {children}
-    </p>
-  );
-}
-
-/** An error on the green card: a red pill, so it reads as an error on any background. */
-export function CourtCardError({ id, children }: { id?: string; children: ReactNode }) {
-  return (
-    <p
-      id={id}
-      className="inline-flex items-center gap-1.5 rounded-full bg-error px-2.5 py-0.5 text-sm font-semibold text-error-content"
-    >
-      <WarningIcon className="size-4 shrink-0" />
-      {children}
-    </p>
-  );
+export function CourtCardCaption({ children }: { children: ReactNode }) {
+  return <p className="text-xs font-bold tracking-[0.14em] text-line/70 uppercase">{children}</p>;
 }
 
 /** The pencil "Edit" pill in the card's top-right corner. */
@@ -117,106 +87,5 @@ export function CourtCardEditButton({
       <PencilIcon className="size-4" />
       Edit
     </button>
-  );
-}
-
-/**
- * A name edited in place on the card: the field, one reserved line for a message, Save and
- * Cancel. Escape cancels. The caller checks the name and does the saving.
- */
-export function CourtCardNameForm({
-  inputRef,
-  inputId,
-  label,
-  value,
-  autoComplete = "off",
-  saving,
-  /** The name's own problem, shown under the field and tied to it. */
-  error,
-  errorId,
-  /** Why saving failed (the server, the connection), announced when it appears. */
-  failure,
-  onChange,
-  onSave,
-  onCancel,
-}: {
-  inputRef: Ref<HTMLInputElement>;
-  inputId: string;
-  label: string;
-  value: string;
-  autoComplete?: string;
-  saving: boolean;
-  error: string | null;
-  errorId: string;
-  failure: string | null;
-  onChange: (value: string) => void;
-  onSave: () => void;
-  onCancel: () => void;
-}) {
-  return (
-    <form
-      noValidate
-      aria-busy={saving || undefined}
-      className="mt-4 flex flex-col"
-      onSubmit={(event) => {
-        event.preventDefault();
-        onSave();
-      }}
-    >
-      <CourtCardCaption htmlFor={inputId}>{label}</CourtCardCaption>
-      <input
-        ref={inputRef}
-        id={inputId}
-        type="text"
-        className="input input-lg mt-1.5 w-full border-0 bg-line font-display text-2xl font-bold text-[#14201a] shadow-inner [--input-color:var(--color-volt)]"
-        value={value}
-        autoComplete={autoComplete}
-        autoCapitalize="words"
-        enterKeyHint="done"
-        readOnly={saving}
-        aria-invalid={error ? true : undefined}
-        aria-describedby={error ? errorId : undefined}
-        onChange={(event) => onChange(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Escape" && !saving) {
-            event.preventDefault();
-            onCancel();
-          }
-        }}
-      />
-      {/* One reserved line for any message, so an error doesn't push the buttons down. */}
-      <div className="flex min-h-9 items-center">
-        {error ? <CourtCardError id={errorId}>{error}</CourtCardError> : null}
-        {/* Always mounted, so screen readers announce a failure when its text appears. */}
-        <div role="alert">
-          {!error && failure ? <CourtCardError>{failure}</CourtCardError> : null}
-        </div>
-      </div>
-      <div className="flex gap-2">
-        <button
-          type="submit"
-          className={`btn flex-1 border-0 bg-volt text-[#14201a] shadow-md hover:bg-volt/90 ${saving ? "btn-disabled" : ""}`}
-          aria-disabled={saving || undefined}
-          aria-busy={saving || undefined}
-        >
-          {saving ? (
-            <>
-              <span className="loading loading-spinner loading-sm" aria-hidden="true" />
-              Saving…
-            </>
-          ) : (
-            "Save"
-          )}
-        </button>
-        <button
-          type="button"
-          className="btn flex-1 border-line/35 bg-transparent text-line shadow-none hover:border-line/60 hover:bg-line/10"
-          disabled={saving}
-          onClick={onCancel}
-        >
-          Cancel
-        </button>
-      </div>
-    </form>
   );
 }

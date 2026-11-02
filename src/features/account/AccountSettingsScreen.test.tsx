@@ -1,4 +1,4 @@
-import { act, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Router } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
@@ -56,6 +56,7 @@ function renderAt(path: string) {
 }
 
 const card = () => screen.getByRole("region", { name: "Your Account" });
+const sheet = () => screen.queryByRole("dialog", { name: "Edit name" });
 const avatarLink = () => screen.getByRole("link", { name: /^Account settings/ });
 
 describe("Home avatar", () => {
@@ -104,12 +105,13 @@ describe("Account settings", () => {
     expect(location.history?.at(-1)).toBe("/");
   });
 
-  it("renames in place: Enter saves to the Backend and the device, and keeps the Account ID", async () => {
+  it("renames in a sheet: Enter saves to the Backend and the device, and keeps the Account ID", async () => {
     const backend = withAccount();
     const { user } = renderAt("/account");
 
     await user.click(screen.getByRole("button", { name: "Edit name" }));
-    const input = screen.getByLabelText("Your name");
+    expect(sheet()).toBeInTheDocument();
+    const input = within(sheet()!).getByLabelText("Your name");
     expect(input).toHaveFocus();
     expect(input).toHaveValue("Roy Smith");
 
@@ -117,7 +119,7 @@ describe("Account settings", () => {
     await user.type(input, "  Ana   Bell {Enter}");
 
     expect(await within(card()).findByText("Ana Bell")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Your name")).not.toBeInTheDocument();
+    expect(sheet()).toBeNull();
     expect(screen.getByRole("button", { name: "Edit name" })).toHaveFocus();
     expect(screen.getByRole("status")).toHaveTextContent("Name saved");
     expect(getAccount()).toEqual({ accountId: "roy-7k3f", name: "Ana Bell" });
@@ -125,40 +127,45 @@ describe("Account settings", () => {
     expect(within(card()).getByText("AB")).toBeInTheDocument();
   });
 
-  it("previews the new initials while typing", async () => {
+  it("keeps the old initials until the new name is saved", async () => {
     withAccount();
     const { user } = renderAt("/account");
 
     await user.click(screen.getByRole("button", { name: "Edit name" }));
-    await user.type(screen.getByLabelText("Your name"), " Junior");
-    expect(within(card()).getByText("RS")).toBeInTheDocument();
     await user.clear(screen.getByLabelText("Your name"));
     await user.type(screen.getByLabelText("Your name"), "zoë");
-    expect(within(card()).getByText("Z")).toBeInTheDocument();
+    expect(within(card()).getByText("RS")).toBeInTheDocument();
   });
 
-  it("Escape and Cancel put the name back without saving", async () => {
+  it("×, Escape and the backdrop put the name back without saving", async () => {
     const renameAccount = vi.fn<Backend["renameAccount"]>();
     setBackendForTests({ ...createInMemoryBackend({ account: ROY }), renameAccount });
     setAccount(ROY);
     const { user } = renderAt("/account");
 
     await user.click(screen.getByRole("button", { name: "Edit name" }));
-    await user.type(screen.getByLabelText("Your name"), "xyz{Escape}");
-    expect(screen.queryByLabelText("Your name")).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText("Your name"), "xyz");
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    expect(sheet()).toBeNull();
     expect(screen.getByRole("button", { name: "Edit name" })).toHaveFocus();
 
     await user.click(screen.getByRole("button", { name: "Edit name" }));
     expect(screen.getByLabelText("Your name")).toHaveValue("Roy Smith");
     await user.type(screen.getByLabelText("Your name"), "xyz");
-    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent(sheet()!, new Event("cancel", { cancelable: true })); // Escape
+    expect(sheet()).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Edit name" }));
+    await user.type(screen.getByLabelText("Your name"), "xyz");
+    fireEvent.click(sheet()!.querySelector<HTMLButtonElement>(".modal-backdrop button")!);
+    expect(sheet()).toBeNull();
 
     expect(within(card()).getByText("Roy Smith")).toBeInTheDocument();
     expect(renameAccount).not.toHaveBeenCalled();
     expect(getAccount()).toEqual(ROY);
   });
 
-  it("an unchanged name just closes the field", async () => {
+  it("an unchanged name just closes the sheet", async () => {
     const renameAccount = vi.fn<Backend["renameAccount"]>();
     setBackendForTests({ ...createInMemoryBackend({ account: ROY }), renameAccount });
     setAccount(ROY);
@@ -167,7 +174,7 @@ describe("Account settings", () => {
     await user.click(screen.getByRole("button", { name: "Edit name" }));
     await user.click(screen.getByRole("button", { name: "Save" }));
 
-    expect(screen.queryByLabelText("Your name")).not.toBeInTheDocument();
+    expect(sheet()).toBeNull();
     expect(renameAccount).not.toHaveBeenCalled();
   });
 
@@ -186,7 +193,7 @@ describe("Account settings", () => {
     expect(getAccount()).toEqual(ROY);
   });
 
-  it("shows a busy Save, then says so when the connection drops", async () => {
+  it("shows a busy Save that can't be closed, then says so in the sheet when the connection drops", async () => {
     let fail = () => {};
     setBackendForTests({
       ...createInMemoryBackend({ account: ROY }),
@@ -205,14 +212,16 @@ describe("Account settings", () => {
     const busy = screen.getByRole("button", { name: "Saving…" });
     expect(busy).toHaveAttribute("aria-disabled", "true");
     expect(busy).toHaveAttribute("aria-busy", "true");
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent(sheet()!, new Event("cancel", { cancelable: true })); // Escape
+    expect(sheet()).toBeInTheDocument();
 
     await act(async () => fail());
     expect(screen.getByRole("alert")).toHaveTextContent("You're offline. Connect and try again.");
     const normal = screen.getByRole("button", { name: "Save" });
     expect(normal).not.toHaveAttribute("aria-disabled");
     expect(normal).not.toHaveAttribute("aria-busy");
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
+    expect(sheet()).toBeInTheDocument();
     expect(screen.getByLabelText("Your name")).toHaveValue("Roy Smith Jr");
     expect(getAccount()).toEqual(ROY);
   });

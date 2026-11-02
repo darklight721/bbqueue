@@ -16,8 +16,9 @@ export interface ModalProps {
    */
   focusTitle?: boolean;
   /**
-   * Show a round × in the top corner, with this accessible name, that calls `onClose`. For sheets
-   * whose own buttons all move on, so there is no Cancel to go back with.
+   * Show a round × in the top corner, with this accessible name, that calls `onClose`. For a sheet
+   * with one field and one full-width main button (New club, a name sheet). Sheets with several
+   * choices go back with a Cancel among their buttons instead.
    */
   closeLabel?: string;
   children?: ReactNode;

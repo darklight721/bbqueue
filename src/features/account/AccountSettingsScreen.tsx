@@ -12,13 +12,9 @@ import {
   PlusIcon,
   WarningIcon,
 } from "../../components/icons.tsx";
-import {
-  CourtCard,
-  CourtCardCaption,
-  CourtCardEditButton,
-  CourtCardNameForm,
-} from "../../components/CourtCard.tsx";
+import { CourtCard, CourtCardCaption, CourtCardEditButton } from "../../components/CourtCard.tsx";
 import { NAME_ERROR_MESSAGE } from "../../components/nameErrors.ts";
+import { NameSheet } from "../../components/NameSheet.tsx";
 import { Screen } from "../../components/Screen.tsx";
 import type { Account } from "../../domain/types.ts";
 import { normalizeName, validateName } from "../../domain/validation.ts";
@@ -50,7 +46,7 @@ const RENAME_ERROR_MESSAGE: Partial<Record<BackendErrorCode, string>> & { failed
 const COPIED_FOR_MS = 2500;
 
 /**
- * Account settings (from the avatar on Home): the Account's name, edited in place, and its
+ * Account settings (from the avatar on Home): the Account's name, edited in a sheet, and its
  * never-changing Account ID with a copy button. With no Account, "Add your name" creates one.
  * Only reachable when there is a Backend.
  */
@@ -138,31 +134,24 @@ function NameSection({
   const [failure, setFailure] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const editRef = useRef<HTMLButtonElement>(null);
-  const inputId = useId();
-  const messageId = useId();
   const offlineId = useId();
 
   const nameError = validateName(draft, []);
   const shownNameError = attempted ? nameError : null;
 
   function startEditing() {
-    // Synchronously, so focusing happens inside the tap and iOS opens the keyboard.
+    // Synchronously, so the sheet focuses its field inside the tap and iOS opens the keyboard.
     flushSync(() => {
       setDraft(account.name);
       setAttempted(false);
       setFailure(null);
       setEditing(true);
     });
-    const input = inputRef.current;
-    if (input) {
-      input.focus();
-      // Caret at the end: editing is mostly fixing a typo or adding a surname.
-      input.setSelectionRange(input.value.length, input.value.length);
-    }
     announce("");
   }
 
   function stopEditing() {
+    // Synchronously, so the sheet is gone before focus goes back to Edit.
     flushSync(() => setEditing(false));
     editRef.current?.focus();
   }
@@ -200,56 +189,49 @@ function NameSection({
     }
   }
 
-  // While typing, the avatar previews the new initials.
-  const avatarName = editing && normalizeName(draft) !== "" ? draft : account.name;
-
   return (
     <div className="flex flex-col">
       <div className="flex items-start justify-between gap-3">
-        <Avatar name={avatarName} size="lg" />
-        {editing ? null : (
-          <CourtCardEditButton
-            buttonRef={editRef}
-            label="Edit name"
-            describedBy={online ? undefined : offlineId}
-            disabled={!online}
-            onClick={startEditing}
-          />
+        <Avatar name={account.name} size="lg" />
+        <CourtCardEditButton
+          buttonRef={editRef}
+          label="Edit name"
+          describedBy={online ? undefined : offlineId}
+          disabled={!online}
+          onClick={startEditing}
+        />
+      </div>
+
+      <div className="mt-4 flex flex-col">
+        <CourtCardCaption>Name</CourtCardCaption>
+        <p className="font-display text-[2rem] leading-tight font-bold break-words">
+          {account.name}
+        </p>
+        {online ? null : (
+          <p id={offlineId} className="mt-1 flex items-center gap-1.5 text-sm text-line/80">
+            <OfflineIcon className="size-4 shrink-0" />
+            Changing your name needs a connection.
+          </p>
         )}
       </div>
 
-      {editing ? (
-        <CourtCardNameForm
-          inputRef={inputRef}
-          inputId={inputId}
-          label="Your name"
-          value={draft}
-          autoComplete="name"
-          saving={saving}
-          error={shownNameError ? NAME_ERROR_MESSAGE[shownNameError] : null}
-          errorId={messageId}
-          failure={failure}
-          onChange={(value) => {
-            setDraft(value);
-            setFailure(null);
-          }}
-          onSave={() => void save()}
-          onCancel={stopEditing}
-        />
-      ) : (
-        <div className="mt-4 flex flex-col">
-          <CourtCardCaption>Name</CourtCardCaption>
-          <p className="font-display text-[2rem] leading-tight font-bold break-words">
-            {account.name}
-          </p>
-          {online ? null : (
-            <p id={offlineId} className="mt-1 flex items-center gap-1.5 text-sm text-line/80">
-              <OfflineIcon className="size-4 shrink-0" />
-              Changing your name needs a connection.
-            </p>
-          )}
-        </div>
-      )}
+      <NameSheet
+        open={editing}
+        title="Edit name"
+        inputRef={inputRef}
+        label="Your name"
+        value={draft}
+        autoComplete="name"
+        saving={saving}
+        error={shownNameError ? NAME_ERROR_MESSAGE[shownNameError] : null}
+        failure={failure}
+        onChange={(value) => {
+          setDraft(value);
+          setFailure(null);
+        }}
+        onSave={() => void save()}
+        onClose={stopEditing}
+      />
     </div>
   );
 }

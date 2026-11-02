@@ -186,7 +186,7 @@ describe("Club screens with Accounts", () => {
       expect(screen.getByRole("heading", { level: 2, name: "Friday" })).toBeInTheDocument();
     });
 
-    it("a rename the server refuses keeps the field open with the reason", async () => {
+    it("a rename the server refuses keeps the sheet open with the reason", async () => {
       vi.spyOn(console, "error").mockImplementation(() => {});
       vi.spyOn(backend, "renameSharedClub").mockRejectedValue(new BackendError("forbidden"));
       const user = userEvent.setup();
@@ -198,6 +198,7 @@ describe("Club screens with Accounts", () => {
       expect(
         await screen.findByText("You can't change this Club. Only Organizers can."),
       ).toBeInTheDocument();
+      expect(screen.getByRole("dialog", { name: "Edit club name" })).toBeInTheDocument();
       expect(screen.getByRole("textbox", { name: "Club name" })).toHaveValue("Tuesday Night");
       expect(getClubs()[0]?.name).toBe("Tuesday");
       vi.restoreAllMocks();

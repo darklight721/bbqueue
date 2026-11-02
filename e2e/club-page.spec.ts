@@ -14,6 +14,8 @@ const playerNames = (page: Page) => page.getByRole("textbox", { name: "Player na
 const card = (page: Page) => page.getByRole("region", { name: "Club", exact: true });
 const cardName = (page: Page, name: string) =>
   card(page).getByRole("heading", { level: 2, name, exact: true });
+const nameSheet = (page: Page) => page.getByRole("dialog", { name: "Edit club name" });
+const nameField = (page: Page) => nameSheet(page).getByRole("textbox", { name: "Club name" });
 const players = (page: Page) => page.getByRole("region", { name: /^Players/ });
 const rosterRows = (page: Page) => players(page).getByRole("link");
 const back = (page: Page) => page.getByRole("button", { name: "Back" });
@@ -68,20 +70,23 @@ async function addPlayer(page: Page, index: number, name: string, skill?: string
 }
 
 test.describe("Club card", () => {
-  test("Edit → new name → Save shows it on the card, also after a reload", async ({ page }) => {
+  test("Edit → new name in the sheet → Save shows it on the card, also after a reload", async ({
+    page,
+  }) => {
     const club = seedClub();
     await openClub(page, club);
     await expect(cardName(page, "Friday Club")).toBeVisible();
     await expect(card(page)).toContainText("This device only");
 
     await card(page).getByRole("button", { name: "Edit club name" }).click();
-    const field = card(page).getByRole("textbox", { name: "Club name" });
-    await expect(field).toBeFocused();
-    await field.fill("Saturday Club");
-    await card(page).getByRole("button", { name: "Save" }).click();
+    await expect(nameField(page)).toBeFocused();
+    await expect(nameField(page)).toHaveValue("Friday Club");
+    await nameField(page).fill("Saturday Club");
+    await nameSheet(page).getByRole("button", { name: "Save" }).click();
 
+    await expect(nameSheet(page)).toHaveCount(0);
     await expect(cardName(page, "Saturday Club")).toBeVisible();
-    await expect(field).toHaveCount(0);
+    await expect(card(page).getByRole("button", { name: "Edit club name" })).toBeFocused();
     // Only the name changed.
     await expectRoster(page, ["alice", "Mike", "Zoe"]);
 
@@ -91,36 +96,37 @@ test.describe("Club card", () => {
     await expect(page.getByRole("link", { name: "Saturday Club", exact: true })).toBeVisible();
   });
 
-  test("Cancel keeps the old name; Escape does too", async ({ page }) => {
+  test("× and Escape keep the old name", async ({ page }) => {
     await openClub(page, seedClub());
 
     await card(page).getByRole("button", { name: "Edit club name" }).click();
-    await card(page).getByRole("textbox", { name: "Club name" }).fill("Renamed");
-    await card(page).getByRole("button", { name: "Cancel" }).click();
+    await nameField(page).fill("Renamed");
+    await nameSheet(page).getByRole("button", { name: "Close" }).click();
+    await expect(nameSheet(page)).toHaveCount(0);
     await expect(cardName(page, "Friday Club")).toBeVisible();
 
     await card(page).getByRole("button", { name: "Edit club name" }).click();
-    await card(page).getByRole("textbox", { name: "Club name" }).fill("Renamed");
-    await card(page).getByRole("textbox", { name: "Club name" }).press("Escape");
+    await nameField(page).fill("Renamed");
+    await nameField(page).press("Escape");
+    await expect(nameSheet(page)).toHaveCount(0);
     await expect(cardName(page, "Friday Club")).toBeVisible();
 
     await page.reload();
     await expect(cardName(page, "Friday Club")).toBeVisible();
   });
 
-  test("a duplicate name shows an error on the card and isn't saved", async ({ page }) => {
+  test("a duplicate name shows an error in the sheet and isn't saved", async ({ page }) => {
     const club = seedClub();
     await seedStorage(page, { clubs: [club, makeClub({ name: "Tuesday Crew" })] });
     await page.goto(`/clubs/${club.id}`);
 
     await card(page).getByRole("button", { name: "Edit club name" }).click();
-    const field = card(page).getByRole("textbox", { name: "Club name" });
-    await field.fill("  tuesday CREW ");
-    await card(page).getByRole("button", { name: "Save" }).click();
+    await nameField(page).fill("  tuesday CREW ");
+    await nameSheet(page).getByRole("button", { name: "Save" }).click();
 
-    await expect(card(page).getByText("Club name already used")).toBeVisible();
-    await expect(field).toHaveAttribute("aria-invalid", "true");
-    await expect(field).toBeVisible();
+    await expect(nameSheet(page).getByText("Club name already used")).toBeVisible();
+    await expect(nameField(page)).toHaveAttribute("aria-invalid", "true");
+    await expect(nameField(page)).toBeFocused();
     const stored = await readStoredData<Club[]>(page, "clubs");
     expect(stored?.find((c) => c.id === club.id)?.name).toBe("Friday Club");
   });
@@ -128,8 +134,9 @@ test.describe("Club card", () => {
   test("can rename the club to a different-cased version of its own name", async ({ page }) => {
     await openClub(page, seedClub());
     await card(page).getByRole("button", { name: "Edit club name" }).click();
-    await card(page).getByRole("textbox", { name: "Club name" }).fill("friday club");
-    await card(page).getByRole("textbox", { name: "Club name" }).press("Enter");
+    await nameField(page).fill("friday club");
+    await nameField(page).press("Enter");
+    await expect(nameSheet(page)).toHaveCount(0);
     await expect(cardName(page, "friday club")).toBeVisible();
   });
 });

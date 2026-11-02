@@ -37,8 +37,10 @@ test.describe("Account on the server", () => {
     const account = await signUp(page, "Ana Bell");
     await page.getByRole("link", { name: /^Account settings/ }).click();
     await page.getByRole("button", { name: "Edit name" }).click();
-    await page.getByLabel("Your name").fill("Ana Beal");
-    await page.getByLabel("Your name").press("Enter");
+    const sheet = page.getByRole("dialog", { name: "Edit name" });
+    await sheet.getByLabel("Your name").fill("Ana Beal");
+    await sheet.getByLabel("Your name").press("Enter");
+    await expect(sheet).toHaveCount(0);
 
     await expect
       .poll(() => serverAccountFor(account.accountId))
