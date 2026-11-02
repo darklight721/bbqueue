@@ -1,5 +1,9 @@
 import type { Club } from "../../domain/types.ts";
-import { ACCOUNT_STATS_PATH, clubStatsPath } from "../play-record/paths.ts";
+import {
+  ACCOUNT_STATS_PATH,
+  clubStatsFromClubPagePath,
+  clubStatsPath,
+} from "../play-record/paths.ts";
 import {
   ALL_CLUBS,
   CLUB_PARAM,
@@ -13,6 +17,8 @@ export const FROM_CLUB_PARAM = "fromClub";
 /** URL query params on the details page: opened from the Stats of this Club player. */
 export const STATS_CLUB_PARAM = "statsClub";
 export const STATS_PLAYER_PARAM = "statsPlayer";
+/** URL query param on the details page: those Stats were opened from the Club page's roster. */
+export const STATS_CLUB_PAGE_PARAM = "statsClubPage";
 /** URL query param on the details page: opened from the Account's own Stats. */
 export const ACCOUNT_STATS_PARAM = "accountStats";
 
@@ -23,8 +29,11 @@ export type SessionOrigin =
   | { kind: "filter"; value: string }
   /** `/clubs/<clubId>/sessions` */
   | { kind: "club"; clubId: string }
-  /** `/clubs/<clubId>/players/<clubPlayerId>/stats` */
-  | { kind: "playerStats"; clubId: string; clubPlayerId: string }
+  /**
+   * `/clubs/<clubId>/players/<clubPlayerId>/stats`; `fromClubPage`: those Stats were opened from
+   * the Club page, so their own Back still returns there.
+   */
+  | { kind: "playerStats"; clubId: string; clubPlayerId: string; fromClubPage?: true }
   /** `/account/stats` */
   | { kind: "accountStats" };
 
@@ -43,7 +52,9 @@ export function parseOrigin(search: string): SessionOrigin {
   const statsClub = params.get(STATS_CLUB_PARAM);
   const statsPlayer = params.get(STATS_PLAYER_PARAM);
   if (statsClub && statsPlayer) {
-    return { kind: "playerStats", clubId: statsClub, clubPlayerId: statsPlayer };
+    return params.get(STATS_CLUB_PAGE_PARAM) === "1"
+      ? { kind: "playerStats", clubId: statsClub, clubPlayerId: statsPlayer, fromClubPage: true }
+      : { kind: "playerStats", clubId: statsClub, clubPlayerId: statsPlayer };
   }
   if (params.get(ACCOUNT_STATS_PARAM) === "1") return { kind: "accountStats" };
   const club = params.get(CLUB_PARAM);
@@ -59,6 +70,7 @@ export function originParams(origin: SessionOrigin): URLSearchParams {
   if (origin.kind === "playerStats") {
     params.set(STATS_CLUB_PARAM, origin.clubId);
     params.set(STATS_PLAYER_PARAM, origin.clubPlayerId);
+    if (origin.fromClubPage) params.set(STATS_CLUB_PAGE_PARAM, "1");
   }
   if (origin.kind === "accountStats") params.set(ACCOUNT_STATS_PARAM, "1");
   return params;
@@ -84,7 +96,11 @@ export function summaryPath(sessionId: string, origin: SessionOrigin): string {
 /** Where Back from the details goes: only ever one of the known list or Stats paths. */
 export function originBackPath(origin: SessionOrigin): string {
   if (origin.kind === "club") return `/clubs/${encodeURIComponent(origin.clubId)}/sessions`;
-  if (origin.kind === "playerStats") return clubStatsPath(origin.clubId, origin.clubPlayerId);
+  if (origin.kind === "playerStats") {
+    return origin.fromClubPage
+      ? clubStatsFromClubPagePath(origin.clubId, origin.clubPlayerId)
+      : clubStatsPath(origin.clubId, origin.clubPlayerId);
+  }
   if (origin.kind === "accountStats") return ACCOUNT_STATS_PATH;
   if (origin.kind === "filter") return pastSessionsPath(origin.value);
   return "/sessions";

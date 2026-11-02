@@ -77,6 +77,12 @@ function winnerIndex(score: [number, number] | null): 0 | 1 | null {
   return score[0] > score[1] ? 0 : 1;
 }
 
+/** How a match went for the Team on `side`: a win, a loss, or neither (unscored or level). */
+function outcome(score: [number, number] | null, side: 0 | 1): { won: boolean; lost: boolean } {
+  const winner = winnerIndex(score);
+  return { won: winner === side, lost: winner !== null && winner !== side };
+}
+
 function rosterName(clubs: readonly Club[], target: PlayRecordTarget): string | null {
   const club = clubs.find((candidate) => candidate.id === target.clubId);
   return club?.players.find((player) => player.id === target.clubPlayerId)?.name ?? null;
@@ -126,9 +132,7 @@ function compute(
           : null;
       if (side === null) continue;
       played += 1;
-      const winner = winnerIndex(match.score);
-      const won = winner === side;
-      const lost = winner !== null && winner !== side;
+      const { won, lost } = outcome(match.score, side);
       if (won) wins += 1;
       if (lost) losses += 1;
 
@@ -253,4 +257,61 @@ export function accountPlayRecord(
   accountId: string,
 ): PlayRecord {
   return compute(endedSessions, clubs, accountPlayRecordTargets(clubs, accountId));
+}
+
+/** A Club player's figures on the Club page's roster. */
+export interface RosterFigures {
+  /** Ended matches played, scored or not. */
+  played: number;
+  wins: number;
+  losses: number;
+  winRate: number | null;
+}
+
+/**
+ * The roster's figures: for every Club player of the Club who played an Ended match, their Ended
+ * matches and Win rate, in one pass over the Ended sessions. The same counting as
+ * `clubPlayRecord`'s totals (older Ended sessions without `clubPlayerId` add nothing). Club players
+ * with no Ended match aren't in the map.
+ */
+export function clubRosterFigures(
+  endedSessions: readonly EndedSession[],
+  clubId: string,
+): Map<string, RosterFigures> {
+  const figures = new Map<string, RosterFigures>();
+  for (const ended of endedSessions) {
+    if (ended.clubId !== clubId) continue;
+    const clubPlayerIds = new Map(
+      ended.players.flatMap((player) =>
+        player.clubPlayerId != null ? [[player.id, player.clubPlayerId] as const] : [],
+      ),
+    );
+    if (clubPlayerIds.size === 0) continue;
+    for (const match of ended.matches) {
+      for (const side of [0, 1] as const) {
+        const { won, lost } = outcome(match.score, side);
+        // A Set: a Club player counts once per match.
+        const onSide = new Set(
+          match.teams[side].flatMap((id) => {
+            const clubPlayerId = clubPlayerIds.get(id);
+            return clubPlayerId === undefined ? [] : [clubPlayerId];
+          }),
+        );
+        for (const clubPlayerId of onSide) {
+          const entry = figures.get(clubPlayerId) ?? {
+            played: 0,
+            wins: 0,
+            losses: 0,
+            winRate: null,
+          };
+          entry.played += 1;
+          if (won) entry.wins += 1;
+          if (lost) entry.losses += 1;
+          figures.set(clubPlayerId, entry);
+        }
+      }
+    }
+  }
+  for (const entry of figures.values()) entry.winRate = winRate(entry.wins, entry.losses);
+  return figures;
 }

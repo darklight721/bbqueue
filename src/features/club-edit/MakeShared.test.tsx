@@ -112,14 +112,15 @@ describe("Make shared club", () => {
     ).toBeInTheDocument();
   });
 
-  it("with unsaved changes: turned off until they are saved", async () => {
+  it("isn't there while the players are being edited", async () => {
     await start();
     renderClub();
 
-    await userEvent.type(screen.getByRole("textbox", { name: "Club name" }), "!");
+    await userEvent.click(screen.getByRole("button", { name: "Edit players" }));
 
-    expect(makeButton()).toBeDisabled();
-    expect(screen.getByText("Save your changes first.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Make shared club" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(makeButton()).toBeEnabled();
   });
 
   it("asks which player you are, with no way to skip, then confirms that it can't be undone", async () => {
@@ -175,6 +176,7 @@ describe("Make shared club", () => {
     // The screen follows: no Make shared club, no "This device only", and rows can be linked now.
     expect(screen.queryByRole("button", { name: "Make shared club" })).not.toBeInTheDocument();
     expect(screen.queryByText("This device only")).not.toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("button", { name: "Edit players" }));
     expect(await screen.findByDisplayValue("Ana")).toHaveAttribute(
       "placeholder",
       "Name or @Account ID",

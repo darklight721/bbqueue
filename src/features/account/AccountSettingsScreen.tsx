@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
 import { flushSync } from "react-dom";
 import { BackendError, type Backend, type BackendErrorCode } from "../../backend/backend.ts";
 import { useOnline } from "../../backend/useOnline.ts";
@@ -9,10 +9,15 @@ import {
   CloseIcon,
   CopyIcon,
   OfflineIcon,
-  PencilIcon,
   PlusIcon,
   WarningIcon,
 } from "../../components/icons.tsx";
+import {
+  CourtCard,
+  CourtCardCaption,
+  CourtCardEditButton,
+  CourtCardNameForm,
+} from "../../components/CourtCard.tsx";
 import { NAME_ERROR_MESSAGE } from "../../components/nameErrors.ts";
 import { Screen } from "../../components/Screen.tsx";
 import type { Account } from "../../domain/types.ts";
@@ -24,7 +29,6 @@ import {
   useInstallHintDismissed,
 } from "../../storage/store.ts";
 import { ClubCardLink } from "../club-edit/ClubCardLink.tsx";
-import { CourtLines } from "../home/CourtLines.tsx";
 import { ACCOUNT_STATS_PATH } from "../play-record/paths.ts";
 import { CreateAccountForm } from "./CreateAccountForm.tsx";
 import { DeleteAccount } from "./DeleteAccount.tsx";
@@ -85,7 +89,7 @@ function AccountDetails({
 
   return (
     <>
-      <CourtCard>
+      <CourtCard label="Your Account" layout="across" style={delay(0)}>
         <NameSection backend={backend} account={account} announce={announce} />
         {/* A court line between the two halves of the card. */}
         <hr className="my-5 border-0 border-t-2 border-dashed border-line/30" />
@@ -114,50 +118,6 @@ function AccountDetails({
 
       <DeleteAccount account={account} />
     </>
-  );
-}
-
-/** Court-green panel in the Home hero's style: glow, faint court lines, off-white text. */
-function CourtCard({ children }: { children: ReactNode }) {
-  return (
-    <section
-      aria-label="Your Account"
-      className="animate-rise relative isolate overflow-hidden rounded-box bg-court text-line shadow-lg"
-      style={delay(0)}
-    >
-      <div
-        aria-hidden="true"
-        className="absolute inset-0 -z-10"
-        style={{
-          background:
-            "radial-gradient(110% 80% at 0% 0%, rgb(255 255 255 / 0.2), transparent 55%), linear-gradient(160deg, transparent 35%, var(--color-court-deep) 100%)",
-        }}
-      />
-      <CourtLines className="absolute top-1/2 left-[62%] -z-10 w-[150%] max-w-none -translate-x-1/2 -translate-y-1/2 -rotate-[24deg] text-line/20" />
-      <div className="flex flex-col p-5">{children}</div>
-    </section>
-  );
-}
-
-/** Small all-caps caption above a value on the card. */
-function Caption({
-  id,
-  htmlFor,
-  children,
-}: {
-  id?: string;
-  htmlFor?: string;
-  children: ReactNode;
-}) {
-  const className = "text-xs font-bold tracking-[0.14em] text-line/70 uppercase";
-  return htmlFor ? (
-    <label id={id} htmlFor={htmlFor} className={className}>
-      {children}
-    </label>
-  ) : (
-    <p id={id} className={className}>
-      {children}
-    </p>
   );
 }
 
@@ -248,94 +208,37 @@ function NameSection({
       <div className="flex items-start justify-between gap-3">
         <Avatar name={avatarName} size="lg" />
         {editing ? null : (
-          <button
-            ref={editRef}
-            type="button"
-            className="btn h-10 min-h-10 gap-1.5 rounded-full border-line/35 bg-line/10 px-4 text-line shadow-none hover:border-line/60 hover:bg-line/20 disabled:border-line/15 disabled:bg-transparent disabled:text-line/45"
-            aria-label="Edit name"
-            aria-describedby={online ? undefined : offlineId}
+          <CourtCardEditButton
+            buttonRef={editRef}
+            label="Edit name"
+            describedBy={online ? undefined : offlineId}
             disabled={!online}
             onClick={startEditing}
-          >
-            <PencilIcon className="size-4" />
-            Edit
-          </button>
+          />
         )}
       </div>
 
       {editing ? (
-        <form
-          noValidate
-          aria-busy={saving || undefined}
-          className="mt-4 flex flex-col"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void save();
+        <CourtCardNameForm
+          inputRef={inputRef}
+          inputId={inputId}
+          label="Your name"
+          value={draft}
+          autoComplete="name"
+          saving={saving}
+          error={shownNameError ? NAME_ERROR_MESSAGE[shownNameError] : null}
+          errorId={messageId}
+          failure={failure}
+          onChange={(value) => {
+            setDraft(value);
+            setFailure(null);
           }}
-        >
-          <Caption htmlFor={inputId}>Your name</Caption>
-          <input
-            ref={inputRef}
-            id={inputId}
-            type="text"
-            className="input input-lg mt-1.5 w-full border-0 bg-line font-display text-2xl font-bold text-[#14201a] shadow-inner [--input-color:var(--color-volt)]"
-            value={draft}
-            autoComplete="name"
-            autoCapitalize="words"
-            enterKeyHint="done"
-            readOnly={saving}
-            aria-invalid={shownNameError ? true : undefined}
-            aria-describedby={shownNameError ? messageId : undefined}
-            onChange={(event) => {
-              setDraft(event.target.value);
-              setFailure(null);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Escape" && !saving) {
-                event.preventDefault();
-                stopEditing();
-              }
-            }}
-          />
-          {/* One reserved line for any message, so an error doesn't push the buttons down. */}
-          <div className="flex min-h-9 items-center">
-            {shownNameError ? (
-              <CardError id={messageId}>{NAME_ERROR_MESSAGE[shownNameError]}</CardError>
-            ) : null}
-            {/* Always mounted, so screen readers announce a failure when its text appears. */}
-            <div role="alert">
-              {!shownNameError && failure ? <CardError>{failure}</CardError> : null}
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <button
-              type="submit"
-              className={`btn flex-1 border-0 bg-volt text-[#14201a] shadow-md hover:bg-volt/90 ${saving ? "btn-disabled" : ""}`}
-              aria-disabled={saving || undefined}
-              aria-busy={saving || undefined}
-            >
-              {saving ? (
-                <>
-                  <span className="loading loading-spinner loading-sm" aria-hidden="true" />
-                  Saving…
-                </>
-              ) : (
-                "Save"
-              )}
-            </button>
-            <button
-              type="button"
-              className="btn flex-1 border-line/35 bg-transparent text-line shadow-none hover:border-line/60 hover:bg-line/10"
-              disabled={saving}
-              onClick={stopEditing}
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
+          onSave={() => void save()}
+          onCancel={stopEditing}
+        />
       ) : (
         <div className="mt-4 flex flex-col">
-          <Caption>Name</Caption>
+          <CourtCardCaption>Name</CourtCardCaption>
           <p className="font-display text-[2rem] leading-tight font-bold break-words">
             {account.name}
           </p>
@@ -348,19 +251,6 @@ function NameSection({
         </div>
       )}
     </div>
-  );
-}
-
-/** An error on the green card: a red pill, so it reads as an error on any background. */
-function CardError({ id, children }: { id?: string; children: ReactNode }) {
-  return (
-    <p
-      id={id}
-      className="inline-flex items-center gap-1.5 rounded-full bg-error px-2.5 py-0.5 text-sm font-semibold text-error-content"
-    >
-      <WarningIcon className="size-4 shrink-0" />
-      {children}
-    </p>
   );
 }
 
@@ -386,7 +276,7 @@ function AccountIdSection({ accountId, announce }: { accountId: string; announce
   const copied = copyState === "copied";
   return (
     <div className="flex flex-col">
-      <Caption>Account ID</Caption>
+      <CourtCardCaption>Account ID</CourtCardCaption>
       <div className="mt-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <p className="min-w-0 font-display text-[2.5rem] leading-none font-extrabold tracking-wide break-all text-volt select-all">
           {accountId}
@@ -499,7 +389,7 @@ function NoAccount({ backend, announce }: { backend: Backend; announce: Announce
 
   return (
     <>
-      <CourtCard>
+      <CourtCard label="Your Account" layout="across" style={delay(0)}>
         <Avatar name={null} size="lg" />
         <h2 className="mt-4 font-display text-[2rem] leading-tight font-bold uppercase">
           No Account yet

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { accountPlayRecord, clubPlayRecord, winRate } from "./playRecord.ts";
+import { accountPlayRecord, clubPlayRecord, clubRosterFigures, winRate } from "./playRecord.ts";
 import type { Club, EndedSession, EndedSessionMatch } from "./types.ts";
 
 type Pair = [string, string];
@@ -439,5 +439,101 @@ describe("accountPlayRecord", () => {
     expect(
       accountPlayRecord([inC1, inC2], relinked, "ben-3333").sessions.map((s) => s.sessionId),
     ).toEqual(["s2"]);
+  });
+});
+
+describe("clubRosterFigures", () => {
+  it("gives each Club player who played their Ended matches and Win rate, leaving out those who never played", () => {
+    const first = ended(
+      "first",
+      1000_000,
+      [
+        { a: ["ann", "bob"], b: ["cat", "dan"], score: [21, 10] },
+        { a: ["ann", "cat"], b: ["bob", "dan"], score: null },
+      ],
+      ALL,
+    );
+    const second = ended(
+      "second",
+      2000_000,
+      [{ a: ["ann", "guest"], b: ["bob", "cat"], score: [15, 21] }],
+      { ...ALL, guest: null },
+    );
+    const figures = clubRosterFigures([first, second], "c1");
+    expect(figures.get("cp-ann")).toEqual({ played: 3, wins: 1, losses: 1, winRate: 0.5 });
+    expect(figures.get("cp-bob")).toEqual({ played: 3, wins: 2, losses: 0, winRate: 1 });
+    expect(figures.get("cp-dan")).toEqual({ played: 2, wins: 0, losses: 1, winRate: 0 });
+    // Guests and Club players with no Ended match aren't there.
+    expect(figures.has("guest")).toBe(false);
+    expect(clubRosterFigures([first], "c1").has("cp-nobody")).toBe(false);
+    expect(clubRosterFigures([], "c1").size).toBe(0);
+  });
+
+  it("has no Win rate, not 0%, with only unscored matches", () => {
+    const night = ended(
+      "night",
+      1000_000,
+      [
+        { a: ["ann", "bob"], b: ["cat", "dan"], score: null },
+        { a: ["ann", "cat"], b: ["bob", "dan"], score: [21, 21] },
+      ],
+      ALL,
+    );
+    expect(clubRosterFigures([night], "c1").get("cp-ann")).toEqual({
+      played: 2,
+      wins: 0,
+      losses: 0,
+      winRate: null,
+    });
+  });
+
+  it("counts only this Club's Ended sessions; older ones without clubPlayerId add nothing", () => {
+    const rows: Row[] = [{ a: ["ann", "bob"], b: ["cat", "dan"], score: [21, 10] }];
+    const old = ended("old", 1000_000, rows, {
+      ann: undefined,
+      bob: undefined,
+      cat: undefined,
+      dan: undefined,
+    });
+    const otherClub = ended("other", 2000_000, rows, ALL, { clubId: "c2" });
+    const noClub = ended("none", 2500_000, rows, ALL, { clubId: null, clubName: null });
+    const recent = ended("recent", 3000_000, rows, ALL);
+    const figures = clubRosterFigures([old, otherClub, noClub, recent], "c1");
+    expect(figures.get("cp-ann")).toEqual({ played: 1, wins: 1, losses: 0, winRate: 1 });
+    expect(clubRosterFigures([old], "c1").size).toBe(0);
+  });
+
+  it("agrees with each Club player's Play record totals", () => {
+    const sessions = [
+      ended(
+        "a",
+        1000_000,
+        [
+          { a: ["ann", "bob"], b: ["cat", "dan"], score: [21, 19] },
+          { a: ["ann", "dan"], b: ["bob", "cat"], score: [9, 21] },
+          { a: ["ann", "cat"], b: ["bob", "dan"], score: null },
+        ],
+        ALL,
+      ),
+      ended(
+        "b",
+        2000_000,
+        [
+          { a: ["bob", "cat"], b: ["ann", "dan"], score: [21, 17] },
+          { a: ["bob", "dan"], b: ["ann", "cat"], score: [20, 20] },
+        ],
+        ALL,
+      ),
+    ];
+    const figures = clubRosterFigures(sessions, "c1");
+    for (const player of garage.players) {
+      const {
+        played,
+        wins,
+        losses,
+        winRate: rate,
+      } = clubPlayRecord(sessions, [garage], "c1", player.id).totals;
+      expect(figures.get(player.id)).toEqual({ played, wins, losses, winRate: rate });
+    }
   });
 });

@@ -488,7 +488,7 @@ test.describe("Opened from a Club", () => {
     expect((await readStoredData<Session>(page, "session"))!.clubId).toBe(club.id);
   });
 
-  test("Back returns to the Club screen", async ({ page }) => {
+  test("Back returns to the Club page", async ({ page }) => {
     const club = friday();
     await seedStorage(page, { clubs: [club] });
     await page.goto(`/clubs/${club.id}`);
@@ -497,7 +497,7 @@ test.describe("Opened from a Club", () => {
 
     await page.getByRole("button", { name: "Back" }).click();
     await expect(page).toHaveURL(new RegExp(`/clubs/${club.id}$`));
-    await expect(page.getByRole("heading", { level: 1, name: "Edit club" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Club" })).toBeVisible();
   });
 
   test("starting still asks to replace another Club's Active session", async ({ page }) => {

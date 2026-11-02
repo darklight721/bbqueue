@@ -426,12 +426,12 @@ describe("a Club's own sessions list", () => {
     ).toBeInTheDocument();
   });
 
-  it("goes back to the Edit club screen", async () => {
+  it("goes back to the Club page", async () => {
     seedClubSessions();
     const location = renderAt("/clubs/c1/sessions");
     await userEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(location.current()).toBe("/clubs/c1");
-    expect(screen.getByRole("heading", { level: 1, name: "Edit club" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Club" })).toBeInTheDocument();
   });
 
   it("shows an empty state for a Club without sessions", () => {

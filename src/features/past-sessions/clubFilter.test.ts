@@ -138,6 +138,13 @@ describe("session origin", () => {
     expect(detailsPath("s1", player)).toBe("/sessions/s1?statsClub=c1&statsPlayer=p+1");
     expect(parseOrigin("statsClub=c1&statsPlayer=p+1")).toEqual(player);
     expect(originBackPath(player)).toBe("/clubs/c1/players/p%201/stats");
+    // Stats opened from the Club page keep that, so their own Back returns to the Club page.
+    const fromClubPage = { ...player, fromClubPage: true } as const;
+    expect(detailsPath("s1", fromClubPage)).toBe(
+      "/sessions/s1?statsClub=c1&statsPlayer=p+1&statsClubPage=1",
+    );
+    expect(parseOrigin("statsClub=c1&statsPlayer=p+1&statsClubPage=1")).toEqual(fromClubPage);
+    expect(originBackPath(fromClubPage)).toBe("/clubs/c1/players/p%201/stats?clubPage=1");
     expect(detailsPath("s1", { kind: "accountStats" })).toBe("/sessions/s1?accountStats=1");
     expect(parseOrigin("?accountStats=1")).toEqual({ kind: "accountStats" });
     expect(originBackPath({ kind: "accountStats" })).toBe("/account/stats");

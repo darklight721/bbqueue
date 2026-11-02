@@ -77,13 +77,14 @@ test.describe("Make shared club", () => {
 
     // Account IDs link as for any Shared club.
     // Rows are sorted by name: Ana's comes first.
+    await page.getByRole("button", { name: "Edit players" }).click();
     const anaField = page.getByRole("textbox", { name: "Player name" }).first();
     await expect(anaField).toHaveValue("Ana");
     await anaField.fill(`@${ana.accountId}`);
     await expect(page.getByText(ana.accountId, { exact: true })).toBeVisible();
     await expect(page.getByRole("combobox", { name: "Role for Ana Bell" })).toHaveValue("player");
     await page.getByRole("button", { name: "Save" }).click();
-    await expect(page).toHaveURL(/\/clubs$/);
+    await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
     await expect
       .poll(async () => (await readFakeClubs(page))[0]?.players.find((p) => p.id === "p-ana")?.link)
       .toEqual({ accountId: ana.accountId, role: "player" });

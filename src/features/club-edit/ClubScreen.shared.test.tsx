@@ -68,16 +68,24 @@ function deviceSession(): Session {
 
 const nameInputs = () => screen.getAllByRole("textbox", { name: "Player name" });
 
+const names = () => nameInputs().map((input) => (input as HTMLInputElement).value);
+
+/** Clubs → Add club → name → Create club. */
+async function createFromSheet(user: ReturnType<typeof userEvent.setup>, name: string) {
+  renderAt("/clubs");
+  await user.click(screen.getByRole("button", { name: "Add club" }));
+  const sheet = screen.getByRole("dialog", { name: "New club" });
+  await user.type(within(sheet).getByRole("textbox", { name: "Club name" }), name);
+  await user.click(within(sheet).getByRole("button", { name: "Create club" }));
+  await screen.findByRole("heading", { level: 1, name: "Club" });
+}
+
 describe("Club screens with Accounts", () => {
   it("signed in: a new Club is a Shared club with me on the roster as Organizer", async () => {
     await startWith({ signedIn: true });
     const user = userEvent.setup();
-    renderAt("/clubs/new");
+    await createFromSheet(user, "Tuesday");
 
-    await user.type(screen.getByRole("textbox", { name: "Club name" }), "Tuesday");
-    await user.click(screen.getByRole("button", { name: "Save" }));
-
-    expect(screen.getByRole("heading", { level: 1, name: "Clubs" })).toBeInTheDocument();
     const [club] = getClubs();
     expect(club).toMatchObject({ name: "Tuesday", kind: "shared" });
     expect(club?.players).toEqual([
@@ -87,26 +95,29 @@ describe("Club screens with Accounts", () => {
         link: { accountId: expect.stringMatching(/^roy-/), role: "organizer" },
       }),
     ]);
-    // Shared clubs aren't "this device only".
-    expect(screen.getByRole("link", { name: /Tuesday/ })).not.toHaveTextContent("This device only");
-
-    await user.click(screen.getByRole("link", { name: /Tuesday/ }));
-    expect(nameInputs().map((input) => (input as HTMLInputElement).value)).toEqual(["Roy Smith"]);
+    expect(screen.getByText("Shared club · You're an Organizer")).toBeInTheDocument();
+    // Players Edit mode, with an empty row after mine.
+    expect(names()).toEqual(["Roy Smith", ""]);
+    expect(nameInputs()[1]).toHaveFocus();
     expect(screen.queryByRole("button", { name: "Remove Roy Smith" })).not.toBeInTheDocument();
+
+    // Shared clubs aren't "this device only".
+    await user.click(screen.getByRole("button", { name: "Back" }));
+    expect(screen.getByRole("link", { name: /Tuesday/ })).not.toHaveTextContent("This device only");
   });
 
   it("signed out: a new Club is a Local club labelled This device only, and stays Local after signing up", async () => {
     await startWith({ signedIn: false });
     const user = userEvent.setup();
-    renderAt("/clubs/new");
-    expect(screen.queryByRole("textbox", { name: "Player name" })).not.toBeInTheDocument();
-
-    await user.type(screen.getByRole("textbox", { name: "Club name" }), "Tuesday");
-    await user.click(screen.getByRole("button", { name: "Save" }));
+    await createFromSheet(user, "Tuesday");
 
     expect(getClubs()).toEqual([
       { id: expect.any(String), name: "Tuesday", kind: "local", players: [] },
     ]);
+    expect(names()).toEqual([""]);
+    expect(screen.getByText("This device only")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Back" }));
     expect(screen.getByRole("link", { name: /Tuesday/ })).toHaveTextContent("This device only");
 
     await act(async () => setAccount(await backend.createAccount("Roy")));
@@ -119,12 +130,31 @@ describe("Club screens with Accounts", () => {
   it("without a backend nothing says This device only", async () => {
     setWelcomeDone();
     const user = userEvent.setup();
-    renderAt("/clubs/new");
-    await user.type(screen.getByRole("textbox", { name: "Club name" }), "Tuesday");
-    await user.click(screen.getByRole("button", { name: "Save" }));
+    await createFromSheet(user, "Tuesday");
+    expect(screen.queryByText("This device only")).not.toBeInTheDocument();
 
+    await user.click(screen.getByRole("button", { name: "Back" }));
     expect(screen.getByRole("link", { name: /Tuesday/ })).not.toHaveTextContent("This device only");
     expect(getClubs()[0]?.kind).toBe("local");
+  });
+
+  it("a Shared club the server refuses to create keeps the sheet open with the reason", async () => {
+    await startWith({ signedIn: true });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const user = userEvent.setup();
+    vi.spyOn(backend, "createSharedClub").mockRejectedValue(new BackendError("offline"));
+    renderAt("/clubs");
+    await user.click(screen.getByRole("button", { name: "Add club" }));
+    const sheet = screen.getByRole("dialog", { name: "New club" });
+    await user.type(within(sheet).getByRole("textbox", { name: "Club name" }), "Tuesday");
+    await user.click(within(sheet).getByRole("button", { name: "Create club" }));
+
+    expect(
+      await within(sheet).findByText("You're offline. Connect to make this change."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "New club" })).toBeInTheDocument();
+    expect(getClubs()).toEqual([]);
+    vi.restoreAllMocks();
   });
 
   describe("editing a Shared club", () => {
@@ -139,27 +169,62 @@ describe("Club screens with Accounts", () => {
       });
     });
 
-    it("sends name and Skill level changes through the Backend", async () => {
+    it("renames the Club from the card with one rename, and nothing else", async () => {
+      const rename = vi.spyOn(backend, "renameSharedClub");
+      const update = vi.spyOn(backend, "updateClubPlayer");
       const user = userEvent.setup();
       renderAt("/clubs/c1");
+      expect(screen.getByText("Shared club · You're an Organizer")).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "Edit club name" }));
+      await user.clear(screen.getByRole("textbox", { name: "Club name" }));
+      await user.type(screen.getByRole("textbox", { name: "Club name" }), "Friday{Enter}");
+
+      expect(rename).toHaveBeenCalledExactlyOnceWith("c1", "Friday");
+      expect(update).not.toHaveBeenCalled();
+      expect(getClubs()[0]?.name).toBe("Friday");
+      expect(screen.getByRole("heading", { level: 2, name: "Friday" })).toBeInTheDocument();
+    });
+
+    it("a rename the server refuses keeps the field open with the reason", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      vi.spyOn(backend, "renameSharedClub").mockRejectedValue(new BackendError("forbidden"));
+      const user = userEvent.setup();
+      renderAt("/clubs/c1");
+
+      await user.click(screen.getByRole("button", { name: "Edit club name" }));
+      await user.type(screen.getByRole("textbox", { name: "Club name" }), " Night{Enter}");
+
+      expect(
+        await screen.findByText("You can't change this Club. Only Organizers can."),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("textbox", { name: "Club name" })).toHaveValue("Tuesday Night");
+      expect(getClubs()[0]?.name).toBe("Tuesday");
+      vi.restoreAllMocks();
+    });
+
+    it("sends Skill level changes through the Backend", async () => {
+      const user = userEvent.setup();
+      renderAt("/clubs/c1");
+      await user.click(screen.getByRole("button", { name: "Edit players" }));
 
       await user.selectOptions(
         screen.getByRole("combobox", { name: "Skill level for Ana" }),
         "advanced",
       );
-      await user.clear(screen.getByRole("textbox", { name: "Club name" }));
-      await user.type(screen.getByRole("textbox", { name: "Club name" }), "Friday");
       await user.click(screen.getByRole("button", { name: "Save" }));
 
       const [saved] = getClubs();
-      expect(saved?.name).toBe("Friday");
+      expect(saved?.name).toBe("Tuesday");
       expect(saved?.players.find((p) => p.id === "p-ana")?.skill).toBe("advanced");
       expect(saved?.players.find((p) => p.id === club.players[0]!.id)).toBeDefined();
+      expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
     });
 
     it("adds a row through the Backend", async () => {
       const user = userEvent.setup();
       renderAt("/clubs/c1");
+      await user.click(screen.getByRole("button", { name: "Edit players" }));
 
       await user.click(screen.getByRole("button", { name: "Add player" }));
       await user.type(nameInputs().at(-1)!, "Ben");
@@ -171,6 +236,7 @@ describe("Club screens with Accounts", () => {
     it("offline: Skill level changes still save, adding a row is turned off with the reason", async () => {
       const user = userEvent.setup();
       renderAt("/clubs/c1");
+      await user.click(screen.getByRole("button", { name: "Edit players" }));
 
       act(() => backend.setOnline(false));
       expect(screen.getByRole("link", { name: "New session" })).toHaveAccessibleDescription(
@@ -193,6 +259,7 @@ describe("Club screens with Accounts", () => {
     it("removes a row but never the Organizer's own", async () => {
       const user = userEvent.setup();
       renderAt("/clubs/c1");
+      await user.click(screen.getByRole("button", { name: "Edit players" }));
 
       await user.click(screen.getByRole("button", { name: "Remove Ana" }));
       await user.click(screen.getByRole("button", { name: "Save" }));
@@ -249,14 +316,17 @@ describe("Club screens with Accounts", () => {
 
       it("Save shows it's busy, locks the form and Back, and after a failure is normal again", async () => {
         let fail!: (error: unknown) => void;
-        vi.spyOn(backend, "renameSharedClub").mockReturnValue(
+        vi.spyOn(backend, "updateClubPlayer").mockReturnValue(
           new Promise((_, reject) => (fail = reject)),
         );
         const user = userEvent.setup();
         renderAt("/clubs/c1");
+        await user.click(screen.getByRole("button", { name: "Edit players" }));
 
-        await user.clear(screen.getByRole("textbox", { name: "Club name" }));
-        await user.type(screen.getByRole("textbox", { name: "Club name" }), "Friday");
+        await user.selectOptions(
+          screen.getByRole("combobox", { name: "Skill level for Ana" }),
+          "advanced",
+        );
         await user.click(screen.getByRole("button", { name: "Save" }));
 
         const busy = screen.getByRole("button", { name: "Saving…" });
@@ -264,16 +334,17 @@ describe("Club screens with Accounts", () => {
         expect(busy).toHaveAttribute("aria-busy", "true");
         expect(busy.querySelector(".loading-spinner")).toHaveAttribute("aria-hidden", "true");
         expect(screen.getByRole("button", { name: "Add player" })).toBeDisabled();
-        expect(screen.getByRole("textbox", { name: "Club name" })).toBeDisabled();
+        expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
         for (const input of nameInputs()) expect(input).toBeDisabled();
 
         // Back does nothing, not even the discard question.
         await user.click(screen.getByRole("button", { name: "Back" }));
         expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-        expect(screen.getByRole("heading", { level: 1, name: "Edit club" })).toBeInTheDocument();
+        expect(screen.getByRole("heading", { level: 1, name: "Club" })).toBeInTheDocument();
 
         await act(async () => fail(new BackendError("failed")));
 
+        // Still in Edit mode, with the message.
         expect(screen.getByRole("alert")).toHaveTextContent(
           "Couldn't save your changes. Try again.",
         );
@@ -281,7 +352,7 @@ describe("Club screens with Accounts", () => {
         expect(save).toBeEnabled();
         expect(save).not.toHaveAttribute("aria-busy");
         expect(screen.getByRole("button", { name: "Add player" })).toBeEnabled();
-        expect(screen.getByRole("textbox", { name: "Club name" })).toBeEnabled();
+        for (const input of nameInputs()) expect(input).toBeEnabled();
       });
 
       it("Delete club keeps its dialog open and busy, then closes it with the error on failure", async () => {
@@ -314,7 +385,7 @@ describe("Club screens with Accounts", () => {
         expect(screen.getByRole("alert")).toHaveTextContent(
           "Couldn't save your changes. Try again.",
         );
-        expect(screen.getByRole("heading", { level: 1, name: "Edit club" })).toBeInTheDocument();
+        expect(screen.getByRole("heading", { level: 1, name: "Club" })).toBeInTheDocument();
         expect(getClubs()).toHaveLength(1);
 
         // The next try starts from the normal dialog.

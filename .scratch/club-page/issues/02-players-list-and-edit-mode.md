@@ -1,6 +1,6 @@
 # 02 Players list and Players Edit mode, one page for both Roles
 
-Status: ready-for-agent
+Status: done
 Blocked by: 01
 Spec: ../spec.md (Club page → Players, Players Edit mode)
 

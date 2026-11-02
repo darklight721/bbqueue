@@ -7,10 +7,11 @@ import {
   validateOrigin,
   type SessionOrigin,
 } from "../past-sessions/sessionOrigin.ts";
-import { clubStatsPath } from "./paths.ts";
+import { clubStatsPath, FROM_CLUB_PAGE_PARAM } from "./paths.ts";
 
 /** URL query param on a Club view: opened from this Ended session's Standings. */
 export const FROM_SESSION_PARAM = "session";
+// The other origin, the Club page's roster (`FROM_CLUB_PAGE_PARAM`), is in paths.ts.
 
 /**
  * A Club view opened from an Ended session's Standings. The session's own origin rides along, so
@@ -28,8 +29,8 @@ export function clubStatsFromSessionPath(
 }
 
 /**
- * Back from a Club view: the Ended session it was opened from (while it's still kept), else the
- * Club's Past sessions (a reload or a deep link).
+ * Back from a Club view: the Ended session it was opened from (while it's still kept), or the Club
+ * page when it was opened from the roster; else the Club's Past sessions (a deep link).
  */
 export function clubStatsBackPath(
   search: string,
@@ -37,7 +38,9 @@ export function clubStatsBackPath(
   sessions: readonly EndedSession[],
   clubs: readonly Club[],
 ): string {
-  const sessionId = new URLSearchParams(search).get(FROM_SESSION_PARAM);
+  const params = new URLSearchParams(search);
+  if (params.get(FROM_CLUB_PAGE_PARAM) === "1") return `/clubs/${encodeURIComponent(clubId)}`;
+  const sessionId = params.get(FROM_SESSION_PARAM);
   if (sessionId && sessions.some((ended) => ended.id === sessionId)) {
     const origin = validateOrigin(
       parseOrigin(search),
@@ -47,4 +50,9 @@ export function clubStatsBackPath(
     return detailsPath(sessionId, origin);
   }
   return `/clubs/${encodeURIComponent(clubId)}/sessions`;
+}
+
+/** Whether a Club view was opened from the Club page's roster. */
+export function openedFromClubPage(search: string): boolean {
+  return new URLSearchParams(search).get(FROM_CLUB_PAGE_PARAM) === "1";
 }

@@ -1,6 +1,6 @@
 # 04 Matches and Win rate on roster rows
 
-Status: ready-for-agent
+Status: done
 Blocked by: 03
 Spec: ../spec.md (Club page → Players, Domain)
 
@@ -14,3 +14,7 @@ Spec: ../spec.md (Club page → Players, Domain)
 
 `e2e/club-page.spec.ts`, on chromium-mobile and webkit-mobile:
 9. A Club player with Ended matches shows "N matches · W%" on their row; one who never played shows no second line.
+
+## Comments
+
+2026-11-02: Checked on a 32-player roster at 375px. With the full Skill badge ("Intermediate") the second line was cut off ("5 matches · 4…"), so rows use the compact badge (BEG / INT / ADV, fixed width) instead; the line then fits, and rows of players who never played stay one line. It doesn't look crowded, so the line stays.

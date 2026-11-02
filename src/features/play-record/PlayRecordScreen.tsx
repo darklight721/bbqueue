@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "rea
 import { Link, Redirect, useSearch } from "wouter";
 import { ChartIcon, ChevronRightIcon, UsersIcon } from "../../components/icons.tsx";
 import { Avatar } from "../../components/Avatar.tsx";
+import { CourtCard } from "../../components/CourtCard.tsx";
 import { Screen } from "../../components/Screen.tsx";
 import { displayClubName } from "../../domain/clubName.ts";
 import { initials } from "../../domain/initials.ts";
@@ -15,13 +16,12 @@ import {
   type PlaySessionEntry,
 } from "../../domain/playRecord.ts";
 import { useAccount, useClubs, useEndedSessions } from "../../storage/store.ts";
-import { CourtLines } from "../home/CourtLines.tsx";
 import { DateTile } from "../past-sessions/PastSessionsScreen.tsx";
 import { detailsPath, type SessionOrigin } from "../past-sessions/sessionOrigin.ts";
 import { countLabel, MEDAL, ordinal, rise, sessionDay } from "../session-summary/summaryFormat.ts";
 import { ClubLine } from "../session-summary/SummaryParts.tsx";
 import { formatWinRate, winLoss, winLossWords } from "./format.ts";
-import { clubStatsBackPath } from "./statsOrigin.ts";
+import { clubStatsBackPath, openedFromClubPage } from "./statsOrigin.ts";
 import { WinRateChart } from "./WinRateChart.tsx";
 
 /** How long a Session row stays highlighted after its dot is tapped. */
@@ -44,9 +44,13 @@ export function ClubStatsScreen({
   );
   const backTo = clubStatsBackPath(search, clubId, sessions, clubs);
   const clubName = displayClubName(clubId, record.sessions[0]?.clubName ?? null, clubs);
+  const fromClubPage = openedFromClubPage(search);
   const origin = useMemo<SessionOrigin>(
-    () => ({ kind: "playerStats", clubId, clubPlayerId }),
-    [clubId, clubPlayerId],
+    () =>
+      fromClubPage
+        ? { kind: "playerStats", clubId, clubPlayerId, fromClubPage }
+        : { kind: "playerStats", clubId, clubPlayerId },
+    [clubId, clubPlayerId, fromClubPage],
   );
 
   return (
@@ -183,25 +187,7 @@ function PlayRecordView({
 function Header({ name, clubLine }: { name: string; clubLine: string | null }) {
   const nameId = useId();
   return (
-    <section
-      aria-labelledby={nameId}
-      className="animate-rise relative isolate overflow-hidden rounded-box bg-court px-5 py-5 text-line shadow-lg"
-      style={rise(0)}
-    >
-      <div
-        aria-hidden="true"
-        className="absolute inset-0 -z-10"
-        style={{
-          background:
-            "radial-gradient(120% 120% at 100% 0%, rgb(255 255 255 / 0.18), transparent 55%), linear-gradient(200deg, transparent 40%, var(--color-court-deep) 100%)",
-        }}
-      />
-      <CourtLines className="absolute top-1/2 right-[-34%] -z-10 w-[85%] max-w-none -translate-y-1/2 rotate-[12deg] text-line/20" />
-
-      <p className="mb-4 inline-flex items-center gap-2 rounded-full bg-black/20 px-3 py-1 text-xs font-bold tracking-[0.18em] uppercase">
-        <span className="size-2 rounded-full bg-volt" aria-hidden="true" />
-        Stats
-      </p>
+    <CourtCard labelledBy={nameId} pill="Stats" style={rise(0)}>
       <div className="flex items-center gap-4">
         <Avatar name={name} size="lg" />
         <h2
@@ -212,7 +198,7 @@ function Header({ name, clubLine }: { name: string; clubLine: string | null }) {
         </h2>
       </div>
       {clubLine ? <ClubLine name={clubLine} className="mt-4 text-sm" /> : null}
-    </section>
+    </CourtCard>
   );
 }
 

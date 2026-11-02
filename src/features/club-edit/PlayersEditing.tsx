@@ -1,50 +1,30 @@
 import { useEffect, useId, useMemo, useRef, useState, type MouseEvent } from "react";
-import { Redirect, useLocation } from "wouter";
-import {
-  createClub,
-  createsSharedClubs,
-  deleteClub as removeClub,
-  leaveClub,
-  saveClub,
-} from "../../backend/clubs.ts";
+import { useLocation } from "wouter";
+import { saveClub } from "../../backend/clubs.ts";
 import { getBackend } from "../../backend/index.ts";
 import { useOnline } from "../../backend/useOnline.ts";
 import { ConfirmDialog } from "../../components/ConfirmDialog.tsx";
-import {
-  HistoryIcon,
-  PlayIcon,
-  PlusIcon,
-  TrashIcon,
-  WarningIcon,
-} from "../../components/icons.tsx";
-import { blurOnEnter } from "../../components/keyboard.ts";
-import { NAME_ERROR_MESSAGE } from "../../components/nameErrors.ts";
+import { PlusIcon, WarningIcon } from "../../components/icons.tsx";
 import { OfflineNote } from "../../components/OfflineNote.tsx";
 import { PlayerRowEditor } from "../../components/PlayerRowEditor.tsx";
 import { Screen } from "../../components/Screen.tsx";
 import { normalizeAccountId } from "../../domain/accountId.ts";
-import {
-  canChangeRoles,
-  canDeleteClub,
-  canEditClub,
-  isSessionHost,
-  organizerCount,
-  ownRow,
-} from "../../domain/permissions.ts";
+import { canChangeRoles, organizerCount } from "../../domain/permissions.ts";
 import { newId } from "../../domain/ids.ts";
 import { DEFAULT_SKILL, type Club, type Role } from "../../domain/types.ts";
 import { hasClubErrors, validateClub } from "../../domain/validation.ts";
-import {
-  activeSessionOfClub,
-  useAccount,
-  useActiveSessions,
-  useClubs,
-  useEndedSessions,
-} from "../../storage/store.ts";
-import { newSessionForClubPath } from "../new-session/newSession.ts";
-import { countLabel } from "../session-summary/summaryFormat.ts";
+import { useAccount } from "../../storage/store.ts";
 import { LinkedLine, LinkStatus } from "./AccountLinkSection.tsx";
-import { ClubCardLink } from "./ClubCardLink.tsx";
+import { ClubCard } from "./ClubCard.tsx";
+import { clubErrorMessage } from "./clubErrors.ts";
+import {
+  clubFromForm,
+  formFromClub,
+  formSignature,
+  type PlayerRow,
+  type RosterForm,
+} from "./clubForm.ts";
+import { ClubSessionCards } from "./ClubSessionCards.tsx";
 import {
   accountIdFromName,
   accountIdsToLookUp,
@@ -54,75 +34,55 @@ import {
   linkStates as linkStatesOf,
   type Lookups,
 } from "./linkState.ts";
-import { clubErrorMessage } from "./clubErrors.ts";
-import { ClubReadOnly } from "./ClubReadOnly.tsx";
-import { MakeShared } from "./MakeShared.tsx";
-import { DangerZone, LEAVE_MESSAGE, LeaveClub } from "./LeaveClub.tsx";
-import {
-  clubFromForm,
-  formFromClub,
-  formSignature,
-  type ClubForm,
-  type PlayerRow,
-} from "./clubForm.ts";
+import { PlayersHeading, PlayersHeadingButton } from "./Roster.tsx";
 
-/** New club (no `clubId`) or Edit club. Unknown ids go back to the Clubs list. */
-export function ClubEditScreen({ clubId }: { clubId?: string }) {
-  const clubs = useClubs();
-  const account = useAccount();
-  if (clubId === undefined) return <ClubEditor key="new" club={null} />;
-  const club = clubs.find((candidate) => candidate.id === clubId);
-  if (!club) return <Redirect to="/clubs" replace />;
-  // Players of a Shared club only look: no editing, no Account IDs.
-  if (!canEditClub(club, account?.accountId)) return <ClubReadOnly key={club.id} club={club} />;
-  return <ClubEditor key={club.id} club={club} />;
+/** A fresh, empty roster row. */
+function blankRow(): PlayerRow {
+  return { id: newId(), name: "", skill: DEFAULT_SKILL };
 }
 
-function ClubEditor({ club }: { club: Club | null }) {
+/**
+ * The Club page in Players Edit mode: the roster as a form (names, Skill levels, Account links and
+ * Roles), with Add player and Save pinned below. Save sends only the roster and ends Edit mode;
+ * Cancel throws the changes away. The card can't be renamed, and Make shared and the Danger zone
+ * are hidden, until Edit mode ends.
+ */
+export function PlayersEditing({
+  club,
+  startWithBlankRow,
+  onDone,
+}: {
+  club: Club;
+  /** Open with an empty row to type in, focused (a Club that was just created). */
+  startWithBlankRow: boolean;
+  /** Edit mode is over: saved or cancelled. */
+  onDone: () => void;
+}) {
   const [, navigate] = useLocation();
-  const clubs = useClubs();
-  const endedSessions = useEndedSessions();
-  const activeEntries = useActiveSessions();
-  const isNew = club === null;
-  const sessionCount = club ? endedSessions.filter((ended) => ended.clubId === club.id).length : 0;
-  // This Club's Active session: the device's own for a Local club, the Shared club's record otherwise.
-  const activeEntry = club ? activeSessionOfClub(activeEntries, club.id) : null;
-  const activeSession = activeEntry?.session ?? null;
-  // Only the device's own Session is replaced by starting a new one; a Shared club's isn't touched.
-  const replacesDeviceSession =
-    club?.kind === "local" && activeEntries.some((entry) => !entry.shared);
-
   const account = useAccount();
   const online = useOnline();
-  const hasBackend = getBackend() !== null;
-  // A Shared club's rows are separate records: adding one needs a connection.
-  const addBlocked = club?.kind === "shared" && online === false;
   const viewer = account?.accountId;
-  const canDelete = !club || canDeleteClub(club, viewer);
-  const canLeave = club?.kind === "shared" && !!ownRow(club, viewer);
-  // Organizers of a Shared club link Accounts to rows and give them Roles; so does whoever
-  // creates a Club while signed in (it will be a Shared club).
-  const [createsShared] = useState(() => isNew && createsSharedClubs());
-  const linking = club ? canChangeRoles(club, viewer) : createsShared;
+  // A Shared club's rows are separate records: adding one needs a connection.
+  const addBlocked = club.kind === "shared" && online === false;
+  // Organizers of a Shared club link Accounts to rows and give them Roles.
+  const linking = canChangeRoles(club, viewer);
 
   const [initialClub, setInitialClub] = useState(club);
-  // A new Shared club starts with the creator's own row, linked to them as Organizer.
-  const [initial, setInitial] = useState(() => formFromClub(club, createsShared ? account : null));
-  const [form, setForm] = useState<ClubForm>(initial);
+  // An untouched blank row isn't a change: Back still leaves without asking.
+  const [initial, setInitial] = useState<RosterForm>(() => {
+    const saved = formFromClub(club);
+    return startWithBlankRow ? { rows: [...saved.rows, blankRow()] } : saved;
+  });
+  const [form, setForm] = useState<RosterForm>(initial);
   const [attempted, setAttempted] = useState(false);
-  const [focusRowId, setFocusRowId] = useState<string | null>(null);
+  const [focusRowId, setFocusRowId] = useState<string | null>(() =>
+    startWithBlankRow ? (initial.rows.at(-1)?.id ?? null) : null,
+  );
   const [saveTick, setSaveTick] = useState(0);
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const [discardResolver, setDiscardResolver] = useState<((ok: boolean) => void) | null>(null);
   const [saving, setSaving] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [roleMessage, setRoleMessage] = useState<{ rowId: string; text: string } | null>(null);
-  const [confirmLeave, setConfirmLeave] = useState(false);
-  /** Delete club / Leave club confirmed and waiting for the server. */
-  const [deleting, setDeleting] = useState(false);
-  const [leaving, setLeaving] = useState(false);
-  /** An action that navigates on success is running: Back and links stay put. */
-  const pending = saving || deleting || leaving;
   /** Accounts found by Account ID (null: none has it), keyed by lowercase Account ID. */
   const [lookups, setLookups] = useState<Lookups>({});
   /** Rows whose name field was left: a half-typed `@Account ID` there is now worth a message. */
@@ -136,28 +96,33 @@ function ClubEditor({ club }: { club: Club | null }) {
   }
 
   const formRef = useRef<HTMLFieldSetElement>(null);
-  const nameId = useId();
-  const nameErrorId = useId();
+  const cancelRef = useRef<HTMLButtonElement>(null);
   const playersHeadingId = useId();
 
-  const otherClubNames = useMemo(
-    () => clubs.filter((other) => other.id !== club?.id).map((other) => other.name),
-    [clubs, club],
-  );
+  // Tapping Edit moves focus to Cancel, which takes Edit's place; a new Club's blank row takes it
+  // instead (PlayerRowEditor's autoFocus).
+  useEffect(() => {
+    if (!startWithBlankRow) cancelRef.current?.focus({ preventScroll: true });
+    // Once, on entering Edit mode.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   /** Rows whose name field holds an `@Account ID` (it isn't a name, so it isn't checked as one). */
   const typingId = (row: PlayerRow) => linking && !row.link && accountIdFromName(row.name) !== null;
   const errors = useMemo(() => {
+    // The Club name isn't edited here: only the rows are checked.
     const checked = validateClub(
-      { name: form.name, players: form.rows.map((row) => ({ name: row.name })) },
-      otherClubNames,
+      { name: club.name, players: form.rows.map((row) => ({ name: row.name })) },
+      [],
     );
     return {
       ...checked,
+      name: null,
       players: checked.players.map((error, index) => (typingId(form.rows[index]!) ? null : error)),
     };
     // `typingId` only reads `linking`.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, [form, otherClubNames, linking]);
+  }, [form, club.name, linking]);
   const invalid = hasClubErrors(errors);
   const shown = attempted ? errors : null;
   const dirty = formSignature(form) !== formSignature(initial);
@@ -167,8 +132,12 @@ function ClubEditor({ club }: { club: Club | null }) {
   const [seenClub, setSeenClub] = useState(club);
   if (club !== seenClub) {
     setSeenClub(club);
-    if (club && !dirty) {
-      const fresh = formFromClub(club);
+    if (!dirty) {
+      // Keep blank rows still waiting to be typed in.
+      const blank = form.rows.filter(
+        (row) => row.name.trim() === "" && !row.link && !club.players.some((p) => p.id === row.id),
+      );
+      const fresh = { rows: [...formFromClub(club).rows, ...blank] };
       if (formSignature(fresh) !== formSignature(initial)) {
         setInitialClub(club);
         setInitial(fresh);
@@ -253,7 +222,7 @@ function ClubEditor({ club }: { club: Club | null }) {
     }
   }, [focusRowId]);
 
-  function updateRow(id: string, patch: Partial<ClubForm["rows"][number]>) {
+  function updateRow(id: string, patch: Partial<PlayerRow>) {
     setForm((current) => ({
       ...current,
       rows: current.rows.map((row) => (row.id === id ? { ...row, ...patch } : row)),
@@ -274,23 +243,7 @@ function ClubEditor({ club }: { club: Club | null }) {
       setRoleMessage({ rowId: row.id, text: "A Club needs at least one Organizer." });
       return;
     }
-    // Whoever creates a Club is one of its Organizers.
-    if (isNew && role !== "organizer" && isViewer(row)) {
-      setRoleMessage({
-        rowId: row.id,
-        text: "You start as an Organizer. Change your Role after saving.",
-      });
-      return;
-    }
     updateRow(row.id, { link: { ...row.link, role } });
-  }
-
-  function isViewer(row: PlayerRow): boolean {
-    return (
-      !!viewer &&
-      !!row.link &&
-      normalizeAccountId(row.link.accountId) === normalizeAccountId(viewer)
-    );
   }
 
   /** ✕ on a link that isn't saved yet: drop the link, clear the name, and go back to typing. */
@@ -319,12 +272,9 @@ function ClubEditor({ club }: { club: Club | null }) {
 
   function addRow() {
     if (addBlocked) return;
-    const id = newId();
-    setForm((current) => ({
-      ...current,
-      rows: [...current.rows, { id, name: "", skill: DEFAULT_SKILL }],
-    }));
-    setFocusRowId(id);
+    const row = blankRow();
+    setForm((current) => ({ ...current, rows: [...current.rows, row] }));
+    setFocusRowId(row.id);
   }
 
   /** Enter in a name: go to the next row's name, or add a new row from the last one. */
@@ -349,10 +299,8 @@ function ClubEditor({ club }: { club: Club | null }) {
     setSaving(true);
     setProblem(null);
     try {
-      const saved = clubFromForm(initialClub?.id ?? newId(), initialClub?.kind ?? "local", form);
-      if (initialClub) await saveClub(initialClub, saved);
-      else await createClub({ ...saved, kind: createsSharedClubs() ? "shared" : "local" });
-      navigate("/clubs", { replace: true });
+      await saveClub(initialClub, clubFromForm(initialClub, form));
+      onDone();
     } catch (error) {
       console.error("Failed to save Club", error);
       setProblem(clubErrorMessage(error));
@@ -360,38 +308,8 @@ function ClubEditor({ club }: { club: Club | null }) {
     }
   }
 
-  async function deleteClub() {
-    if (!club || deleting) return;
-    setDeleting(true);
-    setProblem(null);
-    try {
-      await removeClub(club);
-      navigate("/clubs", { replace: true });
-    } catch (error) {
-      console.error("Failed to delete Club", error);
-      setProblem(clubErrorMessage(error));
-      setConfirmDelete(false);
-      setDeleting(false);
-    }
-  }
-
-  async function leave() {
-    if (!club || leaving) return;
-    setLeaving(true);
-    setProblem(null);
-    try {
-      await leaveClub(club);
-      navigate("/clubs", { replace: true });
-    } catch (error) {
-      console.error("Failed to leave Club", error);
-      setProblem(clubErrorMessage(error));
-      setConfirmLeave(false);
-      setLeaving(false);
-    }
-  }
-
   function guardBack(): boolean | Promise<boolean> {
-    if (pending) return false;
+    if (saving) return false;
     if (!dirty) return true;
     return new Promise<boolean>((resolve) => setDiscardResolver(() => resolve));
   }
@@ -404,7 +322,7 @@ function ClubEditor({ club }: { club: Club | null }) {
   /** Click handler for a link off this screen: with unsaved changes, confirm like Back first. */
   function leaveVia(href: string) {
     return async (event: MouseEvent<HTMLAnchorElement>) => {
-      if (pending) {
+      if (saving) {
         event.preventDefault();
         return;
       }
@@ -418,8 +336,7 @@ function ClubEditor({ club }: { club: Club | null }) {
 
   return (
     <Screen
-      title={isNew ? "New club" : "Edit club"}
-      subtitle={club?.kind === "local" && hasBackend ? "This device only" : undefined}
+      title="Club"
       backTo="/clubs"
       onBack={guardBack}
       footer={
@@ -468,99 +385,18 @@ function ClubEditor({ club }: { club: Club | null }) {
         </div>
       }
     >
+      <ClubCard club={club} viewer={viewer} canRename={false} animate={startWithBlankRow} />
+
+      <ClubSessionCards club={club} viewer={viewer} leaveVia={leaveVia} />
+
       {/* Not a <form>: Enter in a field shouldn't trigger Save. Fields are off while saving. */}
       <fieldset ref={formRef} disabled={saving} className="flex min-w-0 flex-col gap-8">
-        <div className="flex flex-col gap-1">
-          <label htmlFor={nameId} className="text-sm font-semibold text-base-content/80">
-            Club name
-          </label>
-          <input
-            id={nameId}
-            type="text"
-            className={`input input-lg w-full font-semibold ${shown?.name ? "input-error" : ""}`}
-            value={form.name}
-            autoComplete="off"
-            autoCapitalize="words"
-            enterKeyHint="done"
-            // oxlint-disable-next-line jsx-a11y/no-autofocus -- a new club starts with its name
-            autoFocus={isNew}
-            aria-invalid={shown?.name ? true : undefined}
-            aria-describedby={shown?.name ? nameErrorId : undefined}
-            onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-            onKeyDown={blurOnEnter}
-          />
-          {shown?.name ? (
-            <p id={nameErrorId} className="pl-1 text-sm font-semibold text-error">
-              {shown.name === "duplicate"
-                ? "Club name already used"
-                : NAME_ERROR_MESSAGE[shown.name]}
-            </p>
-          ) : null}
-        </div>
-
-        {club ? (
-          // Side by side in two equal columns; a card on its own takes the whole row.
-          <nav aria-label="Club sessions" className="grid grid-cols-2 gap-3">
-            {activeSession ? (
-              <ClubCardLink
-                href={`/sessions/${encodeURIComponent(activeSession.id)}`}
-                tone="active"
-                tile={sessionCount > 0}
-                className={sessionCount > 0 ? "" : "col-span-2"}
-                icon={<PlayIcon className="size-6 translate-x-0.5" />}
-                label="Open active session"
-                detail={
-                  activeEntry?.shared
-                    ? `${activeSession.name} · ${
-                        isSessionHost(activeEntry.shared, viewer)
-                          ? "You're the host"
-                          : `Host: ${activeEntry.shared.hostName}`
-                      }`
-                    : activeSession.name
-                }
-                onClick={leaveVia(`/sessions/${encodeURIComponent(activeSession.id)}`)}
-              />
-            ) : (
-              <ClubCardLink
-                href={newSessionForClubPath(club.id)}
-                tone="plain"
-                tile={sessionCount > 0}
-                className={sessionCount > 0 ? "" : "col-span-2"}
-                icon={<PlusIcon className="size-6" />}
-                label="New session"
-                detail={
-                  club.kind === "shared" && online === false
-                    ? "Needs a connection to start"
-                    : replacesDeviceSession
-                      ? "Replaces the current session"
-                      : "Pick players and courts"
-                }
-                onClick={leaveVia(newSessionForClubPath(club.id))}
-              />
-            )}
-            {sessionCount > 0 ? (
-              <ClubCardLink
-                href={`/clubs/${encodeURIComponent(club.id)}/sessions`}
-                tone="plain"
-                tile
-                icon={<HistoryIcon className="size-6" />}
-                label="Sessions"
-                detail={countLabel(sessionCount, "past session", "past sessions")}
-                onClick={leaveVia(`/clubs/${encodeURIComponent(club.id)}/sessions`)}
-              />
-            ) : null}
-          </nav>
-        ) : null}
-
         <section aria-labelledby={playersHeadingId} className="flex flex-col gap-3">
-          <div className="flex items-baseline justify-between gap-3">
-            <h2 id={playersHeadingId} className="font-display text-2xl uppercase">
-              Players
-            </h2>
-            <span className="text-sm font-semibold text-base-content/60 tabular-nums">
-              {playerCount === 0 ? "None yet" : playerCount}
-            </span>
-          </div>
+          <PlayersHeading
+            id={playersHeadingId}
+            count={playerCount}
+            action={<PlayersHeadingButton buttonRef={cancelRef} editing onClick={onDone} />}
+          />
 
           {linking && online === false ? (
             <OfflineNote className="rounded-box bg-base-200 px-3 py-2">
@@ -576,11 +412,9 @@ function ClubEditor({ club }: { club: Club | null }) {
             <ul className={`flex flex-col ${linking ? "gap-4" : "gap-3"}`}>
               {form.rows.map((row, index) => {
                 const state = linking ? linkStates.get(row.id) : undefined;
+                // The only Organizer stays: a Shared club always has one.
                 const onlyOrganizer =
                   row.link?.role === "organizer" && organizerCount({ players: form.rows }) <= 1;
-                // The only Organizer stays: a Shared club always has one. A new Club keeps its
-                // creator.
-                const keepRow = onlyOrganizer || (isNew && isViewer(row));
                 const typing = typingId(row);
                 const complete = attempted || leftRows.has(row.id);
                 const statusId = `${row.id}-link-status`;
@@ -596,7 +430,7 @@ function ClubEditor({ club }: { club: Club | null }) {
                         if (value.name !== row.name) markLeft(row.id, false);
                         updateRow(row.id, value);
                       }}
-                      onRemove={keepRow ? undefined : () => removeRow(row.id)}
+                      onRemove={onlyOrganizer ? undefined : () => removeRow(row.id)}
                       keepRemoveSpace
                       linkable={linking && !row.link && online !== false}
                       error={shown?.players[index] ?? null}
@@ -627,57 +461,8 @@ function ClubEditor({ club }: { club: Club | null }) {
             </ul>
           )}
         </section>
-
-        {club?.kind === "local" && hasBackend ? (
-          <MakeShared club={club} account={account} online={online !== false} dirty={dirty} />
-        ) : null}
-
-        {club && (canLeave || canDelete) ? (
-          <DangerZone>
-            {canLeave ? (
-              <LeaveClub
-                club={club}
-                viewer={viewer}
-                online={online !== false}
-                onLeave={() => setConfirmLeave(true)}
-              />
-            ) : null}
-            {canDelete ? (
-              <button
-                type="button"
-                className="btn w-full text-error btn-ghost"
-                onClick={() => setConfirmDelete(true)}
-              >
-                <TrashIcon className="size-5" />
-                Delete club
-              </button>
-            ) : null}
-          </DangerZone>
-        ) : null}
       </fieldset>
 
-      <ConfirmDialog
-        open={confirmDelete}
-        title={`Delete ${club?.name ?? "club"}?`}
-        message="This can't be undone."
-        confirmLabel="Delete"
-        tone="danger"
-        busy={deleting}
-        busyLabel="Deleting…"
-        onConfirm={() => void deleteClub()}
-        onCancel={() => setConfirmDelete(false)}
-      />
-      <ConfirmDialog
-        open={confirmLeave}
-        title={`Leave ${club?.name ?? "club"}?`}
-        message={LEAVE_MESSAGE}
-        confirmLabel="Leave club"
-        tone="danger"
-        busy={leaving}
-        busyLabel="Leaving…"
-        onConfirm={() => void leave()}
-        onCancel={() => setConfirmLeave(false)}
-      />
       <ConfirmDialog
         open={discardResolver !== null}
         title="Discard changes?"

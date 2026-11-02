@@ -25,13 +25,10 @@ export function MakeShared({
   club,
   account,
   online,
-  dirty,
 }: {
   club: Club;
   account: Account | null;
   online: boolean;
-  /** The form has changes that aren't saved: they would be left behind. */
-  dirty: boolean;
 }) {
   const [choosing, setChoosing] = useState(false);
   const [picked, setPicked] = useState<string | null>(null);
@@ -60,7 +57,7 @@ export function MakeShared({
     );
   }
 
-  const blocked = !online || dirty || busy;
+  const blocked = !online || busy;
   const choice: ShareChoice | null =
     picked === null
       ? null
@@ -120,10 +117,6 @@ export function MakeShared({
       </button>
       {!online ? (
         <OfflineNote id={reasonId}>You're offline. Sharing a club needs a connection.</OfflineNote>
-      ) : dirty ? (
-        <p id={reasonId} className="text-sm text-base-content/70">
-          Save your changes first.
-        </p>
       ) : problem ? (
         <p id={reasonId} role="alert" className="text-sm font-semibold text-error">
           {problem}

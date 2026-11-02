@@ -13,7 +13,7 @@ import type { EndedSession } from "../../domain/types.ts";
 import { displayClubName } from "../../domain/clubName.ts";
 import { canDeleteEndedSession } from "../../domain/permissions.ts";
 import { useAccount, useClubs, useEndedSessions } from "../../storage/store.ts";
-import { CourtLines } from "../home/CourtLines.tsx";
+import { CourtLines } from "../../components/CourtLines.tsx";
 import { clubStatsFromSessionPath } from "../play-record/statsOrigin.ts";
 import { formatDuration } from "../session/clock.ts";
 import { countLabel, rise, sessionDay, sessionTimes } from "../session-summary/summaryFormat.ts";

@@ -2,7 +2,7 @@ import { lazy, Suspense, useLayoutEffect, useRef } from "react";
 import { Redirect, Route, Switch, useLocation } from "wouter";
 import { getBackend } from "../backend/index.ts";
 import { AccountSettingsScreen } from "../features/account/AccountSettingsScreen.tsx";
-import { ClubEditScreen } from "../features/club-edit/ClubEditScreen.tsx";
+import { ClubScreen } from "../features/club-edit/ClubScreen.tsx";
 import { ClubsScreen } from "../features/clubs/ClubsScreen.tsx";
 import { HomeScreen } from "../features/home/HomeScreen.tsx";
 import { NewSessionScreen } from "../features/new-session/NewSessionScreen.tsx";
@@ -73,7 +73,8 @@ function Routes() {
       </Route>
       <Route path="/clubs" component={ClubsScreen} />
       <Route path="/clubs/new">
-        <ClubEditScreen />
+        {/* New club is a sheet on the Clubs page now. */}
+        <Redirect to="/clubs" replace />
       </Route>
       <Route path="/clubs/:clubId/players/:clubPlayerId/stats">
         {(params) => <ClubStatsScreen clubId={params.clubId} clubPlayerId={params.clubPlayerId} />}
@@ -81,7 +82,7 @@ function Routes() {
       <Route path="/clubs/:clubId/sessions">
         {(params) => <ClubSessionsScreen clubId={params.clubId} />}
       </Route>
-      <Route path="/clubs/:clubId">{(params) => <ClubEditScreen clubId={params.clubId} />}</Route>
+      <Route path="/clubs/:clubId">{(params) => <ClubScreen clubId={params.clubId} />}</Route>
       <Route path="/sessions" component={PastSessionsScreen} />
       <Route path="/sessions/new" component={NewSessionScreen} />
       <Route path="/sessions/:id/summary">

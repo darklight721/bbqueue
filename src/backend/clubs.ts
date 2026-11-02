@@ -21,12 +21,10 @@ import {
 import { BackendError } from "./backend.ts";
 import { getBackend } from "./index.ts";
 
-/** Whether Clubs created now are Shared clubs: there is a Backend and an Account. */
-export function createsSharedClubs(): boolean {
-  return getBackend() !== null && getAccount() !== null;
-}
-
-/** Save a new Club: a Shared club while signed in, a Local club otherwise. Rejects with a BackendError. */
+/**
+ * Save a new Club: a Shared club while signed in (the creator's own row, as Organizer, is added
+ * when the roster has none), a Local club otherwise. Rejects with a BackendError.
+ */
 export async function createClub(club: Club): Promise<void> {
   const backend = getBackend();
   if (backend && getAccount()) {

@@ -7,6 +7,7 @@ import { setBackendForTests } from "../../backend/index.ts";
 import { createInMemoryBackend } from "../../backend/inMemoryBackend.ts";
 import type { Club } from "../../domain/types.ts";
 import {
+  getClubs,
   resetStoreForTests,
   setAccount,
   setLocalClubs,
@@ -38,12 +39,72 @@ describe("ClubsScreen", () => {
     setBackendForTests(null);
   });
 
-  it("shows the empty state with Add club", async () => {
-    const location = renderScreen();
+  it("shows the empty state with Add club, which opens the New club sheet", async () => {
+    renderScreen();
     expect(screen.getByRole("heading", { level: 2, name: "No clubs yet" })).toBeInTheDocument();
     expect(screen.queryByRole("list")).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("link", { name: "Add club" }));
-    expect(location.history.at(-1)).toBe("/clubs/new");
+    await userEvent.click(screen.getByRole("button", { name: "Add club" }));
+    const sheet = screen.getByRole("dialog", { name: "New club" });
+    expect(within(sheet).getByRole("textbox", { name: "Club name" })).toHaveFocus();
+  });
+
+  it("New club: Create club makes the Club and opens its page in Players Edit mode", async () => {
+    setLocalClubs([{ id: "c1", name: "Riverside", kind: "local", players: [] }]);
+    const location = renderScreen();
+    await userEvent.click(screen.getByRole("button", { name: "Add club" }));
+    const sheet = screen.getByRole("dialog", { name: "New club" });
+    await userEvent.type(
+      within(sheet).getByRole("textbox", { name: "Club name" }),
+      "  Mill   Lane {Enter}",
+    );
+
+    const created = getClubs().find((club) => club.name === "Mill Lane");
+    expect(created).toEqual({
+      id: expect.any(String),
+      name: "Mill Lane",
+      kind: "local",
+      players: [],
+    });
+    expect(location.history.at(-1)).toBe(`/clubs/${created!.id}?new=1`);
+  });
+
+  it("New club: an empty, too long or duplicate name blocks Create with a message", async () => {
+    setLocalClubs([{ id: "c1", name: "Riverside", kind: "local", players: [] }]);
+    const location = renderScreen();
+    await userEvent.click(screen.getByRole("button", { name: "Add club" }));
+    const sheet = screen.getByRole("dialog", { name: "New club" });
+    const field = within(sheet).getByRole("textbox", { name: "Club name" });
+    const create = () =>
+      userEvent.click(within(sheet).getByRole("button", { name: "Create club" }));
+
+    await create();
+    expect(within(sheet).getByText("Enter a name")).toBeInTheDocument();
+    expect(field).toHaveAttribute("aria-invalid", "true");
+    expect(field).toHaveAccessibleDescription("Enter a name");
+
+    await userEvent.type(field, "x".repeat(41));
+    expect(within(sheet).getByText("Name is too long (at most 40 characters)")).toBeInTheDocument();
+
+    await userEvent.clear(field);
+    await userEvent.type(field, " RIVERSIDE ");
+    await create();
+    expect(within(sheet).getByText("Club name already used")).toBeInTheDocument();
+
+    expect(getClubs()).toHaveLength(1);
+    expect(location.history.at(-1)).toBe("/clubs");
+  });
+
+  it("New club: the × closes the sheet and nothing is created", async () => {
+    renderScreen();
+    await userEvent.click(screen.getByRole("button", { name: "Add club" }));
+    await userEvent.type(screen.getByRole("textbox", { name: "Club name" }), "Draft");
+    await userEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(getClubs()).toEqual([]);
+
+    // It opens empty again.
+    await userEvent.click(screen.getByRole("button", { name: "Add club" }));
+    expect(screen.getByRole("textbox", { name: "Club name" })).toHaveValue("");
   });
 
   it("lists Clubs alphabetically (ignoring case) with player counts", () => {
@@ -74,7 +135,7 @@ describe("ClubsScreen", () => {
     );
     expect(screen.getByRole("link", { name: "BEACON" })).toHaveAttribute("href", "/clubs/c4");
     expect(screen.queryByText("No clubs yet")).not.toBeInTheDocument();
-    expect(screen.getAllByRole("link", { name: "Add club" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "Add club" })).toHaveLength(1);
   });
 
   it("opens a Club when its row is tapped, and Back goes Home", async () => {

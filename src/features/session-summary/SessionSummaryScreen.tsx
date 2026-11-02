@@ -7,7 +7,7 @@ import { buildSummary } from "../../domain/engine/index.ts";
 import { displayClubName } from "../../domain/clubName.ts";
 import { useClubs, useEndedSessions } from "../../storage/store.ts";
 import { detailsPath, parseOrigin } from "../past-sessions/sessionOrigin.ts";
-import { CourtLines } from "../home/CourtLines.tsx";
+import { CourtLines } from "../../components/CourtLines.tsx";
 import { APP_URL_LABEL, summaryFileName, useShareSummary } from "./shareSummary.ts";
 import { rise, sessionWhen } from "./summaryFormat.ts";
 import { ClubLine, TopWinners, Totals } from "./SummaryParts.tsx";

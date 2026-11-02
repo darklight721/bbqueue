@@ -1,6 +1,6 @@
 # 01 Club card, renamed on its own
 
-Status: ready-for-agent
+Status: done
 Blocked by: none
 Spec: ../spec.md (Club page → Club card)
 

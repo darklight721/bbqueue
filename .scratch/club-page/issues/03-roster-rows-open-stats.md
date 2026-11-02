@@ -1,6 +1,6 @@
 # 03 Roster rows open Stats, Back returns to the Club page
 
-Status: ready-for-agent
+Status: done
 Blocked by: 02
 Spec: ../spec.md (Stats from the roster)
 

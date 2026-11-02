@@ -1,4 +1,4 @@
-import { useId, useMemo } from "react";
+import { useId, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { getBackend } from "../../backend/index.ts";
 import { ChevronRightIcon, PlusIcon, UsersIcon } from "../../components/icons.tsx";
@@ -6,18 +6,25 @@ import { Screen } from "../../components/Screen.tsx";
 import type { Club } from "../../domain/types.ts";
 import { useAccount, useClubs } from "../../storage/store.ts";
 import { playerCountLabel, rowBadge, sortClubs } from "./clubList.ts";
+import { NewClubSheet } from "./NewClubSheet.tsx";
 
-/** List of Clubs; each row opens the Club for editing. */
+/** List of Clubs; each row opens the Club's page. Add club opens the New club sheet. */
 export function ClubsScreen() {
   const clubs = useClubs();
   const accountId = useAccount()?.accountId;
   const sorted = useMemo(() => sortClubs(clubs), [clubs]);
   const empty = sorted.length === 0;
+  const [adding, setAdding] = useState(false);
+  const addClub = () => setAdding(true);
 
   return (
-    <Screen title="Clubs" backTo="/" footer={empty ? undefined : <AddClubLink />}>
+    <Screen
+      title="Clubs"
+      backTo="/"
+      footer={empty ? undefined : <AddClubButton onClick={addClub} />}
+    >
       {empty ? (
-        <EmptyState />
+        <EmptyState onAddClub={addClub} />
       ) : (
         <ul className="flex flex-col gap-3">
           {sorted.map((club, index) => (
@@ -27,6 +34,7 @@ export function ClubsScreen() {
           ))}
         </ul>
       )}
+      <NewClubSheet open={adding} onClose={() => setAdding(false)} />
     </Screen>
   );
 }
@@ -78,16 +86,20 @@ function ClubRow({ club, index, accountId }: { club: Club; index: number; accoun
   );
 }
 
-function AddClubLink({ className = "" }: { className?: string }) {
+function AddClubButton({ className = "", onClick }: { className?: string; onClick: () => void }) {
   return (
-    <Link href="/clubs/new" className={`btn btn-lg btn-primary w-full ${className}`}>
+    <button
+      type="button"
+      className={`btn btn-lg btn-primary w-full ${className}`}
+      onClick={onClick}
+    >
       <PlusIcon className="size-6" />
       Add club
-    </Link>
+    </button>
   );
 }
 
-function EmptyState() {
+function EmptyState({ onAddClub }: { onAddClub: () => void }) {
   return (
     <section
       aria-labelledby="clubs-empty-title"
@@ -105,7 +117,7 @@ function EmptyState() {
       <p className="mt-2 max-w-xs text-base text-base-content/70">
         Add a club to keep its players ready for every session.
       </p>
-      <AddClubLink className="mt-6 max-w-xs" />
+      <AddClubButton className="mt-6 max-w-xs" onClick={onAddClub} />
     </section>
   );
 }

@@ -12,7 +12,7 @@ import {
 } from "../account/installHint.ts";
 import { InstallSteps } from "../account/InstallSteps.tsx";
 import { OfflineNotice } from "../account/OfflineNotice.tsx";
-import { CourtLines } from "../home/CourtLines.tsx";
+import { CourtLines } from "../../components/CourtLines.tsx";
 
 /**
  * First launch: create an Account by entering a name, or skip. Either way the Welcome screen

@@ -38,7 +38,9 @@ const nameInputs = () => screen.getAllByRole("textbox", { name: "Player name" })
 const names = () => nameInputs().map((input) => (input as HTMLInputElement).value);
 const save = () => userEvent.click(screen.getByRole("button", { name: "Save" }));
 
-describe("ClubEditScreen", () => {
+const editPlayers = () => userEvent.click(screen.getByRole("button", { name: "Edit players" }));
+
+describe("Club page", () => {
   beforeEach(() => {
     localStorage.clear();
     resetStoreForTests();
@@ -50,18 +52,157 @@ describe("ClubEditScreen", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Clubs" })).toBeInTheDocument();
   });
 
-  it("shows players alphabetically on open", () => {
+  it("opens on the Club card and a roster to read, sorted by name, with no form", () => {
     setLocalClubs([riverside]);
     renderAt("/clubs/c1");
-    expect(screen.getByRole("heading", { level: 1, name: "Edit club" })).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "Club name" })).toHaveValue("Riverside");
+    expect(screen.getByRole("heading", { level: 1, name: "Club" })).toBeInTheDocument();
+    const card = screen.getByRole("region", { name: "Club" });
+    expect(within(card).getByRole("heading", { level: 2, name: "Riverside" })).toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: "Edit club name" })).toBeInTheDocument();
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add player" })).not.toBeInTheDocument();
+    const rows = screen.getAllByRole("link", { name: /^(alice|Bob|Zed)$/ });
+    expect(rows.map((row) => row.getAttribute("href"))).toEqual([
+      "/clubs/c1/players/p2/stats?clubPage=1",
+      "/clubs/c1/players/p3/stats?clubPage=1",
+      "/clubs/c1/players/p1/stats?clubPage=1",
+    ]);
+    expect(rows[2]).toHaveAccessibleDescription("Advanced");
+  });
+
+  it("shows Ended matches and Win rate on rows of Club players who played, nothing on the others", () => {
+    setLocalClubs([riverside]);
+    addEndedSession({
+      ...endedFor("night", "c1"),
+      players: [
+        { id: "s1", name: "Zed", skill: "advanced", clubPlayerId: "p1" },
+        { id: "s2", name: "alice", skill: "beginner", clubPlayerId: "p2" },
+        { id: "s3", name: "Guest", skill: "intermediate", clubPlayerId: null },
+        { id: "s4", name: "Guest 2", skill: "intermediate", clubPlayerId: null },
+      ],
+      matches: [
+        {
+          number: 1,
+          courtNumber: 1,
+          teams: [
+            ["s1", "s3"],
+            ["s2", "s4"],
+          ],
+          target: 21,
+          startedAt: 1,
+          endedAt: 2,
+          score: [21, 15],
+        },
+        {
+          number: 2,
+          courtNumber: 1,
+          teams: [
+            ["s1", "s4"],
+            ["s2", "s3"],
+          ],
+          target: 21,
+          startedAt: 3,
+          endedAt: 4,
+          score: null,
+        },
+      ],
+    });
+    renderAt("/clubs/c1");
+    expect(screen.getByRole("link", { name: "Zed" })).toHaveAccessibleDescription(
+      "2 matches · 100%, Advanced",
+    );
+    expect(screen.getByRole("link", { name: "alice" })).toHaveAccessibleDescription(
+      "2 matches · 0%, Beginner",
+    );
+    expect(screen.getByRole("link", { name: "Bob" })).toHaveAccessibleDescription("Intermediate");
+    expect(screen.getByText("2 matches · 100%")).toBeInTheDocument();
+  });
+
+  it("renames the Club from the card, and nothing else", async () => {
+    setLocalClubs([riverside]);
+    renderAt("/clubs/c1");
+    await userEvent.click(screen.getByRole("button", { name: "Edit club name" }));
+    const field = screen.getByRole("textbox", { name: "Club name" });
+    expect(field).toHaveValue("Riverside");
+    expect(field).toHaveFocus();
+    await userEvent.clear(field);
+    await userEvent.type(field, "  Riverside   Thursdays {Enter}");
+
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Riverside Thursdays" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Edit club name" })).toHaveFocus();
+    expect(getClubs()).toEqual([{ ...riverside, name: "Riverside Thursdays" }]);
+  });
+
+  it("checks the name on the card: required, at most 40 characters, not another Club's", async () => {
+    setLocalClubs([riverside, { id: "c2", name: "Mill Lane", kind: "local", players: [] }]);
+    renderAt("/clubs/c1");
+    await userEvent.click(screen.getByRole("button", { name: "Edit club name" }));
+    const field = screen.getByRole("textbox", { name: "Club name" });
+    const saveName = () => userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await userEvent.clear(field);
+    await saveName();
+    expect(screen.getByText("Enter a name")).toBeInTheDocument();
+    expect(field).toHaveAttribute("aria-invalid", "true");
+
+    await userEvent.type(field, "x".repeat(41));
+    expect(screen.getByText("Name is too long (at most 40 characters)")).toBeInTheDocument();
+
+    await userEvent.clear(field);
+    await userEvent.type(field, " mill LANE ");
+    expect(screen.getByText("Club name already used")).toBeInTheDocument();
+    await saveName();
+    expect(getClubs().find((club) => club.id === "c1")?.name).toBe("Riverside");
+
+    // Its own name in a different case is fine.
+    await userEvent.clear(field);
+    await userEvent.type(field, "RIVERSIDE");
+    await saveName();
+    expect(screen.queryByRole("textbox", { name: "Club name" })).not.toBeInTheDocument();
+    expect(getClubs().find((club) => club.id === "c1")?.name).toBe("RIVERSIDE");
+  });
+
+  it("Cancel or Escape on the card keeps the old name", async () => {
+    setLocalClubs([riverside]);
+    renderAt("/clubs/c1");
+    await userEvent.click(screen.getByRole("button", { name: "Edit club name" }));
+    await userEvent.type(screen.getByRole("textbox", { name: "Club name" }), " Two");
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByRole("heading", { level: 2, name: "Riverside" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Edit club name" }));
+    await userEvent.type(screen.getByRole("textbox", { name: "Club name" }), " Two{Escape}");
+    expect(screen.getByRole("heading", { level: 2, name: "Riverside" })).toBeInTheDocument();
+    expect(getClubs()).toEqual([riverside]);
+  });
+
+  it("Edit on Players turns the list into the roster form; Cancel takes Edit's place", async () => {
+    setLocalClubs([riverside]);
+    renderAt("/clubs/c1");
+    await editPlayers();
     expect(names()).toEqual(["alice", "Bob", "Zed"]);
     expect(screen.getByRole("combobox", { name: "Skill level for Zed" })).toHaveValue("advanced");
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
+    // The card can't be renamed, and Make shared and the Danger zone are hidden.
+    expect(screen.queryByRole("button", { name: "Edit club name" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete club" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "alice" })).not.toBeInTheDocument();
+    // The session cards stay.
+    expect(screen.getByRole("link", { name: "New session" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Edit players" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Delete club" })).toBeInTheDocument();
   });
 
   it("appends an empty Intermediate row, focuses it and keeps it in place", async () => {
     setLocalClubs([riverside]);
     renderAt("/clubs/c1");
+    await editPlayers();
     await userEvent.click(screen.getByRole("button", { name: "Add player" }));
     const added = nameInputs().at(-1)!;
     expect(added).toHaveValue("");
@@ -71,19 +212,10 @@ describe("ClubEditScreen", () => {
     expect(names()).toEqual(["alice", "Bob", "Zed", "Aaron"]);
   });
 
-  it("Enter in the Club name dismisses the keyboard without saving", async () => {
-    const location = renderAt("/clubs/new");
-    const clubName = screen.getByRole("textbox", { name: "Club name" });
-    await userEvent.type(clubName, "Beacon{Enter}");
-    expect(clubName).not.toHaveFocus();
-    expect(clubName).toHaveValue("Beacon");
-    expect(location.current()).toBe("/clubs/new");
-    expect(getClubs()).toEqual([]);
-  });
-
   it("Enter in a player name adds the next row, or moves to it", async () => {
     setLocalClubs([riverside]);
     renderAt("/clubs/c1");
+    await editPlayers();
     await userEvent.type(nameInputs()[0]!, "{Enter}");
     expect(nameInputs()[1]).toHaveFocus();
 
@@ -99,31 +231,10 @@ describe("ClubEditScreen", () => {
     expect(nameInputs()[4]).toHaveFocus();
   });
 
-  it("blocks Save on empty or duplicate Club names", async () => {
-    setLocalClubs([riverside]);
-    const location = renderAt("/clubs/new");
-    expect(screen.getByRole("heading", { level: 1, name: "New club" })).toBeInTheDocument();
-
-    await save();
-    const clubName = screen.getByRole("textbox", { name: "Club name" });
-    expect(screen.getByText("Enter a name")).toBeInTheDocument();
-    expect(clubName).toHaveAttribute("aria-invalid", "true");
-    expect(clubName).toHaveFocus();
-
-    await userEvent.type(clubName, " riverside ");
-    expect(screen.getByText("Club name already used")).toBeInTheDocument();
-    await save();
-    expect(location.current()).toBe("/clubs/new");
-    expect(getClubs()).toHaveLength(1);
-
-    await userEvent.clear(clubName);
-    await userEvent.type(clubName, "Mill Lane");
-    expect(screen.queryByText("Club name already used")).not.toBeInTheDocument();
-  });
-
   it("blocks Save on empty or duplicate player names", async () => {
-    renderAt("/clubs/new");
-    await userEvent.type(screen.getByRole("textbox", { name: "Club name" }), "Mill Lane");
+    setLocalClubs([{ ...riverside, players: [] }]);
+    renderAt("/clubs/c1");
+    await editPlayers();
     const add = screen.getByRole("button", { name: "Add player" });
     await userEvent.click(add);
     await userEvent.type(nameInputs()[0]!, "Sam");
@@ -135,7 +246,7 @@ describe("ClubEditScreen", () => {
     expect(screen.getAllByText("Name already used")).toHaveLength(2);
     expect(screen.getByText("Enter a name")).toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent("Fix the highlighted fields to save.");
-    expect(getClubs()).toEqual([]);
+    expect(getClubs()[0]?.players).toEqual([]);
 
     await userEvent.click(screen.getByRole("button", { name: "Remove player" }));
     await userEvent.click(screen.getAllByRole("button", { name: "Remove SAM" })[0]!);
@@ -143,12 +254,10 @@ describe("ClubEditScreen", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("saves normalised names and returns to the Clubs list", async () => {
+  it("saves normalised names, stays on the Club page and leaves Edit mode", async () => {
     setLocalClubs([riverside]);
     const location = renderAt("/clubs/c1");
-    const clubName = screen.getByRole("textbox", { name: "Club name" });
-    await userEvent.clear(clubName);
-    await userEvent.type(clubName, "  Riverside   Thursdays ");
+    await editPlayers();
     await userEvent.selectOptions(
       screen.getByRole("combobox", { name: "Skill level for alice" }),
       "advanced",
@@ -158,31 +267,32 @@ describe("ClubEditScreen", () => {
     await userEvent.type(nameInputs().at(-1)!, " Cara ");
     await save();
 
-    expect(location.current()).toBe("/clubs");
+    expect(location.current()).toBe("/clubs/c1");
+    expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
     const [saved] = getClubs();
-    expect(saved?.name).toBe("Riverside Thursdays");
+    expect(saved?.name).toBe("Riverside");
     expect(saved?.players.map(({ name, skill }) => [name, skill])).toEqual([
       ["alice", "advanced"],
       ["Bob", "intermediate"],
       ["Cara", "intermediate"],
     ]);
     expect(saved?.players[0]?.id).toBe("p2");
-    expect(screen.getByRole("link", { name: "Riverside Thursdays" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Cara" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Zed" })).not.toBeInTheDocument();
   });
 
-  it("creates a Club with no players", async () => {
-    const location = renderAt("/clubs/new");
-    await userEvent.type(screen.getByRole("textbox", { name: "Club name" }), "Beacon");
-    await save();
-    expect(location.current()).toBe("/clubs");
-    expect(getClubs()).toEqual([
-      { id: expect.any(String), name: "Beacon", kind: "local", players: [] },
-    ]);
-  });
+  it("Cancel throws the roster changes away without asking", async () => {
+    setLocalClubs([riverside]);
+    renderAt("/clubs/c1");
+    await editPlayers();
+    await userEvent.type(nameInputs()[0]!, "!");
+    await userEvent.click(screen.getByRole("button", { name: "Remove Zed" }));
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(getClubs()).toEqual([riverside]);
 
-  it("hides Delete club on New club", () => {
-    renderAt("/clubs/new");
-    expect(screen.queryByRole("button", { name: "Delete club" })).not.toBeInTheDocument();
+    await editPlayers();
+    expect(names()).toEqual(["alice", "Bob", "Zed"]);
   });
 
   it("deletes after confirming", async () => {
@@ -201,17 +311,25 @@ describe("ClubEditScreen", () => {
     expect(location.current()).toBe("/clubs");
   });
 
-  it("leaves straight away when nothing changed", async () => {
+  it("leaves straight away outside Edit mode, and in Edit mode with nothing changed", async () => {
     setLocalClubs([riverside]);
-    const location = renderAt("/clubs/c1");
+    let location = renderAt("/clubs/c1");
+    await userEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(location.current()).toBe("/clubs");
+    cleanup();
+
+    location = renderAt("/clubs/c1");
+    await editPlayers();
     await userEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(location.current()).toBe("/clubs");
   });
 
-  it("asks before discarding changes", async () => {
+  it("asks before discarding roster changes", async () => {
     setLocalClubs([riverside]);
     const location = renderAt("/clubs/c1");
+    await editPlayers();
     await userEvent.type(nameInputs()[0]!, "!");
 
     await userEvent.click(screen.getByRole("button", { name: "Back" }));
@@ -232,6 +350,7 @@ describe("ClubEditScreen", () => {
   it("treats @ as an ordinary character in a Local club's names", async () => {
     setLocalClubs([riverside]);
     renderAt("/clubs/c1");
+    await editPlayers();
     expect(nameInputs()[0]).toHaveAttribute("placeholder", "Name");
 
     await userEvent.clear(nameInputs()[0]!);
@@ -243,12 +362,21 @@ describe("ClubEditScreen", () => {
   });
 
   it("treats undoing an edit as no change", async () => {
-    renderAt("/clubs/new");
-    const clubName = screen.getByRole("textbox", { name: "Club name" });
-    await userEvent.type(clubName, "x");
-    await userEvent.clear(clubName);
+    setLocalClubs([riverside]);
+    renderAt("/clubs/c1");
+    await editPlayers();
+    await userEvent.type(nameInputs()[0]!, "x");
+    await userEvent.type(nameInputs()[0]!, "{Backspace}");
     await userEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("a Club that was just created opens in Edit mode with an empty row focused, and drops the flag from the URL", () => {
+    setLocalClubs([riverside]);
+    const location = renderAt("/clubs/c1?new=1");
+    expect(names()).toEqual(["alice", "Bob", "Zed", ""]);
+    expect(nameInputs()[3]).toHaveFocus();
+    expect(location.current()).toBe("/clubs/c1");
   });
 });
 
@@ -266,21 +394,16 @@ function endedFor(id: string, clubId: string | null): EndedSession {
   };
 }
 
-describe("ClubEditScreen sessions link", () => {
+describe("Club page Sessions card", () => {
   beforeEach(() => {
     localStorage.clear();
     resetStoreForTests();
   });
 
-  it("is hidden without Ended sessions of this Club and on New club", () => {
+  it("is hidden without Ended sessions of this Club", () => {
     setLocalClubs([riverside]);
     addEndedSession(endedFor("other", "c2"));
     renderAt("/clubs/c1");
-    expect(screen.queryByRole("link", { name: "Sessions" })).not.toBeInTheDocument();
-    cleanup();
-
-    addEndedSession(endedFor("mine", "c1"));
-    renderAt("/clubs/new");
     expect(screen.queryByRole("link", { name: "Sessions" })).not.toBeInTheDocument();
   });
 
@@ -329,6 +452,7 @@ describe("ClubEditScreen sessions link", () => {
     setLocalClubs([riverside]);
     addEndedSession(endedFor("a", "c1"));
     const location = renderAt("/clubs/c1");
+    await editPlayers();
     await userEvent.type(nameInputs()[0]!, "!");
 
     await userEvent.click(screen.getByRole("link", { name: "Sessions" }));
@@ -373,7 +497,7 @@ function activeFor(clubId: string | null): Session {
   };
 }
 
-describe("ClubEditScreen session link", () => {
+describe("Club page New session card", () => {
   beforeEach(() => {
     localStorage.clear();
     resetStoreForTests();
@@ -411,15 +535,10 @@ describe("ClubEditScreen session link", () => {
     expect(location.current()).toBe("/sessions/live");
   });
 
-  it("is not shown on New club", () => {
-    renderAt("/clubs/new");
-    expect(screen.queryByRole("link", { name: "New session" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Open active session" })).not.toBeInTheDocument();
-  });
-
   it("asks before discarding unsaved changes", async () => {
     setLocalClubs([riverside]);
     const location = renderAt("/clubs/c1");
+    await editPlayers();
     await userEvent.type(nameInputs()[0]!, "!");
     await userEvent.click(screen.getByRole("link", { name: "New session" }));
     await userEvent.click(screen.getByRole("button", { name: "Keep editing" }));

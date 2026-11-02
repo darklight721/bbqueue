@@ -133,7 +133,7 @@ test.describe("Ended sessions filtered by Club", () => {
 });
 
 test.describe("Club sessions list", () => {
-  test("Edit club links to the Club's sessions, with a count; clubs without sessions have no link", async ({
+  test("the Club page links to the Club's sessions, with a count; clubs without sessions have no link", async ({
     page,
   }) => {
     const { alpha, bravo, alphaOne, alphaTwo, bravoOne, guestOne } = seed();
@@ -149,7 +149,7 @@ test.describe("Club sessions list", () => {
     await expect(page).toHaveURL(urlEnding(`/clubs/${alpha.id}/sessions`));
 
     await page.goto(`/clubs/${empty.id}`);
-    await expect(page.getByRole("textbox", { name: "Club name" })).toHaveValue("Charlie Club");
+    await expect(page.getByRole("heading", { level: 2, name: "Charlie Club" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Sessions", exact: true })).toHaveCount(0);
   });
 
@@ -167,7 +167,7 @@ test.describe("Club sessions list", () => {
     await expect(clubFilter(page)).toHaveCount(0);
   });
 
-  test("Edit club → Sessions → session → Back → Back returns to each previous screen", async ({
+  test("Club page → Sessions → session → Back → Back returns to each previous screen", async ({
     page,
   }) => {
     const { alpha, alphaTwo } = await seedAll(page);
@@ -186,7 +186,7 @@ test.describe("Club sessions list", () => {
 
     await page.getByRole("button", { name: "Back" }).click();
     await expect(page).toHaveURL(urlEnding(`/clubs/${alpha.id}`));
-    await expect(page.getByRole("heading", { level: 1, name: "Edit club" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Club" })).toBeVisible();
   });
 
   test("the summary opened from a Club's session returns Back to the details, then the list", async ({

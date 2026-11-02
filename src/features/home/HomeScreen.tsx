@@ -17,7 +17,7 @@ import { isSessionHost } from "../../domain/permissions.ts";
 import { setFlash, useFlash } from "../../storage/flash.ts";
 import { useAccount, useActiveSessions, useClubs, useEndedSessions } from "../../storage/store.ts";
 import { countLabel } from "../session-summary/summaryFormat.ts";
-import { CourtLines } from "./CourtLines.tsx";
+import { CourtLines } from "../../components/CourtLines.tsx";
 
 /**
  * Start screen: every Active session this person can see (the device's own Session, and one per

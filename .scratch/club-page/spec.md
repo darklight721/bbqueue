@@ -1,6 +1,6 @@
 # Spec: Club page
 
-Status: ready-for-agent
+Status: done
 Depends on: club-edit, play-record, shared-clubs
 
 Screens (changed): `/clubs/:clubId` (`src/features/club-edit/ClubEditScreen.tsx` and `ClubReadOnly.tsx` become one Club page), `/clubs` (`src/features/clubs/ClubsScreen.tsx`, New club sheet), `/clubs/:clubId/players/:clubPlayerId/stats` (Back to the Club page).

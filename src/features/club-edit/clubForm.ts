@@ -1,13 +1,5 @@
-import { newId } from "../../domain/ids.ts";
 import { normalizeName } from "../../domain/validation.ts";
-import {
-  DEFAULT_SKILL,
-  type Account,
-  type AccountLink,
-  type Club,
-  type ClubKind,
-  type SkillLevel,
-} from "../../domain/types.ts";
+import type { AccountLink, Club, SkillLevel } from "../../domain/types.ts";
 
 export interface PlayerRow {
   /** Club player id (kept for existing players, fresh for new rows). */
@@ -18,35 +10,17 @@ export interface PlayerRow {
   link?: AccountLink;
 }
 
-export interface ClubForm {
-  name: string;
+/** Players Edit mode's form: the roster, one row per Club player. */
+export interface RosterForm {
   rows: PlayerRow[];
 }
 
 const byName = (a: { name: string }, b: { name: string }) =>
   a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
 
-/**
- * Form state for a Club. Players sorted by name. A new Club starts empty, or, when it will be a
- * Shared club, with the creator's own row linked to their Account as Organizer.
- */
-export function formFromClub(club: Club | null, creator: Account | null = null): ClubForm {
-  if (!club) {
-    if (!creator) return { name: "", rows: [] };
-    return {
-      name: "",
-      rows: [
-        {
-          id: newId(),
-          name: creator.name,
-          skill: DEFAULT_SKILL,
-          link: { accountId: creator.accountId, role: "organizer" },
-        },
-      ],
-    };
-  }
+/** Form state for a Club's roster, sorted by name. */
+export function formFromClub(club: Club): RosterForm {
   return {
-    name: club.name,
     rows: [...club.players].sort(byName).map(({ id, name, skill, link }) => ({
       id,
       name,
@@ -57,9 +31,8 @@ export function formFromClub(club: Club | null, creator: Account | null = null):
 }
 
 /** Comparable snapshot of a form; whitespace-only differences don't count as changes. */
-export function formSignature(form: ClubForm): string {
-  return JSON.stringify([
-    normalizeName(form.name),
+export function formSignature(form: RosterForm): string {
+  return JSON.stringify(
     form.rows.map((row) => [
       row.id,
       normalizeName(row.name),
@@ -67,15 +40,13 @@ export function formSignature(form: ClubForm): string {
       row.link?.accountId.toLowerCase() ?? null,
       row.link?.role ?? null,
     ]),
-  ]);
+  );
 }
 
-/** The Club to persist, with normalised names. */
-export function clubFromForm(id: string, kind: ClubKind, form: ClubForm): Club {
+/** The Club with the form's roster, with normalised names. Everything else stays as it is. */
+export function clubFromForm(club: Club, form: RosterForm): Club {
   return {
-    id,
-    name: normalizeName(form.name),
-    kind,
+    ...club,
     players: form.rows.map((row) => ({
       id: row.id,
       name: normalizeName(row.name),

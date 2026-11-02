@@ -1,4 +1,11 @@
 import { BackendError } from "../../backend/backend.ts";
+import { NAME_ERROR_MESSAGE } from "../../components/nameErrors.ts";
+import type { NameError } from "../../domain/validation.ts";
+
+/** What a Club name's own problem says. */
+export function clubNameMessage(error: NameError): string {
+  return error === "duplicate" ? "Club name already used" : NAME_ERROR_MESSAGE[error];
+}
 
 /** What went wrong with a change to a Shared club, in plain words. */
 export function clubErrorMessage(error: unknown): string {

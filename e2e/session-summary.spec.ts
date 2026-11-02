@@ -8,6 +8,7 @@ import {
   readStoredData,
   seedStorage,
 } from "./fixtures.ts";
+import { addPlayersInEditMode, createClubFromSheet } from "./club-helpers.ts";
 import { court, lineupOf, openScoreDialog, storedSession } from "./session-helpers.ts";
 
 const stat = (page: Page, label: RegExp) =>
@@ -269,15 +270,11 @@ test.describe("Full journey", () => {
     const names = ["Ana", "Ben", "Cat", "Dan", "Eve", "Fay", "Gus", "Hal"];
 
     // 1. Create a Club with 8 players.
-    await page.goto("/clubs/new");
-    await page.getByRole("textbox", { name: "Club name" }).fill("Journey Club");
-    for (const [index, name] of names.entries()) {
-      await page.getByRole("button", { name: "Add player" }).click();
-      const field = page.getByRole("textbox", { name: "Player name" }).nth(index);
-      await expect(field).toBeFocused();
-      await field.fill(name);
-    }
+    await createClubFromSheet(page, "Journey Club");
+    await addPlayersInEditMode(page, names);
     await page.getByRole("button", { name: "Save" }).click();
+    await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
+    await page.getByRole("button", { name: "Back" }).click();
     await expect(page).toHaveURL(/\/clubs$/);
     await expect(
       page.getByRole("link", { name: "Journey Club", exact: true }),

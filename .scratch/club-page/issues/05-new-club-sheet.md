@@ -1,6 +1,6 @@
 # 05 New club as a sheet on the Clubs page
 
-Status: ready-for-agent
+Status: done
 Blocked by: 02
 Spec: ../spec.md (New club sheet)
 

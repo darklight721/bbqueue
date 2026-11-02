@@ -8,6 +8,7 @@ import {
   seedStorage,
 } from "./fixtures.ts";
 import type { Account, Club } from "../src/domain/types.ts";
+import { createClubFromSheet } from "./club-helpers.ts";
 
 const roy: Account = { accountId: "roy-7k3f", name: "Roy Smith" };
 
@@ -16,10 +17,10 @@ const playerNames = (page: Page) =>
     .getByRole("textbox", { name: "Player name" })
     .evaluateAll((inputs) => inputs.map((input) => (input as HTMLInputElement).value));
 
+/** New club through the sheet, then back to the Clubs list without adding anyone. */
 async function createClub(page: Page, name: string) {
-  await page.goto("/clubs/new");
-  await page.getByRole("textbox", { name: "Club name" }).fill(name);
-  await page.getByRole("button", { name: "Save" }).click();
+  await createClubFromSheet(page, name);
+  await page.getByRole("button", { name: "Back" }).click();
   await expect(page).toHaveURL(/\/clubs$/);
 }
 
@@ -28,17 +29,20 @@ test.describe("Shared clubs", () => {
     page,
   }) => {
     await seedStorage(page, { account: roy });
-    await createClub(page, "Tuesday");
+    await createClubFromSheet(page, "Tuesday");
+    // Players Edit mode: my own row, then an empty one.
+    await expect.poll(() => playerNames(page)).toEqual(["Roy Smith", ""]);
+    await expect(page.getByRole("combobox", { name: "Skill level for Roy Smith" })).toHaveValue(
+      "intermediate",
+    );
+    await expect(page.getByText("Shared club · You're an Organizer")).toBeVisible();
+    await page.getByRole("button", { name: "Back" }).click();
 
     const row = page.getByRole("link", { name: /Tuesday/ });
     await expect(row).toBeVisible();
     await expect(row).not.toContainText("This device only");
-
     await row.click();
-    await expect.poll(() => playerNames(page)).toEqual(["Roy Smith"]);
-    await expect(page.getByRole("combobox", { name: "Skill level for Roy Smith" })).toHaveValue(
-      "intermediate",
-    );
+    await expect(page.getByRole("link", { name: "Roy Smith" })).toBeVisible();
 
     const [shared] = await readFakeClubs(page);
     expect(shared).toMatchObject({ name: "Tuesday" });
@@ -46,7 +50,7 @@ test.describe("Shared clubs", () => {
     expect(await readStoredData<Club[]>(page, "clubs")).toBeNull();
 
     await page.reload();
-    await expect.poll(() => playerNames(page)).toEqual(["Roy Smith"]);
+    await expect(page.getByRole("link", { name: "Roy Smith" })).toBeVisible();
     await page.goto("/clubs");
     await expect(page.getByRole("link", { name: /Tuesday/ })).toBeVisible();
   });
@@ -102,6 +106,7 @@ test.describe("Shared clubs", () => {
     });
     await seedStorage(page, { account: roy, sharedClubs: [club] });
     await page.goto("/clubs/shared-1");
+    await page.getByRole("button", { name: "Edit players" }).click();
     await expect.poll(() => playerNames(page)).toEqual(["Ana", "Roy Smith"]);
     await expect(page.getByRole("button", { name: "Add player" })).toBeEnabled();
 
@@ -113,17 +118,14 @@ test.describe("Shared clubs", () => {
 
     await page.getByRole("combobox", { name: "Skill level for Ana" }).selectOption("advanced");
     await page.getByRole("button", { name: "Save" }).click();
-    await expect(page).toHaveURL(/\/clubs$/);
+    await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
 
     // Waiting for the connection: not on the "server" yet, but this device already shows it.
     expect(await readFakePendingClubOps(page)).toHaveLength(1);
     expect((await readFakeClubs(page))[0]?.players.find((p) => p.id === "p-ana")?.skill).toBe(
       "beginner",
     );
-    await page.getByRole("link", { name: /Tuesday/ }).click();
-    await expect(page.getByRole("combobox", { name: "Skill level for Ana" })).toHaveValue(
-      "advanced",
-    );
+    await expect(page.getByRole("link", { name: "Ana" })).toHaveAccessibleDescription("Advanced");
 
     await context.setOffline(false);
     await expect.poll(() => readFakePendingClubOps(page)).toEqual([]);

@@ -59,6 +59,7 @@ test.describe("Deleting an Account, between two people", () => {
     // Ana sees Roy linked.
     await anaPage.goto("/clubs");
     await anaPage.getByRole("link", { name: new RegExp(duo.name) }).click();
+    await anaPage.getByRole("button", { name: "Edit players" }).click();
     await expect(anaPage.getByText(roy.accountId)).toBeVisible();
 
     // Roy: the dialog lists both, then deletes.
