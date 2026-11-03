@@ -30,6 +30,14 @@ _Avoid_: User, profile, login
 The short, readable, never-changing identifier given to an Account when it is created (derived from its Name). Shared with an Organizer so they can add the Account to a Club.
 _Avoid_: Username, handle, user id, invite code
 
+**Join link**:
+A link to a Shared club that an Organizer shares so other people can Claim a Club player in it. A Club has one Join link at a time. An Organizer can reset it, which stops the old one working without affecting anyone already linked. A Local club has no Join link.
+_Avoid_: Invite link, invite code, club link, share link
+
+**Claim**:
+An Account linking itself, through a Join link, to a Club player that isn't linked to any Account yet. It gives the Account the Player Role in that Club. Only an Organizer can link anyone else.
+_Avoid_: Join, connect, self-link
+
 **Role**:
 What an Account may do in a Shared club: Organizer or Player.
 _Avoid_: Permission, access level
