@@ -57,16 +57,21 @@ test.describe("Shared clubs on the server", () => {
     );
     await expect(page.getByText(roy.accountId)).toBeVisible();
     await expect(page.getByText("You", { exact: true })).toBeVisible();
-    await expect(page.getByRole("combobox", { name: "Role for Roy Smith" })).toHaveValue(
-      "organizer",
-    );
+    await expect(
+      page
+        .getByRole("radiogroup", { name: "Role for Roy Smith" })
+        .getByRole("radio", { name: "Organizer" }),
+    ).toBeChecked();
     await expect(page.getByRole("button", { name: "Remove Roy Smith" })).toHaveCount(0);
 
     await expect(names.last()).toHaveAttribute("placeholder", "Name or @Account ID");
     await names.last().fill(`@${ana.accountId}`);
     await expect(names.last()).toHaveValue("Ana Bell");
     await expect(page.getByText(ana.accountId, { exact: true })).toBeVisible();
-    await page.getByRole("combobox", { name: "Role for Ana Bell" }).selectOption("organizer");
+    await page
+      .getByRole("radiogroup", { name: "Role for Ana Bell" })
+      .getByText("Organizer", { exact: true })
+      .click();
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
 
@@ -87,12 +92,16 @@ test.describe("Shared clubs on the server", () => {
     await expect(anaRow).toBeVisible({ timeout: 30_000 });
     await anaRow.click();
     await anaPage.getByRole("link", { name: "Edit players" }).click();
-    await expect(anaPage.getByRole("combobox", { name: "Role for Ana Bell" })).toHaveValue(
-      "organizer",
-    );
-    await expect(anaPage.getByRole("combobox", { name: "Role for Roy Smith" })).toHaveValue(
-      "organizer",
-    );
+    await expect(
+      anaPage
+        .getByRole("radiogroup", { name: "Role for Ana Bell" })
+        .getByRole("radio", { name: "Organizer" }),
+    ).toBeChecked();
+    await expect(
+      anaPage
+        .getByRole("radiogroup", { name: "Role for Roy Smith" })
+        .getByRole("radio", { name: "Organizer" }),
+    ).toBeChecked();
 
     await anaPage.context().close();
   });

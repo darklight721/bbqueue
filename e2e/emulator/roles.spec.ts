@@ -10,7 +10,10 @@ async function catField(page: Page) {
   await expect(field).toHaveValue("Cat");
   return field;
 }
-const role = (page: Page, who: string) => page.getByRole("combobox", { name: `Role for ${who}` });
+const role = (page: Page, who: string) => page.getByRole("radiogroup", { name: `Role for ${who}` });
+/** One side of a Role pill: "Player" or "Organizer". */
+const roleRadio = (page: Page, who: string, label: "Player" | "Organizer") =>
+  role(page, who).getByRole("radio", { name: label });
 
 /** Roy creates a Club with a row for Cat; returns its id. */
 async function createClubWithCat(page: Page, clubName: string): Promise<string> {
@@ -49,7 +52,7 @@ test.describe("Linking Accounts between two people", () => {
     const clubName = uniqueId("Tuesday");
     const clubId = await createClubWithCat(page, clubName);
     await editClub(page, clubId);
-    await expect(role(page, "Roy Smith")).toHaveValue("organizer");
+    await expect(roleRadio(page, "Roy Smith", "Organizer")).toBeChecked();
 
     const field = await catField(page);
     await field.fill("@nobody-abcd");
@@ -58,7 +61,7 @@ test.describe("Linking Accounts between two people", () => {
     // The Account's name replaces the text; the linked line and a Role appear.
     await expect(field).toHaveValue("Ana Bell");
     await expect(page.getByText(ana.accountId, { exact: true })).toBeVisible();
-    await expect(role(page, "Ana Bell")).toHaveValue("player");
+    await expect(roleRadio(page, "Ana Bell", "Player")).toBeChecked();
     await page.getByRole("button", { name: "Save" }).click();
     await expectSaved(page);
 
@@ -110,15 +113,15 @@ test.describe("Linking Accounts between two people", () => {
     await editClub(page, clubId);
 
     // Blocked, with the reason.
-    await role(page, "Roy Smith").selectOption("player");
+    await role(page, "Roy Smith").getByText("Player", { exact: true }).click();
     await expect(page.getByRole("alert")).toContainText("A Club needs at least one Organizer.");
-    await expect(role(page, "Roy Smith")).toHaveValue("organizer");
+    await expect(roleRadio(page, "Roy Smith", "Organizer")).toBeChecked();
 
     // Make Ana an Organizer too and step down in the same Save.
     await (await catField(page)).fill(`@${ana.accountId}`);
     await expect(page.getByText(ana.accountId, { exact: true })).toBeVisible();
-    await role(page, "Ana Bell").selectOption("organizer");
-    await role(page, "Roy Smith").selectOption("player");
+    await role(page, "Ana Bell").getByText("Organizer", { exact: true }).click();
+    await role(page, "Roy Smith").getByText("Player", { exact: true }).click();
     await page.getByRole("button", { name: "Save" }).click();
     // Back on the Club page, and a Player now: no Edit any more.
     await expect(page.getByText("Shared club · You're a Player")).toBeVisible();
@@ -136,7 +139,7 @@ test.describe("Linking Accounts between two people", () => {
 
     // Ana can now edit; Roy, a Player now, only looks.
     await editClub(anaPage, clubId);
-    await expect(role(anaPage, "Ana Bell")).toHaveValue("organizer");
+    await expect(roleRadio(anaPage, "Ana Bell", "Organizer")).toBeChecked();
     await page.goto(`/clubs/${clubId}`);
     await expect(page.getByText("Shared club · You're a Player")).toBeVisible();
     await expect(page.getByRole("link", { name: "Edit players" })).toHaveCount(0);
@@ -199,7 +202,7 @@ test.describe("Linking Accounts between two people", () => {
     const clubId = await createClubWithCat(page, clubName);
     await editClub(page, clubId);
     await (await catField(page)).fill(`@${ana.accountId}`);
-    await expect(role(page, "Ana Bell")).toHaveValue("player");
+    await expect(roleRadio(page, "Ana Bell", "Player")).toBeChecked();
     await page.getByRole("button", { name: "Save" }).click();
     await expectSaved(page);
     const anaRow = anaPage.getByRole("link", { name: new RegExp(clubName) });
@@ -259,7 +262,7 @@ test.describe("Linking Accounts between two people", () => {
     await editClub(page, clubId);
     await (await catField(page)).fill(`@${ana.accountId}`);
     await expect(page.getByText(ana.accountId, { exact: true })).toBeVisible();
-    await role(page, "Ana Bell").selectOption("organizer");
+    await role(page, "Ana Bell").getByText("Organizer", { exact: true }).click();
     await page.getByRole("button", { name: "Save" }).click();
     await expectSaved(page);
 
@@ -267,7 +270,7 @@ test.describe("Linking Accounts between two people", () => {
     await editClub(anaPage, clubId);
     await expect(anaPage.getByRole("heading", { level: 1, name: "Edit players" })).toBeVisible();
     await editClub(page, clubId);
-    await role(page, "Ana Bell").selectOption("player");
+    await role(page, "Ana Bell").getByText("Player", { exact: true }).click();
     await page.getByRole("button", { name: "Save" }).click();
     await expectSaved(page);
 

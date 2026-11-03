@@ -100,7 +100,7 @@ test.describe("Deleting an Account, between two people", () => {
     // Ana sees Roy's row stay on the roster, no longer linked.
     await expect(anaPage.getByText(roy.accountId)).toHaveCount(0, { timeout: 30_000 });
     await expect(anaPage.getByRole("textbox", { name: "Player name" })).toHaveCount(2);
-    await expect(anaPage.getByRole("combobox", { name: "Role for Roy Smith" })).toHaveCount(0);
+    await expect(anaPage.getByRole("radiogroup", { name: "Role for Roy Smith" })).toHaveCount(0);
 
     await anaPage.context().close();
   });

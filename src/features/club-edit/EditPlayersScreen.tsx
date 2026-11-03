@@ -6,7 +6,11 @@ import { useOnline } from "../../backend/useOnline.ts";
 import { ConfirmDialog } from "../../components/ConfirmDialog.tsx";
 import { LinkIcon, PlusIcon, WarningIcon } from "../../components/icons.tsx";
 import { OfflineNote } from "../../components/OfflineNote.tsx";
-import { PlayerRowEditor } from "../../components/PlayerRowEditor.tsx";
+import {
+  PlayerRowEditor,
+  ROW_ACTION_COLUMN,
+  ROW_SELECT_COLUMN,
+} from "../../components/PlayerRowEditor.tsx";
 import { Screen } from "../../components/Screen.tsx";
 import { normalizeAccountId } from "../../domain/accountId.ts";
 import { canChangeRoles, canEditClub, organizerCount } from "../../domain/permissions.ts";
@@ -427,57 +431,68 @@ function EditPlayers({
               No players yet. Tap <span className="font-semibold">Add player</span> below.
             </p>
           ) : (
-            // A line between players, so a linked row's second line reads as part of it.
-            <ul className="flex flex-col divide-y divide-base-300">
-              {form.rows.map((row, index) => {
-                const state = linking ? linkStates.get(row.id) : undefined;
-                // The only Organizer stays: a Shared club always has one.
-                const onlyOrganizer =
-                  row.link?.role === "organizer" && organizerCount({ players: form.rows }) <= 1;
-                const typing = typingId(row);
-                const complete = attempted || leftRows.has(row.id);
-                const statusId = `${row.id}-link-status`;
-                return (
-                  <li
-                    key={row.id}
-                    data-row-id={row.id}
-                    className="flex scroll-mb-32 flex-col gap-1 py-3 first:pt-0 last:pb-0"
-                  >
-                    <PlayerRowEditor
-                      value={{ name: row.name, skill: row.skill }}
-                      onChange={(value) => {
-                        if (value.name !== row.name) markLeft(row.id, false);
-                        updateRow(row.id, value);
-                      }}
-                      onRemove={onlyOrganizer ? undefined : () => removeRow(row.id)}
-                      keepRemoveSpace
-                      linkable={linking && !row.link && online !== false}
-                      error={shown?.players[index] ?? null}
-                      invalid={typing && !!state && linkProblem(state, complete) !== null}
-                      describedBy={typing ? statusId : undefined}
-                      autoFocus={row.id === focusRowId}
-                      onEnter={() => enterFromRow(index)}
-                      onBlur={() => markLeft(row.id, true)}
-                    />
-                    {typing && state ? (
-                      <LinkStatus id={statusId} state={state} complete={complete} />
-                    ) : null}
-                    {state?.kind === "linked" ? (
-                      <LinkedLine
-                        playerName={row.name}
-                        state={state}
-                        online={online !== false}
-                        roleMessage={roleMessage?.rowId === row.id ? roleMessage.text : null}
-                        onlyOrganizer={onlyOrganizer}
-                        onRole={(role) => changeRole(row, role)}
-                        onUnlink={() => updateRow(row.id, { link: undefined })}
-                        onUndo={() => undoLink(row.id)}
+            <div className="flex flex-col gap-2">
+              {/* Over the columns, insets matching the fields' text. Each field has its own label. */}
+              <div
+                aria-hidden="true"
+                className="flex items-center gap-2 text-xs font-bold tracking-[0.14em] text-base-content/60 uppercase"
+              >
+                <span className="min-w-0 flex-1 pl-3">Name</span>
+                <span className={`${ROW_SELECT_COLUMN} pl-3`}>Skill level</span>
+                <span className={ROW_ACTION_COLUMN} />
+              </div>
+              {/* A line between players, so a linked row's second line reads as part of it. */}
+              <ul className="flex flex-col divide-y divide-base-300">
+                {form.rows.map((row, index) => {
+                  const state = linking ? linkStates.get(row.id) : undefined;
+                  // The only Organizer stays: a Shared club always has one.
+                  const onlyOrganizer =
+                    row.link?.role === "organizer" && organizerCount({ players: form.rows }) <= 1;
+                  const typing = typingId(row);
+                  const complete = attempted || leftRows.has(row.id);
+                  const statusId = `${row.id}-link-status`;
+                  return (
+                    <li
+                      key={row.id}
+                      data-row-id={row.id}
+                      className="flex scroll-mb-32 flex-col gap-1 py-3 first:pt-0 last:pb-0"
+                    >
+                      <PlayerRowEditor
+                        value={{ name: row.name, skill: row.skill }}
+                        onChange={(value) => {
+                          if (value.name !== row.name) markLeft(row.id, false);
+                          updateRow(row.id, value);
+                        }}
+                        onRemove={onlyOrganizer ? undefined : () => removeRow(row.id)}
+                        keepRemoveSpace
+                        linkable={linking && !row.link && online !== false}
+                        error={shown?.players[index] ?? null}
+                        invalid={typing && !!state && linkProblem(state, complete) !== null}
+                        describedBy={typing ? statusId : undefined}
+                        autoFocus={row.id === focusRowId}
+                        onEnter={() => enterFromRow(index)}
+                        onBlur={() => markLeft(row.id, true)}
                       />
-                    ) : null}
-                  </li>
-                );
-              })}
-            </ul>
+                      {typing && state ? (
+                        <LinkStatus id={statusId} state={state} complete={complete} />
+                      ) : null}
+                      {state?.kind === "linked" ? (
+                        <LinkedLine
+                          playerName={row.name}
+                          state={state}
+                          online={online !== false}
+                          roleMessage={roleMessage?.rowId === row.id ? roleMessage.text : null}
+                          onlyOrganizer={onlyOrganizer}
+                          onRole={(role) => changeRole(row, role)}
+                          onUnlink={() => updateRow(row.id, { link: undefined })}
+                          onUndo={() => undoLink(row.id)}
+                        />
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
           )}
         </section>
       </fieldset>

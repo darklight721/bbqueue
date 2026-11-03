@@ -218,6 +218,10 @@ describe("Club page", () => {
     expect(screen.getByRole("combobox", { name: "Skill level for Zed" })).toHaveValue("advanced");
     // A Local club can't link Accounts: no hint about @Account ID.
     expect(screen.queryByText(/Account ID/)).not.toBeInTheDocument();
+    // Column headings over the rows, for the eye only: each field has its own label.
+    const heading = screen.getByText("Name", { exact: true });
+    expect(heading.parentElement).toHaveAttribute("aria-hidden", "true");
+    expect(heading.parentElement).toHaveTextContent("NameSkill level");
     // No Club card, session cards, Danger zone or Cancel: Back is the cancel.
     expect(screen.queryByRole("region", { name: "Club" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "New session" })).not.toBeInTheDocument();
@@ -229,6 +233,17 @@ describe("Club page", () => {
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Edit players" })).toHaveFocus();
     expect(screen.getByRole("button", { name: "Delete club" })).toBeInTheDocument();
+  });
+
+  it("Edit players has no column headings over an empty roster", async () => {
+    setLocalClubs([riverside]);
+    renderAt("/clubs/c1");
+    await editPlayers();
+    for (const name of ["alice", "Bob", "Zed"]) {
+      await userEvent.click(screen.getByRole("button", { name: `Remove ${name}` }));
+    }
+    expect(screen.getByText(/No players yet/)).toBeInTheDocument();
+    expect(screen.queryByText("Name", { exact: true })).not.toBeInTheDocument();
   });
 
   it("Edit players: unknown Club ids go to the Clubs list", () => {

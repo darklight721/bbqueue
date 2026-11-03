@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { LinkIcon, WarningIcon } from "../../components/icons.tsx";
+import { LinkIcon, UnlinkIcon, WarningIcon } from "../../components/icons.tsx";
 import { ROW_ACTION_COLUMN, ROW_SELECT_COLUMN } from "../../components/PlayerRowEditor.tsx";
 import type { Role } from "../../domain/types.ts";
 import { linkProblem, type LinkState } from "./linkState.ts";
@@ -55,9 +55,9 @@ export interface LinkedLineProps {
 }
 
 /**
- * The line under a linked Club player row, for Organizers: the Account ID on one line, and under
- * it "You" on your own row or Unlink on anyone else's; then the Role, which sits under the Skill
- * level so Roles line up down the roster. Unlink takes back a link that isn't saved yet (offline
+ * The line under a linked Club player row, for Organizers: one band holding the Account ID, the
+ * Role under the Skill level so Roles line up down the roster, and under Remove either "You" on
+ * your own row or Unlink on anyone else's. Unlink takes back a link that isn't saved yet (offline
  * too), or removes a saved one (online only). An Account that no longer exists has no Role.
  */
 export function LinkedLine({
@@ -70,74 +70,62 @@ export function LinkedLine({
   onUnlink,
   onUndo,
 }: LinkedLineProps) {
-  const roleId = useId();
   const who = playerName.trim() || "this player";
   const gone = state.exists === false;
 
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-2">
-        <div className="flex min-w-0 flex-1">
-          {/* Fills the column, so its edges match the name field above; as tall as the Role
-              select beside it (daisyUI's field height), both lines inside. Content is inset like
-              the name field's text. */}
-          <div
-            className={`flex h-[calc(var(--size-field,0.25rem)*10)] w-full min-w-0 flex-col justify-center rounded-field px-3 text-sm leading-5 ${
-              gone
-                ? "bg-error/10 text-error"
-                : state.isYou
-                  ? "bg-primary/10 text-base-content/85"
-                  : "bg-base-200 text-base-content/80"
-            }`}
+      {/* As tall as a field, so the Role pill fills it; the Account ID is inset like the name
+          field's text above. */}
+      <div
+        className={`flex h-[calc(var(--size-field,0.25rem)*10)] items-center gap-2 rounded-field text-sm ${
+          gone
+            ? "bg-error/10 text-error"
+            : state.isYou
+              ? "bg-primary/10 text-base-content/85"
+              : "bg-base-200 text-base-content/80"
+        }`}
+      >
+        <span className="flex min-w-0 flex-1 items-center gap-1.5 pl-3">
+          {gone ? (
+            <WarningIcon className="size-4 shrink-0" />
+          ) : (
+            <LinkIcon className="size-4 shrink-0 text-primary" />
+          )}
+          <span
+            title={state.accountId}
+            className={`min-w-0 truncate font-mono font-semibold ${gone ? "line-through" : ""}`}
           >
-            <span className="flex min-w-0 items-center gap-1.5">
-              {gone ? (
-                <WarningIcon className="size-4 shrink-0" />
-              ) : (
-                <LinkIcon className="size-4 shrink-0 text-primary" />
-              )}
-              <span
-                title={state.accountId}
-                className={`min-w-0 truncate font-mono font-semibold ${gone ? "line-through" : ""}`}
-              >
-                {state.accountId}
-              </span>
-            </span>
-            {/* Under the Account ID, past the icon. */}
-            <span className="flex min-h-6 items-center pl-5.5">
-              {state.isYou ? (
-                <span className="text-xs font-semibold text-primary">You</span>
-              ) : (
-                <button
-                  type="button"
-                  className={`-mx-1 inline-flex min-h-6 items-center rounded-selector px-1 text-xs font-semibold underline decoration-current/40 underline-offset-2 hover:decoration-current disabled:cursor-not-allowed disabled:no-underline disabled:opacity-50 ${
-                    gone ? "text-error" : "text-base-content/65 hover:text-error"
-                  }`}
-                  onClick={state.saved ? onUnlink : onUndo}
-                  disabled={state.saved && !online}
-                >
-                  Unlink <span className="sr-only">{who}</span>
-                </button>
-              )}
-            </span>
-          </div>
-        </div>
+            {state.accountId}
+          </span>
+        </span>
         <div className={ROW_SELECT_COLUMN}>
           {/* An Account that no longer exists has no Role to pick; the column stays for alignment. */}
           {gone ? null : (
-            <RoleSelect
-              id={roleId}
-              who={who}
-              value={state.role}
-              disabled={!online}
-              onChange={onRole}
-            />
+            <RolePill who={who} value={state.role} disabled={!online} onChange={onRole} />
           )}
         </div>
-        {/* Under Remove, so the Role sits right under the Skill level. */}
-        <span aria-hidden="true" className={ROW_ACTION_COLUMN} />
+        {/* Under Remove: "You" on your own row (which has no Unlink), so the Account ID keeps
+            the room. */}
+        {state.isYou ? (
+          <span className={`${ROW_ACTION_COLUMN} text-center text-xs font-semibold text-primary`}>
+            You
+          </span>
+        ) : (
+          <button
+            type="button"
+            className={`btn h-[calc(var(--size-field,0.25rem)*10)] min-h-0 shrink-0 btn-ghost px-0 disabled:bg-transparent disabled:opacity-40 ${ROW_ACTION_COLUMN} ${
+              gone ? "text-error" : "text-base-content/70 hover:text-error"
+            }`}
+            aria-label={`Unlink ${who}`}
+            onClick={state.saved ? onUnlink : onUndo}
+            disabled={state.saved && !online}
+          >
+            <UnlinkIcon className="size-5" />
+          </button>
+        )}
       </div>
-      {/* Helper lines start where the chip's content and the name field's text do. */}
+      {/* Helper lines start where the Account ID's icon and the name field's text do. */}
       {gone ? (
         <p role="alert" className="pl-3 text-sm font-semibold text-error">
           This Account no longer exists.
@@ -160,38 +148,52 @@ const ROLES: { value: Role; label: string }[] = [
   { value: "organizer", label: "Organizer" },
 ];
 
-/** Player / Organizer, styled like the Skill level select above it. */
-function RoleSelect({
-  id,
+/**
+ * Player | Organizer, a pill like the Skill level picker in a Session player's menu. Each side
+ * grows from its label's width, so "Organizer" fits in the narrow Skill level column.
+ */
+function RolePill({
   who,
   value,
   disabled,
   onChange,
 }: {
-  id: string;
   who: string;
   value: Role;
   disabled: boolean;
   onChange: (role: Role) => void;
 }) {
+  const groupName = useId();
   return (
-    <>
-      <label htmlFor={id} className="sr-only">
-        Role for {who}
-      </label>
-      <select
-        id={id}
-        className="select w-full text-base"
-        value={value}
-        disabled={disabled}
-        onChange={(event) => onChange(event.target.value as Role)}
-      >
-        {ROLES.map((role) => (
-          <option key={role.value} value={role.value}>
+    <div
+      role="radiogroup"
+      aria-label={`Role for ${who}`}
+      className="flex h-[calc(var(--size-field,0.25rem)*10)] gap-0.5 rounded-full bg-base-100 p-0.5"
+    >
+      {ROLES.map((role) => {
+        const on = value === role.value;
+        return (
+          <label
+            key={role.value}
+            className={`btn h-full min-h-0 flex-auto rounded-full border-0 px-0 text-[0.8125rem] shadow-none has-[:disabled]:cursor-not-allowed has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-1 has-[:focus-visible]:outline-primary ${
+              on
+                ? "btn-primary has-[:disabled]:opacity-50"
+                : "btn-ghost text-base-content/75 has-[:disabled]:text-base-content/40"
+            }`}
+          >
+            <input
+              type="radio"
+              className="sr-only"
+              name={groupName}
+              value={role.value}
+              checked={on}
+              disabled={disabled}
+              onChange={() => onChange(role.value)}
+            />
             {role.label}
-          </option>
-        ))}
-      </select>
-    </>
+          </label>
+        );
+      })}
+    </div>
   );
 }

@@ -1,6 +1,6 @@
 # Spec: Edit players — the @Account ID hint, row dividers, Account ID band, Role pill and column header
 
-Status: ready-for-agent (01 done, 02 open)
+Status: done
 Depends on: edit-players, accounts
 
 Screens (changed): `/clubs/:clubId/players` (Edit players). The Club page's roster is unchanged.
@@ -30,7 +30,7 @@ Vocabulary per `GLOSSARY.md`: **Club player**, **Account**, **Account ID**, **Or
 
 - Problem: on a linked row, only the Account ID chip is tinted, and the Role select sits outside the tint, so the Role doesn't read as belonging to the Account.
 - The tint moves from the chip to the whole Account ID line, edge to edge: one rounded band behind the Account ID, the Role and Unlink (in the column under Remove).
-- The band is one line at field height (`h-10`, like the Role pill): the Account ID, then on the viewer's own row a small "You" label after it (`text-xs font-semibold text-primary`). The Account ID truncates first. No second line inside the band.
+- The band is one line at field height (`h-10`, like the Role pill): the Account ID, the Role, then under Remove either Unlink or, on the viewer's own row (which has no Unlink), a small "You" (`text-xs font-semibold text-primary`). "You" sits there rather than after the Account ID so the Account ID keeps the room on narrow screens (at 320px it was cut to one letter). No second line inside the band.
 - Same colours as the chip had: `bg-base-200`; `bg-primary/10` on the viewer's own row; `bg-error/10` (with the struck-through Account ID) when the Account no longer exists.
 - The Account ID keeps its left edge in line with the name field's text, and the Role keeps the Skill level column, so Roles still line up under Skill levels.
 - The helper lines under the band ("This Account no longer exists.", "The only Organizer.", a refused Role change) stay outside it, unchanged.
@@ -42,12 +42,12 @@ Vocabulary per `GLOSSARY.md`: **Club player**, **Account**, **Account ID**, **Or
 - A new link-slash icon (`LinkIcon`'s chain with a diagonal stroke through it), not ✕, so it can't be mistaken for Remove directly above.
 - A ghost square button the width of the Remove column and as tall as the band (`w-12 h-10`), with the icon in Remove's colour (`text-base-content/70`), red on hover. Red all the time when the Account no longer exists.
 - Accessible name unchanged: "Unlink <name>".
-- States unchanged: none on the viewer's own row (the space stays empty inside the band). On a link that isn't saved yet it takes the link back, clears the name and focuses the name field, offline too. On a saved link it is disabled while offline (the offline note at the top explains). No confirm: it is a form edit until Save, and Discard undoes it.
+- States unchanged: none on the viewer's own row ("You" takes its place). On a link that isn't saved yet it takes the link back, clears the name and focuses the name field, offline too. On a saved link it is disabled while offline (the offline note at the top explains). No confirm: it is a form edit until Save, and Discard undoes it.
 
 ## Role pill (issue 02)
 
 - The Role `<select>` becomes a two-option pill toggle, "Player | Organizer", like the Skill level picker in a Session player's menu (`PlayerMenuSheet`): radios in a rounded-full track, with the chosen one as `btn-primary`.
-- It sits in the Skill level column (`ROW_SELECT_COLUMN`, `8.75rem`), at field height (`h-10`, same as the select above it), with text at `0.8125rem`. "Organizer" must fit without truncating at 320px viewport width.
+- It sits in the Skill level column (`ROW_SELECT_COLUMN`, `8.75rem`), at field height (`h-10`, same as the select above it), with text at `0.8125rem`. "Organizer" must fit without truncating at 320px viewport width, so each side grows from its label's width rather than taking half.
 - The track contrasts with the band (e.g. `bg-base-100`), not `bg-base-200`, which would disappear on a grey band.
 - Accessible name unchanged: a `radiogroup` "Role for <name>" with radios "Player" and "Organizer". Arrow keys move between them like any radio group. A visible focus ring, as in the Skill level picker.
 - Behaviour unchanged: choosing a Role is a form edit saved with Save. Disabled when offline. No pill when the Account no longer exists (the column stays empty for alignment).

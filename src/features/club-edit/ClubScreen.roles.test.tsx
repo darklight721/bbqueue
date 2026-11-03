@@ -78,7 +78,11 @@ const expectSaved = () =>
   expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
 /** The name field currently holding `value`. */
 const nameField = (value: string) => screen.getByDisplayValue(value) as HTMLInputElement;
-const roleSelect = (who: string) => screen.getByRole("combobox", { name: `Role for ${who}` });
+const rolePill = (who: string) => screen.getByRole("radiogroup", { name: `Role for ${who}` });
+const LABEL = { player: "Player", organizer: "Organizer" } as const;
+/** One side of a Role pill. */
+const roleRadio = (who: string, role: keyof typeof LABEL) =>
+  within(rolePill(who)).getByRole("radio", { name: LABEL[role] });
 /** The linked line's Account ID, e.g. "ana-2222" (the only place it shows as text). */
 const linkedLine = (accountId = anaAccount.accountId) => screen.findByText(accountId);
 /** Clear the name field holding `value` and type `text` in it. */
@@ -120,7 +124,7 @@ describe("Club screen for an Organizer", () => {
 
     expect(screen.getByText(royAccount.accountId)).toBeInTheDocument();
     expect(screen.getByText("You")).toBeInTheDocument();
-    expect(roleSelect("Roy Smith")).toHaveValue("organizer");
+    expect(roleRadio("Roy Smith", "organizer")).toBeChecked();
     expect(screen.getByText("The only Organizer.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Remove Roy Smith" })).not.toBeInTheDocument();
     // Your own row can't be unlinked here (Leave club does that); there is no separate Account
@@ -159,7 +163,7 @@ describe("Club screen for an Organizer", () => {
     expect(await linkedLine()).toHaveAttribute("title", anaAccount.accountId);
     expect(field).toHaveValue("Ana Bell");
     expect(field).toHaveFocus();
-    expect(roleSelect("Ana Bell")).toHaveValue("player");
+    expect(roleRadio("Ana Bell", "player")).toBeChecked();
     await save();
 
     expectSaved();
@@ -225,20 +229,19 @@ describe("Club screen for an Organizer", () => {
 
     await typeOver(user, "Cat", `@${anaAccount.accountId}`);
     await linkedLine();
-    await user.selectOptions(roleSelect("Ana Bell"), "organizer");
+    await user.click(roleRadio("Ana Bell", "organizer"));
     await save();
 
     expect((await clubOf(ana))?.players.find((p) => p.id === CAT.id)?.link?.role).toBe("organizer");
   });
 
-  it("styles the Role like the Skill level, in the same column, with no Organizer tint", async () => {
+  it("puts the Role pill in the Skill level's column", async () => {
     await editAt("/clubs/c1");
 
-    const role = roleSelect("Roy Smith");
     const skill = screen.getByRole("combobox", { name: "Skill level for Roy Smith" });
-    expect(role).toHaveValue("organizer");
-    expect(role.className).toBe(skill.className);
-    expect(role.parentElement?.className).toContain("w-[8.75rem]");
+    expect(roleRadio("Roy Smith", "organizer")).toBeChecked();
+    expect(roleRadio("Roy Smith", "player")).not.toBeChecked();
+    expect(rolePill("Roy Smith").parentElement?.className).toContain("w-[8.75rem]");
     expect(skill.parentElement?.className).toContain("w-[8.75rem]");
   });
 
@@ -287,10 +290,10 @@ describe("Club screen for an Organizer", () => {
     const user = userEvent.setup();
     await editAt("/clubs/c1");
 
-    await user.selectOptions(roleSelect("Roy Smith"), "player");
+    await user.click(roleRadio("Roy Smith", "player"));
 
     expect(screen.getByRole("alert")).toHaveTextContent("A Club needs at least one Organizer.");
-    expect(roleSelect("Roy Smith")).toHaveValue("organizer");
+    expect(roleRadio("Roy Smith", "organizer")).toBeChecked();
   });
 
   it("lets the last Organizer hand over and step down in one Save", async () => {
@@ -299,8 +302,8 @@ describe("Club screen for an Organizer", () => {
 
     await typeOver(user, "Cat", `@${anaAccount.accountId}`);
     await linkedLine();
-    await user.selectOptions(roleSelect("Ana Bell"), "organizer");
-    await user.selectOptions(roleSelect("Roy Smith"), "player");
+    await user.click(roleRadio("Ana Bell", "organizer"));
+    await user.click(roleRadio("Roy Smith", "player"));
     await save();
 
     const theirs = await clubOf(ana);
@@ -315,7 +318,8 @@ describe("Club screen for an Organizer", () => {
 
     act(() => roy.setOnline(false));
 
-    expect(roleSelect("Roy Smith")).toBeDisabled();
+    expect(roleRadio("Roy Smith", "organizer")).toBeDisabled();
+    expect(roleRadio("Roy Smith", "player")).toBeDisabled();
     expect(
       screen.getByText("You're offline. Linking Accounts and changing Roles need a connection."),
     ).toBeInTheDocument();
@@ -409,7 +413,7 @@ describe("New club while signed in", () => {
     );
     expect(screen.getByText(royAccount.accountId)).toBeInTheDocument();
     expect(screen.getByText("You")).toBeInTheDocument();
-    expect(roleSelect("Roy Smith")).toHaveValue("organizer");
+    expect(roleRadio("Roy Smith", "organizer")).toBeChecked();
     expect(screen.getByText("The only Organizer.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Remove Roy Smith" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Unlink/ })).not.toBeInTheDocument();
@@ -438,7 +442,7 @@ describe("New club while signed in", () => {
     expect(nameField("@")).toHaveAttribute("placeholder", "Name or @Account ID");
     await user.type(nameField("@"), anaAccount.accountId);
     await linkedLine();
-    await user.selectOptions(roleSelect("Ana Bell"), "organizer");
+    await user.click(roleRadio("Ana Bell", "organizer"));
     await save();
 
     expectSaved();

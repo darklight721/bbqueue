@@ -82,7 +82,11 @@ test.describe("Make shared club", () => {
     await expect(anaField).toHaveValue("Ana");
     await anaField.fill(`@${ana.accountId}`);
     await expect(page.getByText(ana.accountId, { exact: true })).toBeVisible();
-    await expect(page.getByRole("combobox", { name: "Role for Ana Bell" })).toHaveValue("player");
+    await expect(
+      page
+        .getByRole("radiogroup", { name: "Role for Ana Bell" })
+        .getByRole("radio", { name: "Player" }),
+    ).toBeChecked();
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
     await expect

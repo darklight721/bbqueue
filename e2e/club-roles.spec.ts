@@ -22,7 +22,10 @@ const club: Club = makeClub({
   ],
 });
 
-const role = (page: Page, who: string) => page.getByRole("combobox", { name: `Role for ${who}` });
+const role = (page: Page, who: string) => page.getByRole("radiogroup", { name: `Role for ${who}` });
+/** One side of a Role pill: "Player" or "Organizer". */
+const roleRadio = (page: Page, who: string, label: "Player" | "Organizer") =>
+  role(page, who).getByRole("radio", { name: label });
 const catField = (page: Page) => page.getByRole("textbox", { name: "Player name" }).nth(0);
 const editPlayers = (page: Page) => page.getByRole("link", { name: "Edit players" }).click();
 /** Saved: off Edit players, back on the Club page. */
@@ -36,7 +39,7 @@ test.describe("Linking Accounts (one device)", () => {
     await seedStorage(page, { account: roy, otherAccounts: [ana], sharedClubs: [club] });
     await page.goto("/clubs/shared-1");
     await editPlayers(page);
-    await expect(role(page, roy.name)).toHaveValue("organizer");
+    await expect(roleRadio(page, roy.name, "Organizer")).toBeChecked();
     // Rows are sorted by name: Cat first.
     await expect(catField(page)).toHaveValue("Cat");
   });
@@ -49,7 +52,7 @@ test.describe("Linking Accounts (one device)", () => {
     await expect(page.getByText("ana-2222", { exact: true })).toBeVisible();
     await expect(catField(page)).toHaveValue("Ana Bell");
     await expect(catField(page)).toBeFocused();
-    await expect(role(page, "Ana Bell")).toHaveValue("player");
+    await expect(roleRadio(page, "Ana Bell", "Player")).toBeChecked();
     await page.getByRole("button", { name: "Save" }).click();
     await expectSaved(page, "shared-1");
 
@@ -62,7 +65,7 @@ test.describe("Linking Accounts (one device)", () => {
     });
 
     await editPlayers(page);
-    await expect(role(page, "Ana Bell")).toHaveValue("player");
+    await expect(roleRadio(page, "Ana Bell", "Player")).toBeChecked();
     await expect(page.getByText("ana-2222", { exact: true })).toBeVisible();
   });
 
@@ -94,6 +97,24 @@ test.describe("Linking Accounts (one device)", () => {
     expect(saved?.players.find((p) => p.id === "p-cat")?.link).toBeUndefined();
   });
 
+  test("tapping Organizer on the Role pill makes a linked player an Organizer when saved", async ({
+    page,
+  }) => {
+    await catField(page).fill("@ana-2222");
+    await expect(roleRadio(page, "Ana Bell", "Player")).toBeChecked();
+    await role(page, "Ana Bell").getByText("Organizer", { exact: true }).click();
+    await expect(roleRadio(page, "Ana Bell", "Organizer")).toBeChecked();
+    await expect(roleRadio(page, "Ana Bell", "Player")).not.toBeChecked();
+    await page.getByRole("button", { name: "Save" }).click();
+    await expectSaved(page, "shared-1");
+
+    const [saved] = await readFakeClubs(page);
+    expect(saved?.players.find((p) => p.id === "p-cat")?.link).toEqual({
+      accountId: "ana-2222",
+      role: "organizer",
+    });
+  });
+
   test("the Role sits right under the Skill level", async ({ page }) => {
     const skill = (await page
       .getByRole("combobox", { name: `Skill level for ${roy.name}` })
@@ -105,10 +126,10 @@ test.describe("Linking Accounts (one device)", () => {
   });
 
   test("the last Organizer can't demote themselves, and can't leave", async ({ page }) => {
-    await role(page, roy.name).selectOption("player");
+    await role(page, roy.name).getByText("Player", { exact: true }).click();
 
     await expect(page.getByRole("alert")).toContainText("A Club needs at least one Organizer.");
-    await expect(role(page, roy.name)).toHaveValue("organizer");
+    await expect(roleRadio(page, roy.name, "Organizer")).toBeChecked();
     await expect(page.getByRole("button", { name: "Remove Roy Smith" })).toHaveCount(0);
     // The Danger zone is on the Club page, not on Edit players.
     await expect(page.getByRole("button", { name: "Leave club" })).toHaveCount(0);
@@ -120,7 +141,8 @@ test.describe("Linking Accounts (one device)", () => {
   test("offline: linking and Roles are turned off, with the reason", async ({ page, context }) => {
     await context.setOffline(true);
 
-    await expect(role(page, roy.name)).toBeDisabled();
+    await expect(roleRadio(page, roy.name, "Organizer")).toBeDisabled();
+    await expect(roleRadio(page, roy.name, "Player")).toBeDisabled();
     await expect(
       page.getByText("You're offline. Linking Accounts and changing Roles need a connection."),
     ).toBeVisible();
@@ -154,7 +176,7 @@ test.describe("Unlinking a live Account (one device)", () => {
     await seedStorage(page, { account: roy, otherAccounts: [ana], sharedClubs: [withAna] });
     await page.goto("/clubs/shared-4");
     await editPlayers(page);
-    await expect(role(page, ana.name)).toHaveValue("player");
+    await expect(roleRadio(page, ana.name, "Player")).toBeChecked();
   });
 
   test("an Organizer's own row says You, and has no Unlink", async ({ page }) => {
@@ -194,7 +216,7 @@ test.describe("Unlinking a live Account (one device)", () => {
     await expect(role(page, ana.name)).toHaveCount(0);
     await expect(page.getByRole("button", { name: `Unlink ${ana.name}` })).toHaveCount(0);
     // Roy's own row is untouched.
-    await expect(role(page, roy.name)).toHaveValue("organizer");
+    await expect(roleRadio(page, roy.name, "Organizer")).toBeChecked();
   });
 
   test("offline, Unlink on a saved link is turned off", async ({ page, context }) => {
