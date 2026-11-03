@@ -1,6 +1,6 @@
 # 01 Edit players: @Account ID hint and row dividers
 
-Status: ready-for-agent
+Status: done
 Spec: ../spec.md
 
 ## What

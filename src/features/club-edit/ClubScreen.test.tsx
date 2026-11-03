@@ -216,6 +216,8 @@ describe("Club page", () => {
     expect(screen.getByText("Riverside · 3 players")).toBeInTheDocument();
     expect(names()).toEqual(["alice", "Bob", "Zed"]);
     expect(screen.getByRole("combobox", { name: "Skill level for Zed" })).toHaveValue("advanced");
+    // A Local club can't link Accounts: no hint about @Account ID.
+    expect(screen.queryByText(/Account ID/)).not.toBeInTheDocument();
     // No Club card, session cards, Danger zone or Cancel: Back is the cancel.
     expect(screen.queryByRole("region", { name: "Club" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "New session" })).not.toBeInTheDocument();

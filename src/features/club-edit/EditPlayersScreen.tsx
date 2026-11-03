@@ -4,7 +4,7 @@ import { saveClub } from "../../backend/clubs.ts";
 import { getBackend } from "../../backend/index.ts";
 import { useOnline } from "../../backend/useOnline.ts";
 import { ConfirmDialog } from "../../components/ConfirmDialog.tsx";
-import { PlusIcon, WarningIcon } from "../../components/icons.tsx";
+import { LinkIcon, PlusIcon, WarningIcon } from "../../components/icons.tsx";
 import { OfflineNote } from "../../components/OfflineNote.tsx";
 import { PlayerRowEditor } from "../../components/PlayerRowEditor.tsx";
 import { Screen } from "../../components/Screen.tsx";
@@ -411,6 +411,15 @@ function EditPlayers({
             <OfflineNote className="rounded-box bg-base-200 px-3 py-2">
               You're offline. Linking Accounts and changing Roles need a connection.
             </OfflineNote>
+          ) : linking ? (
+            // The placeholder says it too, but only on an empty name field.
+            <p className="flex items-start gap-1.5 rounded-box bg-base-200 px-3 py-2 text-sm text-base-content/70">
+              <LinkIcon className="mt-0.5 size-4 shrink-0 text-primary" />
+              <span>
+                To link a player to their Account, type <b className="text-base-content">@</b> and
+                their Account ID in the name field. They'll find it on their Account page.
+              </span>
+            </p>
           ) : null}
 
           {playerCount === 0 ? (
@@ -418,7 +427,8 @@ function EditPlayers({
               No players yet. Tap <span className="font-semibold">Add player</span> below.
             </p>
           ) : (
-            <ul className={`flex flex-col ${linking ? "gap-4" : "gap-3"}`}>
+            // A line between players, so a linked row's second line reads as part of it.
+            <ul className="flex flex-col divide-y divide-base-300">
               {form.rows.map((row, index) => {
                 const state = linking ? linkStates.get(row.id) : undefined;
                 // The only Organizer stays: a Shared club always has one.
@@ -431,7 +441,7 @@ function EditPlayers({
                   <li
                     key={row.id}
                     data-row-id={row.id}
-                    className="flex scroll-mb-32 flex-col gap-1"
+                    className="flex scroll-mb-32 flex-col gap-1 py-3 first:pt-0 last:pb-0"
                   >
                     <PlayerRowEditor
                       value={{ name: row.name, skill: row.skill }}

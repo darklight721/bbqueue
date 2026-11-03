@@ -88,6 +88,11 @@ async function typeOver(user: ReturnType<typeof userEvent.setup>, value: string,
   await user.type(field, text);
   return field;
 }
+/** The note at the top of Edit players on how to link an Account (its text spans a <b>). */
+const LINK_HINT = (_: string, element: Element | null) =>
+  element?.tagName === "P" &&
+  element.textContent ===
+    "To link a player to their Account, type @ and their Account ID in the name field. They'll find it on their Account page.";
 const clubOf = (backend: Backend, id = "c1") =>
   new Promise<Club | undefined>((resolve) => {
     const stop = backend.observeSharedClubs((clubs) => resolve(clubs.find((c) => c.id === id)));
@@ -141,6 +146,7 @@ describe("Club screen for an Organizer", () => {
   it("says a name field also takes an @Account ID, on rows with no link", async () => {
     await editAt("/clubs/c1");
 
+    expect(screen.getByText(LINK_HINT)).toBeInTheDocument();
     expect(nameField("Cat")).toHaveAttribute("placeholder", "Name or @Account ID");
     expect(screen.queryByRole("button", { name: /Link Account/ })).not.toBeInTheDocument();
   });
@@ -313,6 +319,8 @@ describe("Club screen for an Organizer", () => {
     expect(
       screen.getByText("You're offline. Linking Accounts and changing Roles need a connection."),
     ).toBeInTheDocument();
+    // The offline note takes the hint's place.
+    expect(screen.queryByText(LINK_HINT)).not.toBeInTheDocument();
     await typeOver(user, "Cat", `@${anaAccount.accountId}`);
     expect(screen.getByText("Linking an Account needs a connection.")).toBeInTheDocument();
   });

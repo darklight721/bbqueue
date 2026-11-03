@@ -1,6 +1,6 @@
 # Spec: Edit players — the @Account ID hint and row dividers
 
-Status: ready-for-agent
+Status: done
 Depends on: edit-players, accounts
 
 Screens (changed): `/clubs/:clubId/players` (Edit players). The Club page's roster is unchanged.
