@@ -235,13 +235,13 @@ describe("Club screen for an Organizer", () => {
     expect((await clubOf(ana))?.players.find((p) => p.id === CAT.id)?.link?.role).toBe("organizer");
   });
 
-  it("puts the Role pill in the Skill level's column", async () => {
+  it("puts the Role pill under the Skill level and Remove columns", async () => {
     await editAt("/clubs/c1");
 
     const skill = screen.getByRole("combobox", { name: "Skill level for Roy Smith" });
     expect(roleRadio("Roy Smith", "organizer")).toBeChecked();
     expect(roleRadio("Roy Smith", "player")).not.toBeChecked();
-    expect(rolePill("Roy Smith").parentElement?.className).toContain("w-[8.75rem]");
+    expect(rolePill("Roy Smith").parentElement?.className).toContain("w-[12.25rem]");
     expect(skill.parentElement?.className).toContain("w-[8.75rem]");
   });
 

@@ -209,17 +209,6 @@ export function LinkIcon(props: IconProps) {
   );
 }
 
-/** The chain links, struck through: unlink a Club player from their Account. */
-export function UnlinkIcon(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <path d="M10 14a4.25 4.25 0 0 0 6 0l3-3a4.25 4.25 0 0 0-6-6l-1 1" />
-      <path d="M14 10a4.25 4.25 0 0 0-6 0l-3 3a4.25 4.25 0 0 0 6 6l1-1" />
-      <path d="M4 4l16 16" />
-    </Icon>
-  );
-}
-
 /** An open eye: watching a Session somebody else runs. */
 export function EyeIcon(props: IconProps) {
   return (

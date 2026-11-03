@@ -1,6 +1,5 @@
 import { useId } from "react";
-import { LinkIcon, UnlinkIcon, WarningIcon } from "../../components/icons.tsx";
-import { ROW_ACTION_COLUMN, ROW_SELECT_COLUMN } from "../../components/PlayerRowEditor.tsx";
+import { LinkIcon, WarningIcon } from "../../components/icons.tsx";
 import type { Role } from "../../domain/types.ts";
 import { linkProblem, type LinkState } from "./linkState.ts";
 
@@ -55,10 +54,11 @@ export interface LinkedLineProps {
 }
 
 /**
- * The line under a linked Club player row, for Organizers: one band holding the Account ID, the
- * Role under the Skill level so Roles line up down the roster, and under Remove either "You" on
- * your own row or Unlink on anyone else's. Unlink takes back a link that isn't saved yet (offline
- * too), or removes a saved one (online only). An Account that no longer exists has no Role.
+ * The line under a linked Club player row, for Organizers: one band holding the Account ID, and
+ * under it "You" on your own row or Unlink on anyone else's; then the Role, from under the Skill
+ * level to under Remove, so Roles line up down the roster. Unlink takes back a link that isn't
+ * saved yet (offline too), or removes a saved one (online only). An Account that no longer exists
+ * has no Role.
  */
 export function LinkedLine({
   playerName,
@@ -75,10 +75,10 @@ export function LinkedLine({
 
   return (
     <div className="flex flex-col gap-1">
-      {/* As tall as a field, so the Role pill fills it; the Account ID is inset like the name
-          field's text above. */}
+      {/* The Account ID is inset like the name field's text above; the Role pill sits inside the
+          band, clear of its edges. */}
       <div
-        className={`flex h-[calc(var(--size-field,0.25rem)*10)] items-center gap-2 rounded-field text-sm ${
+        className={`flex items-center gap-2 rounded-field py-1.5 text-sm leading-5 ${
           gone
             ? "bg-error/10 text-error"
             : state.isYou
@@ -86,44 +86,44 @@ export function LinkedLine({
               : "bg-base-200 text-base-content/80"
         }`}
       >
-        <span className="flex min-w-0 flex-1 items-center gap-1.5 pl-3">
-          {gone ? (
-            <WarningIcon className="size-4 shrink-0" />
-          ) : (
-            <LinkIcon className="size-4 shrink-0 text-primary" />
-          )}
-          <span
-            title={state.accountId}
-            className={`min-w-0 truncate font-mono font-semibold ${gone ? "line-through" : ""}`}
-          >
-            {state.accountId}
+        <div className="flex min-w-0 flex-1 flex-col pl-3">
+          <span className="flex min-w-0 items-center gap-1.5">
+            {gone ? (
+              <WarningIcon className="size-4 shrink-0" />
+            ) : (
+              <LinkIcon className="size-4 shrink-0 text-primary" />
+            )}
+            <span
+              title={state.accountId}
+              className={`min-w-0 truncate font-mono font-semibold ${gone ? "line-through" : ""}`}
+            >
+              {state.accountId}
+            </span>
           </span>
-        </span>
-        <div className={ROW_SELECT_COLUMN}>
+          {/* Under the Account ID, past the icon. */}
+          <span className="flex min-h-6 items-center pl-5.5">
+            {state.isYou ? (
+              <span className="text-xs font-semibold text-primary">You</span>
+            ) : (
+              <button
+                type="button"
+                className={`-mx-1 inline-flex min-h-6 items-center rounded-selector px-1 text-xs font-semibold underline decoration-current/40 underline-offset-2 hover:decoration-current disabled:cursor-not-allowed disabled:no-underline disabled:opacity-50 ${
+                  gone ? "text-error" : "text-base-content/65 hover:text-error"
+                }`}
+                onClick={state.saved ? onUnlink : onUndo}
+                disabled={state.saved && !online}
+              >
+                Unlink <span className="sr-only">{who}</span>
+              </button>
+            )}
+          </span>
+        </div>
+        <div className={ROLE_COLUMN}>
           {/* An Account that no longer exists has no Role to pick; the column stays for alignment. */}
           {gone ? null : (
             <RolePill who={who} value={state.role} disabled={!online} onChange={onRole} />
           )}
         </div>
-        {/* Under Remove: "You" on your own row (which has no Unlink), so the Account ID keeps
-            the room. */}
-        {state.isYou ? (
-          <span className={`${ROW_ACTION_COLUMN} text-center text-xs font-semibold text-primary`}>
-            You
-          </span>
-        ) : (
-          <button
-            type="button"
-            className={`btn h-[calc(var(--size-field,0.25rem)*10)] min-h-0 shrink-0 btn-ghost px-0 disabled:bg-transparent disabled:opacity-40 ${ROW_ACTION_COLUMN} ${
-              gone ? "text-error" : "text-base-content/70 hover:text-error"
-            }`}
-            aria-label={`Unlink ${who}`}
-            onClick={state.saved ? onUnlink : onUndo}
-            disabled={state.saved && !online}
-          >
-            <UnlinkIcon className="size-5" />
-          </button>
-        )}
       </div>
       {/* Helper lines start where the Account ID's icon and the name field's text do. */}
       {gone ? (
@@ -143,15 +143,18 @@ export function LinkedLine({
   );
 }
 
+/**
+ * From the Skill level column's left edge to Remove's right edge (`ROW_SELECT_COLUMN`, the row's
+ * gap and `ROW_ACTION_COLUMN`), less the band's inset on the right.
+ */
+const ROLE_COLUMN = "w-[12.25rem] shrink-0 pr-1.5";
+
 const ROLES: { value: Role; label: string }[] = [
   { value: "player", label: "Player" },
   { value: "organizer", label: "Organizer" },
 ];
 
-/**
- * Player | Organizer, a pill like the Skill level picker in a Session player's menu. Each side
- * grows from its label's width, so "Organizer" fits in the narrow Skill level column.
- */
+/** Player | Organizer, a pill like the Skill level picker in a Session player's menu. */
 function RolePill({
   who,
   value,
@@ -175,7 +178,7 @@ function RolePill({
         return (
           <label
             key={role.value}
-            className={`btn h-full min-h-0 flex-auto rounded-full border-0 px-0 text-[0.8125rem] shadow-none has-[:disabled]:cursor-not-allowed has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-1 has-[:focus-visible]:outline-primary ${
+            className={`btn h-full min-h-0 flex-1 rounded-full border-0 px-0 text-[0.8125rem] shadow-none has-[:disabled]:cursor-not-allowed has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-1 has-[:focus-visible]:outline-primary ${
               on
                 ? "btn-primary has-[:disabled]:opacity-50"
                 : "btn-ghost text-base-content/75 has-[:disabled]:text-base-content/40"

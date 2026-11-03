@@ -22,6 +22,7 @@ const club: Club = makeClub({
   ],
 });
 
+const cat = "Cat";
 const role = (page: Page, who: string) => page.getByRole("radiogroup", { name: `Role for ${who}` });
 /** One side of a Role pill: "Player" or "Organizer". */
 const roleRadio = (page: Page, who: string, label: "Player" | "Organizer") =>
@@ -115,14 +116,15 @@ test.describe("Linking Accounts (one device)", () => {
     });
   });
 
-  test("the Role sits right under the Skill level", async ({ page }) => {
+  test("the Role starts right under the Skill level and reaches under Remove", async ({ page }) => {
     const skill = (await page
-      .getByRole("combobox", { name: `Skill level for ${roy.name}` })
+      .getByRole("combobox", { name: `Skill level for ${cat}` })
       .boundingBox())!;
+    const remove = (await page.getByRole("button", { name: `Remove ${cat}` }).boundingBox())!;
     const roleBox = (await role(page, roy.name).boundingBox())!;
     expect(Math.abs(roleBox.x - skill.x)).toBeLessThan(1);
-    expect(Math.abs(roleBox.width - skill.width)).toBeLessThan(1);
-    expect(roleBox.y).toBeGreaterThan(skill.y + skill.height);
+    expect(roleBox.x + roleBox.width).toBeGreaterThan(remove.x + remove.width / 2);
+    expect(roleBox.x + roleBox.width).toBeLessThanOrEqual(remove.x + remove.width);
   });
 
   test("the last Organizer can't demote themselves, and can't leave", async ({ page }) => {
