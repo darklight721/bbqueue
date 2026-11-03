@@ -1,6 +1,6 @@
-# Spec: Edit players — the @Account ID hint and row dividers
+# Spec: Edit players — the @Account ID hint, row dividers, Account ID band, Role pill and column header
 
-Status: done
+Status: ready-for-agent (01 done, 02 open)
 Depends on: edit-players, accounts
 
 Screens (changed): `/clubs/:clubId/players` (Edit players). The Club page's roster is unchanged.
@@ -26,6 +26,41 @@ Vocabulary per `GLOSSARY.md`: **Club player**, **Account**, **Account ID**, **Or
 - On every roster on this page, with linking or not (Local clubs too). No line above the first row or below the last.
 - Row contents, columns and widths don't change.
 
+## Account ID band (issue 02)
+
+- Problem: on a linked row, only the Account ID chip is tinted, and the Role select sits outside the tint, so the Role doesn't read as belonging to the Account.
+- The tint moves from the chip to the whole Account ID line, edge to edge: one rounded band behind the Account ID, the Role and Unlink (in the column under Remove).
+- The band is one line at field height (`h-10`, like the Role pill): the Account ID, then on the viewer's own row a small "You" label after it (`text-xs font-semibold text-primary`). The Account ID truncates first. No second line inside the band.
+- Same colours as the chip had: `bg-base-200`; `bg-primary/10` on the viewer's own row; `bg-error/10` (with the struck-through Account ID) when the Account no longer exists.
+- The Account ID keeps its left edge in line with the name field's text, and the Role keeps the Skill level column, so Roles still line up under Skill levels.
+- The helper lines under the band ("This Account no longer exists.", "The only Organizer.", a refused Role change) stay outside it, unchanged.
+- The name line above is not tinted.
+
+## Unlink icon (issue 02)
+
+- Unlink moves from a text link under the Account ID to an icon button in the Remove column, inside the band, so it sits under Remove.
+- A new link-slash icon (`LinkIcon`'s chain with a diagonal stroke through it), not ✕, so it can't be mistaken for Remove directly above.
+- A ghost square button the width of the Remove column and as tall as the band (`w-12 h-10`), with the icon in Remove's colour (`text-base-content/70`), red on hover. Red all the time when the Account no longer exists.
+- Accessible name unchanged: "Unlink <name>".
+- States unchanged: none on the viewer's own row (the space stays empty inside the band). On a link that isn't saved yet it takes the link back, clears the name and focuses the name field, offline too. On a saved link it is disabled while offline (the offline note at the top explains). No confirm: it is a form edit until Save, and Discard undoes it.
+
+## Role pill (issue 02)
+
+- The Role `<select>` becomes a two-option pill toggle, "Player | Organizer", like the Skill level picker in a Session player's menu (`PlayerMenuSheet`): radios in a rounded-full track, with the chosen one as `btn-primary`.
+- It sits in the Skill level column (`ROW_SELECT_COLUMN`, `8.75rem`), at field height (`h-10`, same as the select above it), with text at `0.8125rem`. "Organizer" must fit without truncating at 320px viewport width.
+- The track contrasts with the band (e.g. `bg-base-100`), not `bg-base-200`, which would disappear on a grey band.
+- Accessible name unchanged: a `radiogroup` "Role for <name>" with radios "Player" and "Organizer". Arrow keys move between them like any radio group. A visible focus ring, as in the Skill level picker.
+- Behaviour unchanged: choosing a Role is a form edit saved with Save. Disabled when offline. No pill when the Account no longer exists (the column stays empty for alignment).
+- Choosing Player on the only Organizer is refused as now: the pill stays on Organizer and "A Club needs at least one Organizer." shows. Player is not disabled ahead of time.
+
+## Column header (issue 02)
+
+- A header line above the list: "Name" over the name fields, "Skill level" over the Skill level column, with the Remove column left blank so they line up.
+- Styled like the Skill level legend in a Session player's menu: `text-xs font-bold tracking-[0.14em] uppercase text-base-content/60`.
+- Shown only when the roster has at least one row (not over "No players yet"), on every roster on this page (Local clubs too). It goes under the @Account ID hint or offline note.
+- No "Role" heading: the pill's own words say what it is.
+- Not sticky. Visual only (`aria-hidden`): every field already has its own label.
+
 ## Out of scope (later)
 
 - The Club page's roster.
@@ -34,7 +69,9 @@ Vocabulary per `GLOSSARY.md`: **Club player**, **Account**, **Account ID**, **Or
 
 ## E2E workflows
 
-None — copy and styling only. Whether the hint shows depends only on the Role, Shared vs Local and online state, which Vitest component tests on Edit players prove; the dividers are a purely visual tweak.
+Issue 01: None — copy and styling only. Whether the hint shows depends only on the Role, Shared vs Local and online state, which Vitest component tests on Edit players prove; the dividers are a purely visual tweak.
+
+Issue 02: the existing Role workflows, now driven through the pill instead of a select. Every e2e spec that finds `combobox "Role for …"` switches to `radiogroup "Role for …"` and its radios (check / `toBeChecked`) on both the fake-Backend and emulator projects: `club-roles.spec.ts`, `make-shared-club.spec.ts`, `emulator/roles.spec.ts`, `emulator/make-shared-club.spec.ts`, `emulator/shared-clubs.spec.ts`, `emulator/delete-account.spec.ts`. `club-roles.spec.ts` also covers choosing a Role by tap on WebKit and Chromium, and the refusal on the only Organizer. Unlink keeps its accessible name, so its existing workflows ("Unlink takes back a link that isn't saved yet", "own row says You, and has no Unlink", "Unlink on a saved link, then Save") cover the icon button unchanged and must still pass. The band and the header are visual only (exempt).
 
 ## Acceptance
 
