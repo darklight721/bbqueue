@@ -120,6 +120,10 @@ _Avoid_: Win ratio, win percentage
 What one person has played across Ended sessions: their Ended matches, wins, losses, Win rate and Partners. Either a Club player's, within one Club, or an Account's own, across every Club player linked to it. Guests have no Play record. The app labels it "Stats"; that is UI copy only.
 _Avoid_: Player stats, profile, career, history
 
+**Last played**:
+The day of the most recent Ended session in which a Club player played at least one Ended match, dated by that Session's Start. Being a Session player without playing a Match does not count, and neither does the Active session. A Club player who has never played has no Last played.
+_Avoid_: Last seen, last active, last session
+
 **Top winners**:
 The Session players in 1st to 3rd place in a Session's Standings who have at least one win.
 _Avoid_: Leaderboard, champions
