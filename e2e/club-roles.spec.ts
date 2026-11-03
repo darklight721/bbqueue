@@ -278,7 +278,7 @@ test("a Player sees the Club page without Edit, with You on their row and no Acc
   await expect(page.getByRole("button", { name: "Edit club name" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Edit players" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: roy.name })).toHaveAccessibleDescription(
-    "Organizer, Intermediate",
+    "Organizer, Linked to an account, Intermediate",
   );
 
   // A roster row opens that Club player's Stats, and Back returns here.

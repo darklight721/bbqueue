@@ -1,6 +1,6 @@
 # Spec: Roster rows on the Club page
 
-Status: ready-for-agent
+Status: done
 Depends on: club-page, edit-players
 
 Screens (changed): `/clubs/:clubId` (Club page: the Players list), `/sessions/:id` (Session page: its Players sort control moves to a shared component, no visible change).
@@ -35,7 +35,7 @@ As in `GLOSSARY.md`: the Start of the most recent Ended session of this Club in 
 
 ## Domain
 
-- `clubRosterFigures` (`src/domain/playRecord.ts`) gives, for every Club player of the Club with a Last played, that Last played (the Session's `startedAt`), in one pass over the Ended sessions. Match counts, wins, losses and Win rate leave `RosterFigures`; Stats keeps them through `clubPlayRecord`, unchanged.
+- `clubLastPlayed` (`src/domain/playRecord.ts`, replacing `clubRosterFigures`) gives, for every Club player of the Club with a Last played, that Last played (the Session's `startedAt`), in one pass over the Ended sessions. Match counts, wins, losses and Win rate leave the roster (`RosterFigures` goes away); Stats keeps them through `clubPlayRecord`, unchanged.
 - A pure roster sort (name, or Last played with the tie rules above), unit tested.
 - No storage beyond the sort preference, no Backend or Security Rules change.
 

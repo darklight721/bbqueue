@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import type { Club, EndedSession } from "../src/domain/types.ts";
+import type { Account, Club, EndedSession } from "../src/domain/types.ts";
 import {
   makeClub,
   makeClubPlayer,
@@ -39,6 +39,59 @@ async function openClub(page: Page, club: Club, endedSessions: EndedSession[] = 
   await page.goto(`/clubs/${club.id}`);
   await expect(page.getByRole("heading", { level: 1, name: "Club" })).toBeVisible();
 }
+
+const sortControl = (page: Page) => players(page).getByRole("group", { name: "Sort players" });
+
+const SEP_5 = new Date(2025, 8, 5, 19).getTime();
+const OCT_3 = new Date(2025, 9, 3, 19).getTime();
+
+/** An Ended session of `club` started at `startedAt` in which the Club players in `ids` (name → id) played. */
+function playedBy(club: Club, ids: Record<string, string>, startedAt: number): EndedSession {
+  const [a = "Gus", b = "Hal"] = Object.keys(ids);
+  const ended = makeEndedSessionFromMatches([{ a: [a, "Ivy"], b: [b, "Jo"], score: [21, 15] }], {
+    clubId: club.id,
+    clubName: club.name,
+    startedAt,
+    endedAt: startedAt + 7_200_000,
+  });
+  ended.players = ended.players.map((player) => ({
+    ...player,
+    clubPlayerId: ids[player.name] ?? null,
+  }));
+  return ended;
+}
+
+/** Ann and Bob last played on 5 Sep, Cat on 3 Oct; Dee never. */
+function sortClub() {
+  return makeClub({
+    name: "Alpha Club",
+    players: ["Dee", "Cat", "Bob", "Ann"].map((name) => ({
+      id: `cp-${name.toLowerCase()}`,
+      name,
+      skill: "intermediate" as const,
+    })),
+  });
+}
+
+function sortSessions(club: Club) {
+  return [
+    playedBy(club, { Ann: "cp-ann", Bob: "cp-bob" }, SEP_5),
+    playedBy(club, { Cat: "cp-cat" }, OCT_3),
+  ];
+}
+
+/** The day as the roster shows it for a past year, in the browser's locale. */
+const dayWithYear = (page: Page, at: number) =>
+  page.evaluate(
+    (time) =>
+      new Intl.DateTimeFormat(undefined, {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      }).format(time),
+    at,
+  );
 
 async function expectRoster(page: Page, names: string[]) {
   await expect(rosterRows(page)).toHaveCount(names.length);
@@ -150,6 +203,108 @@ test.describe("Players", () => {
   });
 });
 
+test.describe("Roster rows", () => {
+  const roy: Account = { accountId: "roy-7k3f", name: "Roy Smith" };
+  const ana: Account = { accountId: "ana-2222", name: "Ana Bell" };
+
+  test("name, link icon and Skill on one line, then Organizer and Last played; no Win rate", async ({
+    page,
+  }) => {
+    const club = makeClub({
+      id: "shared-1",
+      name: "Tuesday",
+      kind: "shared",
+      players: [
+        {
+          id: "p-roy",
+          name: roy.name,
+          skill: "intermediate",
+          link: { accountId: roy.accountId, role: "organizer" },
+        },
+        {
+          id: "p-ana",
+          name: ana.name,
+          skill: "beginner",
+          link: { accountId: ana.accountId, role: "player" },
+        },
+        { id: "p-cat", name: "Cat", skill: "advanced" },
+      ],
+    });
+    const ended = playedBy(club, { [roy.name]: "p-roy", [ana.name]: "p-ana" }, OCT_3);
+    await seedStorage(page, {
+      account: roy,
+      otherAccounts: [ana],
+      sharedClubs: [club],
+      sharedEndedSessions: [ended],
+    });
+    await page.goto(`/clubs/${club.id}`);
+    const day = await dayWithYear(page, OCT_3);
+
+    await expectRoster(page, ["Ana Bell", "Cat", "Roy Smith"]);
+    await expect(rosterRows(page).nth(0)).toHaveAccessibleDescription(
+      `Linked to an account, Last played ${day}, Beginner`,
+    );
+    await expect(rosterRows(page).nth(1)).toHaveAccessibleDescription("Advanced");
+    await expect(rosterRows(page).nth(2)).toHaveAccessibleDescription(
+      `You, Organizer, Linked to an account, Last played ${day}, Intermediate`,
+    );
+    await expect(rosterRows(page).nth(2)).toContainText(`Organizer·Last played ${day}`);
+    // The link icon is only on linked rows; no Win rate or match count anywhere.
+    await expect(rosterRows(page).nth(0).locator("svg")).toHaveCount(2);
+    await expect(rosterRows(page).nth(1).locator("svg")).toHaveCount(1);
+    await expect(players(page).getByRole("list")).not.toContainText(/%|match/);
+
+    // The Skill badge sits on the name's line.
+    const name = await rosterRows(page).nth(1).getByText("Cat", { exact: true }).boundingBox();
+    const skill = await rosterRows(page).nth(1).getByTitle("Advanced").boundingBox();
+    expect(Math.abs(name!.y + name!.height / 2 - (skill!.y + skill!.height / 2))).toBeLessThan(4);
+  });
+
+  test("no sort until someone has played; Last played puts the most recent first and never-played last", async ({
+    page,
+  }) => {
+    const club = sortClub();
+    const fresh = makeClub({ name: "Fresh Club", players: [makeClubPlayer({ name: "Zed" })] });
+    await seedStorage(page, { clubs: [club, fresh], endedSessions: sortSessions(club) });
+
+    await page.goto(`/clubs/${fresh.id}`);
+    await expectRoster(page, ["Zed"]);
+    await expect(sortControl(page)).toHaveCount(0);
+
+    await page.goto(`/clubs/${club.id}`);
+    await expect(sortControl(page).getByRole("radio", { name: "Name" })).toBeChecked();
+    await expectRoster(page, ["Ann", "Bob", "Cat", "Dee"]);
+    await sortControl(page).getByText("Last played").click();
+    await expectRoster(page, ["Cat", "Ann", "Bob", "Dee"]);
+  });
+
+  test("the chosen sort survives a reload and applies to every Club", async ({ page }) => {
+    const club = sortClub();
+    const other = makeClub({
+      name: "Beta Club",
+      players: [
+        { id: "cp-eve", name: "Eve", skill: "intermediate" },
+        { id: "cp-fay", name: "Fay", skill: "intermediate" },
+      ],
+    });
+    await seedStorage(page, {
+      clubs: [club, other],
+      endedSessions: [...sortSessions(club), playedBy(other, { Fay: "cp-fay" }, OCT_3)],
+    });
+    await page.goto(`/clubs/${club.id}`);
+    await sortControl(page).getByText("Last played").click();
+    await expectRoster(page, ["Cat", "Ann", "Bob", "Dee"]);
+
+    await page.reload();
+    await expect(sortControl(page).getByRole("radio", { name: "Last played" })).toBeChecked();
+    await expectRoster(page, ["Cat", "Ann", "Bob", "Dee"]);
+
+    await page.goto(`/clubs/${other.id}`);
+    await expect(sortControl(page).getByRole("radio", { name: "Last played" })).toBeChecked();
+    await expectRoster(page, ["Fay", "Eve"]);
+  });
+});
+
 test.describe("Stats from the roster", () => {
   /** Ann played two matches (a win and an unscored one); Bob played one, unscored; Cat never played. */
   function playedClub() {
@@ -175,24 +330,6 @@ test.describe("Stats from the roster", () => {
     }));
     return { club, ended };
   }
-
-  test("rows of Club players who played show matches and Win rate; one who never played has one line", async ({
-    page,
-  }) => {
-    const { club, ended } = playedClub();
-    await openClub(page, club, [ended]);
-
-    await expectRoster(page, ["Ann", "Bob", "Cat"]);
-    await expect(rosterRows(page).nth(0)).toHaveAccessibleDescription(
-      "2 matches · 100%, Intermediate",
-    );
-    await expect(rosterRows(page).nth(0)).toContainText("2 matches · 100%");
-    // No win or loss yet: no Win rate.
-    await expect(rosterRows(page).nth(1)).toContainText("1 match");
-    await expect(rosterRows(page).nth(1)).not.toContainText("%");
-    await expect(rosterRows(page).nth(2)).toHaveAccessibleDescription("Advanced");
-    await expect(rosterRows(page).nth(2)).not.toContainText("match");
-  });
 
   test("a row opens that Club player's Stats; Back returns to the Club page, also after a reload", async ({
     page,

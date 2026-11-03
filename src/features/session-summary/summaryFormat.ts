@@ -46,6 +46,19 @@ export function sessionDay(startedAt: number): string {
   }).format(startedAt);
 }
 
+/** `sessionDay`, plus the year when it isn't the current one: "Fri, 2 Oct 2025". */
+export function sessionDayWithYear(startedAt: number, now = Date.now()): string {
+  if (new Date(startedAt).getFullYear() === new Date(now).getFullYear()) {
+    return sessionDay(startedAt);
+  }
+  return new Intl.DateTimeFormat(undefined, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(startedAt);
+}
+
 /** "18:00–20:15" in the device locale. */
 export function sessionTimes(startedAt: number, endedAt: number): string {
   const time = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });

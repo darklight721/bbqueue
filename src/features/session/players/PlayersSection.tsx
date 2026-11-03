@@ -1,6 +1,7 @@
 import { useId, useMemo, useState } from "react";
 import { ConfirmDialog } from "../../../components/ConfirmDialog.tsx";
 import { ChevronDownIcon, MenuDotsIcon, PlusIcon } from "../../../components/icons.tsx";
+import { SortControl } from "../../../components/SortControl.tsx";
 import { removePlayer, setSittingOut } from "../../../domain/engine/index.ts";
 import type { SessionPlayer } from "../../../domain/types.ts";
 import { useAccount } from "../../../storage/store.ts";
@@ -93,6 +94,8 @@ export function PlayersSection({
           {players.length > 0 ? (
             <div className="flex flex-col gap-2">
               <SortControl
+                legend="Sort players"
+                options={PLAYER_SORTS}
                 value={sort}
                 onChange={(value) => {
                   setSort(value);
@@ -167,50 +170,6 @@ function LeftNotice() {
     <p className="rounded-box bg-base-200 px-4 py-3 text-sm font-semibold text-base-content/75">
       You left this session. An Organizer can add you back.
     </p>
-  );
-}
-
-function SortControl({
-  value,
-  onChange,
-}: {
-  value: PlayerSort;
-  onChange: (value: PlayerSort) => void;
-}) {
-  const groupName = useId();
-  return (
-    <fieldset className="flex items-center justify-between gap-3">
-      <legend className="sr-only">Sort players</legend>
-      <span
-        aria-hidden="true"
-        className="text-xs font-bold tracking-[0.14em] text-base-content/60 uppercase"
-      >
-        Sort by
-      </span>
-      <div className="flex gap-1 rounded-full bg-base-200 p-1">
-        {PLAYER_SORTS.map((option) => {
-          const on = option.value === value;
-          return (
-            <label
-              key={option.value}
-              className={`btn h-10 min-h-10 rounded-full border-0 px-3.5 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-1 has-[:focus-visible]:outline-primary min-[380px]:px-4 ${
-                on ? "btn-secondary" : "btn-ghost text-base-content/70"
-              }`}
-            >
-              <input
-                type="radio"
-                className="sr-only"
-                name={groupName}
-                value={option.value}
-                checked={on}
-                onChange={() => onChange(option.value)}
-              />
-              {option.label}
-            </label>
-          );
-        })}
-      </div>
-    </fieldset>
   );
 }
 

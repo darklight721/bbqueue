@@ -124,6 +124,20 @@ describe("Club screen for an Organizer", () => {
     expect(screen.queryByRole("textbox", { name: /Account ID/ })).not.toBeInTheDocument();
   });
 
+  it("marks linked rows on the Club page, Organizers and Players alike, without their Account IDs", async () => {
+    await roy.linkClubPlayer("c1", CAT.id, anaAccount.accountId, "player");
+    renderAt("/clubs/c1");
+
+    expect(await screen.findByRole("link", { name: "Cat" })).toHaveAccessibleDescription(
+      "Linked to an account, Beginner",
+    );
+    expect(screen.getByRole("link", { name: "Roy Smith" })).toHaveAccessibleDescription(
+      /^You, Organizer, Linked to an account, /,
+    );
+    expect(screen.getByRole("link", { name: "Dan" })).toHaveAccessibleDescription("Advanced");
+    expect(screen.queryByText(anaAccount.accountId)).not.toBeInTheDocument();
+  });
+
   it("says a name field also takes an @Account ID, on rows with no link", async () => {
     await editAt("/clubs/c1");
 

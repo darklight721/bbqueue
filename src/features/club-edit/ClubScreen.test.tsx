@@ -12,6 +12,7 @@ import {
   setLocalClubs,
   setSession,
 } from "../../storage/store.ts";
+import { sessionDayWithYear } from "../session-summary/summaryFormat.ts";
 
 const riverside: Club = {
   id: "c1",
@@ -72,52 +73,64 @@ describe("Club page", () => {
     expect(rows[2]).toHaveAccessibleDescription("Advanced");
   });
 
-  it("shows Ended matches and Win rate on rows of Club players who played, nothing on the others", () => {
+  it("says when each Club player last played; a Session they joined without playing doesn't count", () => {
     setLocalClubs([riverside]);
-    addEndedSession({
-      ...endedFor("night", "c1"),
-      players: [
-        { id: "s1", name: "Zed", skill: "advanced", clubPlayerId: "p1" },
-        { id: "s2", name: "alice", skill: "beginner", clubPlayerId: "p2" },
-        { id: "s3", name: "Guest", skill: "intermediate", clubPlayerId: null },
-        { id: "s4", name: "Guest 2", skill: "intermediate", clubPlayerId: null },
-      ],
-      matches: [
-        {
-          number: 1,
-          courtNumber: 1,
-          teams: [
-            ["s1", "s3"],
-            ["s2", "s4"],
-          ],
-          target: 21,
-          startedAt: 1,
-          endedAt: 2,
-          score: [21, 15],
-        },
-        {
-          number: 2,
-          courtNumber: 1,
-          teams: [
-            ["s1", "s4"],
-            ["s2", "s3"],
-          ],
-          target: 21,
-          startedAt: 3,
-          endedAt: 4,
-          score: null,
-        },
-      ],
-    });
+    addEndedSession(playedBy("early", EARLY, ["s1", "s2"], ["s3"]));
+    addEndedSession(playedBy("late", LATE, ["s1"], ["s2", "s3"]));
     renderAt("/clubs/c1");
     expect(screen.getByRole("link", { name: "Zed" })).toHaveAccessibleDescription(
-      "2 matches · 100%, Advanced",
+      `Last played ${sessionDayWithYear(LATE)}, Advanced`,
     );
+    // alice joined the late Session but never got on court.
     expect(screen.getByRole("link", { name: "alice" })).toHaveAccessibleDescription(
-      "2 matches · 0%, Beginner",
+      `Last played ${sessionDayWithYear(EARLY)}, Beginner`,
     );
     expect(screen.getByRole("link", { name: "Bob" })).toHaveAccessibleDescription("Intermediate");
-    expect(screen.getByText("2 matches · 100%")).toBeInTheDocument();
+    expect(screen.getByText(`Last played ${sessionDayWithYear(LATE)}`)).toBeInTheDocument();
+    // No Win rate or match count on the roster: that's on Stats.
+    expect(screen.queryByText(/match|%/)).not.toBeInTheDocument();
+  });
+
+  it("has no sort until someone on the roster has played", () => {
+    setLocalClubs([riverside]);
+    renderAt("/clubs/c1");
+    expect(screen.queryByRole("group", { name: "Sort players" })).not.toBeInTheDocument();
+  });
+
+  it("sorts by Last played, most recent first and never-played last, and remembers it", async () => {
+    setLocalClubs([riverside]);
+    addEndedSession(playedBy("early", EARLY, ["s2"], []));
+    addEndedSession(playedBy("late", LATE, ["s1"], []));
+    renderAt("/clubs/c1");
+    const sort = screen.getByRole("group", { name: "Sort players" });
+    expect(within(sort).getByRole("radio", { name: "Name" })).toBeChecked();
+    expect(rosterNames()).toEqual(["alice", "Bob", "Zed"]);
+
+    await userEvent.click(within(sort).getByRole("radio", { name: "Last played" }));
+    expect(rosterNames()).toEqual(["Zed", "alice", "Bob"]);
+    expect(localStorage.getItem("bq:v1:roster-sort")).toBe('"last-played"');
+
+    cleanup();
+    renderAt("/clubs/c1");
+    expect(screen.getByRole("radio", { name: "Last played" })).toBeChecked();
+    expect(rosterNames()).toEqual(["Zed", "alice", "Bob"]);
+  });
+
+  it("sorts by Name while the sort is hidden, keeping a saved Last played", () => {
+    localStorage.setItem("bq:v1:roster-sort", '"last-played"');
+    setLocalClubs([{ ...riverside, players: [...riverside.players].reverse() }]);
+    renderAt("/clubs/c1");
+    expect(rosterNames()).toEqual(["alice", "Bob", "Zed"]);
+    expect(localStorage.getItem("bq:v1:roster-sort")).toBe('"last-played"');
+  });
+
+  it("sorts by Name when the saved sort isn't one it knows", () => {
+    localStorage.setItem("bq:v1:roster-sort", '"plays"');
+    setLocalClubs([riverside]);
+    addEndedSession(playedBy("late", LATE, ["s1"], []));
+    renderAt("/clubs/c1");
+    expect(screen.getByRole("radio", { name: "Name" })).toBeChecked();
+    expect(rosterNames()).toEqual(["alice", "Bob", "Zed"]);
   });
 
   it("renames the Club in a sheet from the card, and nothing else", async () => {
@@ -414,6 +427,60 @@ function endedFor(id: string, clubId: string | null): EndedSession {
     matches: [],
   };
 }
+
+const EARLY = Date.UTC(2026, 8, 4, 18);
+const LATE = Date.UTC(2026, 9, 2, 18);
+const SESSION_PLAYERS = { s1: ["Zed", "p1"], s2: ["alice", "p2"], s3: ["Bob", "p3"] } as const;
+
+/** An Ended session of c1 started at `startedAt`: `played` had a Match (with two Guests), `joined` didn't. */
+function playedBy(
+  id: string,
+  startedAt: number,
+  played: (keyof typeof SESSION_PLAYERS)[],
+  joined: (keyof typeof SESSION_PLAYERS)[],
+): EndedSession {
+  const [a = "g1", b = "g2"] = played;
+  return {
+    ...endedFor(id, "c1"),
+    startedAt,
+    endedAt: startedAt + 7_200_000,
+    players: [
+      ...[...played, ...joined].map((sid) => ({
+        id: sid,
+        name: SESSION_PLAYERS[sid][0],
+        skill: "intermediate" as const,
+        clubPlayerId: SESSION_PLAYERS[sid][1],
+      })),
+      ...["g1", "g2", "g3", "g4"].map((gid) => ({
+        id: gid,
+        name: gid,
+        skill: "intermediate" as const,
+        clubPlayerId: null,
+      })),
+    ],
+    matches: [
+      {
+        number: 1,
+        courtNumber: 1,
+        teams: [
+          [a, "g3"],
+          [b, "g4"],
+        ],
+        target: 21,
+        startedAt: startedAt + 1_000,
+        endedAt: startedAt + 600_000,
+        score: [21, 15],
+      },
+    ],
+  };
+}
+
+/** The roster's names, top to bottom. */
+const rosterNames = () =>
+  screen
+    .getAllByRole("link", { name: /^(alice|Bob|Zed)$/ })
+    .map((row) => row.getAttribute("aria-labelledby"))
+    .map((id) => document.getElementById(id!)!.textContent);
 
 describe("Club page Sessions card", () => {
   beforeEach(() => {

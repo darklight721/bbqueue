@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { accountPlayRecord, clubPlayRecord, clubRosterFigures, winRate } from "./playRecord.ts";
+import { accountPlayRecord, clubLastPlayed, clubPlayRecord, winRate } from "./playRecord.ts";
 import type { Club, EndedSession, EndedSessionMatch } from "./types.ts";
 
 type Pair = [string, string];
@@ -442,98 +442,59 @@ describe("accountPlayRecord", () => {
   });
 });
 
-describe("clubRosterFigures", () => {
-  it("gives each Club player who played their Ended matches and Win rate, leaving out those who never played", () => {
-    const first = ended(
-      "first",
-      1000_000,
-      [
-        { a: ["ann", "bob"], b: ["cat", "dan"], score: [21, 10] },
-        { a: ["ann", "cat"], b: ["bob", "dan"], score: null },
-      ],
-      ALL,
-    );
+describe("clubLastPlayed", () => {
+  const rows: Row[] = [{ a: ["ann", "bob"], b: ["cat", "dan"], score: [21, 10] }];
+
+  it("gives each Club player the Start of the most recent Ended session they played in", () => {
+    const first = ended("first", 1000_000, rows, ALL);
     const second = ended(
       "second",
-      2000_000,
-      [{ a: ["ann", "guest"], b: ["bob", "cat"], score: [15, 21] }],
+      3000_000,
+      [{ a: ["ann", "guest"], b: ["bob", "cat"], score: null }],
       { ...ALL, guest: null },
     );
-    const figures = clubRosterFigures([first, second], "c1");
-    expect(figures.get("cp-ann")).toEqual({ played: 3, wins: 1, losses: 1, winRate: 0.5 });
-    expect(figures.get("cp-bob")).toEqual({ played: 3, wins: 2, losses: 0, winRate: 1 });
-    expect(figures.get("cp-dan")).toEqual({ played: 2, wins: 0, losses: 1, winRate: 0 });
-    // Guests and Club players with no Ended match aren't there.
-    expect(figures.has("guest")).toBe(false);
-    expect(clubRosterFigures([first], "c1").has("cp-nobody")).toBe(false);
-    expect(clubRosterFigures([], "c1").size).toBe(0);
+    // Out of order on purpose: the latest Start wins, not the last in the list.
+    const lastPlayed = clubLastPlayed([second, first], "c1");
+    expect(lastPlayed.get("cp-ann")).toBe(second.startedAt);
+    expect(lastPlayed.get("cp-cat")).toBe(second.startedAt);
+    expect(lastPlayed.get("cp-dan")).toBe(first.startedAt);
+    expect(lastPlayed.has("guest")).toBe(false);
+    expect(clubLastPlayed([], "c1").size).toBe(0);
   });
 
-  it("has no Win rate, not 0%, with only unscored matches", () => {
-    const night = ended(
-      "night",
-      1000_000,
-      [
-        { a: ["ann", "bob"], b: ["cat", "dan"], score: null },
-        { a: ["ann", "cat"], b: ["bob", "dan"], score: [21, 21] },
+  it("doesn't count an Ended session the Club player joined without playing a Match", () => {
+    const first = ended("first", 1000_000, rows, ALL);
+    const benched = ended("benched", 2000_000, rows, ALL);
+    benched.players = [
+      ...benched.players,
+      { id: "eve", name: "Eve", skill: "beginner", clubPlayerId: "cp-eve" },
+    ];
+    benched.matches = benched.matches.map((match) => ({
+      ...match,
+      teams: [
+        ["ann", "bob"],
+        ["cat", "eve"],
       ],
-      ALL,
-    );
-    expect(clubRosterFigures([night], "c1").get("cp-ann")).toEqual({
-      played: 2,
-      wins: 0,
-      losses: 0,
-      winRate: null,
-    });
+    }));
+    const lastPlayed = clubLastPlayed([first, benched], "c1");
+    expect(lastPlayed.get("cp-dan")).toBe(first.startedAt);
+    expect(lastPlayed.get("cp-eve")).toBe(benched.startedAt);
+    expect(clubLastPlayed([first], "c1").has("cp-eve")).toBe(false);
   });
 
-  it("counts only this Club's Ended sessions; older ones without clubPlayerId add nothing", () => {
-    const rows: Row[] = [{ a: ["ann", "bob"], b: ["cat", "dan"], score: [21, 10] }];
-    const old = ended("old", 1000_000, rows, {
+  it("counts only this Club's Ended sessions; Guests-only ones and older ones without clubPlayerId add nothing", () => {
+    const old = ended("old", 4000_000, rows, {
       ann: undefined,
       bob: undefined,
       cat: undefined,
       dan: undefined,
     });
-    const otherClub = ended("other", 2000_000, rows, ALL, { clubId: "c2" });
-    const noClub = ended("none", 2500_000, rows, ALL, { clubId: null, clubName: null });
+    const guests = ended("guests", 5000_000, rows, { ann: null, bob: null, cat: null, dan: null });
+    const otherClub = ended("other", 6000_000, rows, ALL, { clubId: "c2" });
+    const noClub = ended("none", 7000_000, rows, ALL, { clubId: null, clubName: null });
     const recent = ended("recent", 3000_000, rows, ALL);
-    const figures = clubRosterFigures([old, otherClub, noClub, recent], "c1");
-    expect(figures.get("cp-ann")).toEqual({ played: 1, wins: 1, losses: 0, winRate: 1 });
-    expect(clubRosterFigures([old], "c1").size).toBe(0);
-  });
-
-  it("agrees with each Club player's Play record totals", () => {
-    const sessions = [
-      ended(
-        "a",
-        1000_000,
-        [
-          { a: ["ann", "bob"], b: ["cat", "dan"], score: [21, 19] },
-          { a: ["ann", "dan"], b: ["bob", "cat"], score: [9, 21] },
-          { a: ["ann", "cat"], b: ["bob", "dan"], score: null },
-        ],
-        ALL,
-      ),
-      ended(
-        "b",
-        2000_000,
-        [
-          { a: ["bob", "cat"], b: ["ann", "dan"], score: [21, 17] },
-          { a: ["bob", "dan"], b: ["ann", "cat"], score: [20, 20] },
-        ],
-        ALL,
-      ),
-    ];
-    const figures = clubRosterFigures(sessions, "c1");
-    for (const player of garage.players) {
-      const {
-        played,
-        wins,
-        losses,
-        winRate: rate,
-      } = clubPlayRecord(sessions, [garage], "c1", player.id).totals;
-      expect(figures.get(player.id)).toEqual({ played, wins, losses, winRate: rate });
-    }
+    const lastPlayed = clubLastPlayed([old, guests, otherClub, noClub, recent], "c1");
+    expect(lastPlayed.get("cp-ann")).toBe(recent.startedAt);
+    expect(clubLastPlayed([old, guests], "c1").size).toBe(0);
   });
 });

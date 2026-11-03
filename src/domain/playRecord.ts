@@ -259,59 +259,29 @@ export function accountPlayRecord(
   return compute(endedSessions, clubs, accountPlayRecordTargets(clubs, accountId));
 }
 
-/** A Club player's figures on the Club page's roster. */
-export interface RosterFigures {
-  /** Ended matches played, scored or not. */
-  played: number;
-  wins: number;
-  losses: number;
-  winRate: number | null;
-}
-
 /**
- * The roster's figures: for every Club player of the Club who played an Ended match, their Ended
- * matches and Win rate, in one pass over the Ended sessions. The same counting as
- * `clubPlayRecord`'s totals (older Ended sessions without `clubPlayerId` add nothing). Club players
- * with no Ended match aren't in the map.
+ * Each Club player's Last played: the Start of the most recent Ended session of the Club in which
+ * they played an Ended match (scored or not). Being a Session player without a Match doesn't count,
+ * and older Ended sessions without `clubPlayerId` add nothing. Club players who never played aren't
+ * in the map.
  */
-export function clubRosterFigures(
+export function clubLastPlayed(
   endedSessions: readonly EndedSession[],
   clubId: string,
-): Map<string, RosterFigures> {
-  const figures = new Map<string, RosterFigures>();
+): Map<string, number> {
+  const lastPlayed = new Map<string, number>();
   for (const ended of endedSessions) {
     if (ended.clubId !== clubId) continue;
-    const clubPlayerIds = new Map(
-      ended.players.flatMap((player) =>
-        player.clubPlayerId != null ? [[player.id, player.clubPlayerId] as const] : [],
-      ),
+    const played = new Set(
+      ended.matches.flatMap((match) => [...match.teams[0], ...match.teams[1]]),
     );
-    if (clubPlayerIds.size === 0) continue;
-    for (const match of ended.matches) {
-      for (const side of [0, 1] as const) {
-        const { won, lost } = outcome(match.score, side);
-        // A Set: a Club player counts once per match.
-        const onSide = new Set(
-          match.teams[side].flatMap((id) => {
-            const clubPlayerId = clubPlayerIds.get(id);
-            return clubPlayerId === undefined ? [] : [clubPlayerId];
-          }),
-        );
-        for (const clubPlayerId of onSide) {
-          const entry = figures.get(clubPlayerId) ?? {
-            played: 0,
-            wins: 0,
-            losses: 0,
-            winRate: null,
-          };
-          entry.played += 1;
-          if (won) entry.wins += 1;
-          if (lost) entry.losses += 1;
-          figures.set(clubPlayerId, entry);
-        }
+    for (const player of ended.players) {
+      if (player.clubPlayerId == null || !played.has(player.id)) continue;
+      const previous = lastPlayed.get(player.clubPlayerId);
+      if (previous === undefined || ended.startedAt > previous) {
+        lastPlayed.set(player.clubPlayerId, ended.startedAt);
       }
     }
   }
-  for (const entry of figures.values()) entry.winRate = winRate(entry.wins, entry.losses);
-  return figures;
+  return lastPlayed;
 }
