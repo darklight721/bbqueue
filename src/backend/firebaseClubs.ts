@@ -2,28 +2,24 @@ import {
   arrayRemove,
   arrayUnion,
   collection,
-  deleteDoc,
   deleteField,
   doc,
   getDoc,
-  getDocFromCache,
   getDocFromServer,
   getDocs,
   onSnapshot,
   query,
   serverTimestamp,
-  setDoc,
-  updateDoc,
   where,
   writeBatch,
   type DocumentData,
   type DocumentReference,
-  type DocumentSnapshot,
   type Firestore,
   type QuerySnapshot,
 } from "firebase/firestore";
 import { accountIdsEqual, normalizeAccountId } from "../domain/accountId.ts";
 import type { ClubChange } from "../domain/clubChanges.ts";
+import { joinNameKey } from "../domain/joinLink.ts";
 import { clubChangeProblem, ownRow } from "../domain/permissions.ts";
 import {
   SKILL_LEVELS,
@@ -40,7 +36,16 @@ import {
   type Unsubscribe,
 } from "./backend.ts";
 import {
-  CACHE_TIMEOUT_MS,
+  clubJoinToken,
+  commitWithIndex,
+  joinRecordRef,
+  removeJoinRecord,
+  removeNameEntry,
+  setNameEntry,
+} from "./firebaseJoinLinks.ts";
+import {
+  isPermissionDenied,
+  readDoc as readDocOf,
   requireViewer as requireViewerOf,
   retryDelay,
   settle,
@@ -48,20 +53,24 @@ import {
   toBackendError,
   toLink,
   toRecord,
-  withTimeout,
   type FirebaseDeps,
+  type Write,
 } from "./firebaseShared.ts";
 import { planNewSharedClub } from "./newSharedClub.ts";
 
 /**
  * Shared clubs on Firestore:
- * - `clubs/{clubId}`: `{ name, memberUids, organizerUids, createdAt }`. The two arrays hold the
- * Firebase uids of the linked Accounts and are an index derived from the rows' links, so an
- * Account can list its Clubs (array-contains) and Security Rules can tell who may read and
- * write. They are kept in step with the rows.
+ * - `clubs/{clubId}`: `{ name, memberUids, organizerUids, createdAt, joinToken? }`. The two
+ * arrays hold the Firebase uids of the linked Accounts and are an index derived from the rows'
+ * links, so an Account can list its Clubs (array-contains) and Security Rules can tell who may
+ * read and write. They are kept in step with the rows.
  * - `clubs/{clubId}/players/{clubPlayerId}`: `{ name, skill, link?: { accountId, uid, role } }`.
  * One record per Club player, so the most recent change to a row wins. The Account ID is for
  * display and lookup; the uid is the identity, and the rules check that it owns that Account ID.
+ * - Once an Organizer has shared the Club's Join link, `joinToken` names its Join record
+ * (`joinLinks/{token}`, see `firebaseJoinLinks.ts`): the Club's name and a name index of its rows.
+ * Every write here that adds, renames, removes, links or unlinks a row, or renames the Club, keeps
+ * that record in step in the same batch ({@link commitWithIndex}); deleting the Club deletes it.
  *
  * Writes go through Firestore's offline queue: they show up in listeners at once and sync later.
  */
@@ -79,30 +88,27 @@ export function createFirebaseClubs(
 
   const requireViewer = () => requireViewerOf(deps);
 
-  /** A record from the server, or from the cache when it can't be reached; null when neither answers. */
-  async function readDoc(ref: DocumentReference): Promise<DocumentSnapshot | null> {
-    if (deps.online.get()) {
-      try {
-        return await getDoc(ref);
-      } catch {
-        // Fall back to the cache.
-      }
-    }
-    try {
-      // Reading the cache can stall in some browsers, so don't wait for it for long.
-      return await withTimeout(getDocFromCache(ref), CACHE_TIMEOUT_MS);
-    } catch {
-      return null;
-    }
-  }
+  const readDoc = (ref: DocumentReference) => readDocOf(deps.online, ref);
 
-  /** Fails with `not-found` when the Club is known not to exist. Unknown (offline, uncached) passes. */
+  /**
+   * Fails with `not-found` when the Club is known not to exist. Unknown (offline, uncached) passes.
+   */
   async function requireClub(clubId: string): Promise<void> {
     // Offline there is nothing to check against: the write waits in the queue, and the
     // server has the last word.
     if (!deps.online.get()) return;
+    await requireClubJoinToken(clubId);
+  }
+
+  /**
+   * {@link requireClub} for a write that changes what the Join record holds, and the Club's Join
+   * link token, or null without one. Offline the token is read from the cache.
+   */
+  async function requireClubJoinToken(clubId: string): Promise<string | null> {
+    const online = deps.online.get();
     const snapshot = await readDoc(clubRef(clubId));
-    if (snapshot && !snapshot.exists()) throw new BackendError("not-found");
+    if (online && snapshot && !snapshot.exists()) throw new BackendError("not-found");
+    return clubJoinToken(snapshot?.data());
   }
 
   /** The Club and its rows as the server has them (or the cache, offline), with who is behind each link. */
@@ -128,6 +134,7 @@ export function createFirebaseClubs(
         linkUids,
         memberUids: stringList(club.data().memberUids),
         organizerUids: stringList(club.data().organizerUids),
+        joinToken: clubJoinToken(club.data()),
       };
     } catch (error) {
       // A Club you can't read is, as far as you can tell, not there.
@@ -147,60 +154,90 @@ export function createFirebaseClubs(
    * Make one change that touches who is linked to the Club: the row and the Club's member and
    * Organizer lists go out in one batch, so they never disagree. Checks the rules of the domain
    * first for a plain message; Security Rules check the same on the server. `linkUid` is the uid
-   * of the Account a new link points at (for `addPlayer` and `link`).
+   * of the Account a new link points at (for `addPlayer` and `link`). The Join record's name index
+   * follows in the same batch.
    */
   async function changeLinks(clubId: string, change: ClubChange, linkUid?: string): Promise<void> {
     if (!deps.online.get()) throw new BackendError("offline");
     const { account: viewer } = await requireViewer();
-    const { club, linkUids } = await loadClub(clubId);
+    const { club, linkUids, joinToken } = await loadClub(clubId);
     const problem = clubChangeProblem(club, viewer.accountId, change);
     if (problem) throw new BackendError(problem);
 
-    const batch = writeBatch(db);
+    const roster: Write[] = [];
+    const index: Write[] = [];
     const existing = (playerId: string) => club.players.find((player) => player.id === playerId);
+    /** The index entry of a row that stays, now linked or not. */
+    const entry = async (playerId: string, linked: boolean) => {
+      const row = existing(playerId);
+      if (joinToken && row)
+        index.push(await setNameEntry(db, joinToken, row.name, playerId, linked));
+    };
 
     switch (change.type) {
-      case "addPlayer":
-        batch.set(playerRef(clubId, change.player.id), toRecord(change.player, linkUid));
-        if (change.player.link) {
+      case "addPlayer": {
+        const { player } = change;
+        roster.push((batch) => batch.set(playerRef(clubId, player.id), toRecord(player, linkUid)));
+        if (player.link) {
           if (!linkUid) throw new BackendError("failed");
-          batch.update(clubRef(clubId), lists(linkUid, change.player.link.role));
+          const role = player.link.role;
+          roster.push((batch) => batch.update(clubRef(clubId), lists(linkUid, role)));
+        }
+        if (joinToken) {
+          index.push(await setNameEntry(db, joinToken, player.name, player.id, !!player.link));
         }
         break;
+      }
       case "link": {
         if (!linkUid) throw new BackendError("failed");
-        const oldUid = existing(change.playerId)?.link ? linkUids.get(change.playerId) : undefined;
-        if (oldUid && oldUid !== linkUid) batch.update(clubRef(clubId), lists(oldUid, null));
-        batch.update(playerRef(clubId, change.playerId), {
-          link: toLink(change.link, linkUid),
-        });
-        batch.update(clubRef(clubId), lists(linkUid, change.link.role));
+        const { link, playerId } = change;
+        const oldUid = existing(playerId)?.link ? linkUids.get(playerId) : undefined;
+        if (oldUid && oldUid !== linkUid) {
+          roster.push((batch) => batch.update(clubRef(clubId), lists(oldUid, null)));
+        }
+        roster.push((batch) =>
+          batch.update(playerRef(clubId, playerId), { link: toLink(link, linkUid) }),
+        );
+        roster.push((batch) => batch.update(clubRef(clubId), lists(linkUid, link.role)));
+        await entry(playerId, true);
         break;
       }
       case "setRole": {
-        const uid = linkUids.get(change.playerId);
-        if (!existing(change.playerId)?.link || !uid) throw new BackendError("not-found");
-        batch.update(playerRef(clubId, change.playerId), { "link.role": change.role });
-        batch.update(clubRef(clubId), lists(uid, change.role));
+        const { playerId, role } = change;
+        const uid = linkUids.get(playerId);
+        if (!existing(playerId)?.link || !uid) throw new BackendError("not-found");
+        roster.push((batch) => batch.update(playerRef(clubId, playerId), { "link.role": role }));
+        roster.push((batch) => batch.update(clubRef(clubId), lists(uid, role)));
         break;
       }
       case "unlink": {
-        const uid = linkUids.get(change.playerId);
-        if (!existing(change.playerId)?.link || !uid) return;
-        batch.update(playerRef(clubId, change.playerId), { link: deleteField() });
-        batch.update(clubRef(clubId), lists(uid, null));
+        const { playerId } = change;
+        const uid = linkUids.get(playerId);
+        if (!existing(playerId)?.link || !uid) return;
+        roster.push((batch) => batch.update(playerRef(clubId, playerId), { link: deleteField() }));
+        roster.push((batch) => batch.update(clubRef(clubId), lists(uid, null)));
+        // Also when somebody unlinks themselves (leaves): the rules let them mark their own entry.
+        await entry(playerId, false);
         break;
       }
       case "removePlayer": {
-        const uid = linkUids.get(change.playerId);
-        batch.delete(playerRef(clubId, change.playerId));
-        if (existing(change.playerId)?.link && uid) batch.update(clubRef(clubId), lists(uid, null));
+        const { playerId } = change;
+        const row = existing(playerId);
+        const uid = linkUids.get(playerId);
+        roster.push((batch) => batch.delete(playerRef(clubId, playerId)));
+        if (row?.link && uid)
+          roster.push((batch) => batch.update(clubRef(clubId), lists(uid, null)));
+        const removal =
+          joinToken &&
+          row &&
+          (await removeNameEntry(db, deps.online, joinToken, row.name, playerId));
+        if (removal) index.push(removal);
         break;
       }
       default:
         throw new Error(`Not a link change: ${change.type}`);
     }
-    await settle(deps.online, batch.commit());
+    await commitWithIndex(db, deps.online, roster, index);
   }
 
   /**
@@ -250,6 +287,7 @@ export function createFirebaseClubs(
         const members = query(collection(db, "clubs"), where("memberUids", "array-contains", uid));
         interface Entry {
           name: string;
+          joinToken: string | null;
           /** The Club's rows as last heard; null until they have loaded once. */
           players: ClubPlayer[] | null;
           /** The Club's own record has a change that the server hasn't confirmed yet. */
@@ -281,8 +319,14 @@ export function createFirebaseClubs(
           for (const club of clubs.values()) if (!club.players) return;
           const ready: Club[] = [];
           for (const [id, club] of clubs) {
-            if (club.players)
-              ready.push({ id, name: club.name, kind: "shared", players: club.players });
+            if (!club.players) continue;
+            ready.push({
+              id,
+              name: club.name,
+              kind: "shared",
+              players: club.players,
+              ...(club.joinToken ? { joinToken: club.joinToken } : {}),
+            });
           }
           listener(ready);
         }
@@ -293,7 +337,7 @@ export function createFirebaseClubs(
           try {
             return !(await getDocFromServer(clubRef(clubId))).exists();
           } catch (error) {
-            return (error as { code?: unknown } | null)?.code === "permission-denied";
+            return isPermissionDenied(error);
           }
         }
 
@@ -379,11 +423,13 @@ export function createFirebaseClubs(
             }
             seen.add(clubDoc.id);
             const name = String(clubDoc.data().name ?? "");
+            const joinToken = clubJoinToken(clubDoc.data());
             const pending = clubDoc.metadata.hasPendingWrites;
             const known = clubs.get(clubDoc.id);
             if (known) {
-              if (known.name !== name) changed = true;
+              if (known.name !== name || known.joinToken !== joinToken) changed = true;
               known.name = name;
+              known.joinToken = joinToken;
               const confirmed = known.pending && !pending;
               known.pending = pending;
               if (confirmed) known.retryNow();
@@ -391,6 +437,7 @@ export function createFirebaseClubs(
             }
             const entry: Entry = {
               name,
+              joinToken,
               players: null,
               pending,
               stop: () => {},
@@ -507,8 +554,15 @@ export function createFirebaseClubs(
 
     async renameSharedClub(clubId, name) {
       const trimmed = requireValidName(name);
-      await requireClub(clubId);
-      await settle(deps.online, updateDoc(clubRef(clubId), { name: trimmed }));
+      const joinToken = await requireClubJoinToken(clubId);
+      await commitWithIndex(
+        db,
+        deps.online,
+        [(batch) => batch.update(clubRef(clubId), { name: trimmed })],
+        joinToken
+          ? [(batch) => batch.update(joinRecordRef(db, joinToken), { clubName: trimmed })]
+          : [],
+      );
     },
 
     async deleteSharedClub(clubId) {
@@ -532,26 +586,68 @@ export function createFirebaseClubs(
         );
         return;
       }
-      await requireClub(clubId);
-      await settle(deps.online, setDoc(playerRef(clubId, player.id), toRecord(player)));
+      const joinToken = await requireClubJoinToken(clubId);
+      await commitWithIndex(
+        db,
+        deps.online,
+        [(batch) => batch.set(playerRef(clubId, player.id), toRecord(player))],
+        joinToken ? [await setNameEntry(db, joinToken, player.name, player.id, false)] : [],
+      );
     },
 
     async updateClubPlayer(clubId, playerId, patch) {
       if (Object.keys(patch).length === 0) return;
-      if (patch.name !== undefined) requireValidName(patch.name);
-      await requireClub(clubId);
-      await settle(deps.online, updateDoc(playerRef(clubId, playerId), { ...patch }));
+      const newName = patch.name;
+      if (newName !== undefined) requireValidName(newName);
+      let joinToken: string | null = null;
+      if (newName === undefined) await requireClub(clubId);
+      else joinToken = await requireClubJoinToken(clubId);
+
+      // A new name moves the row's index entry: the old name's goes (unless another row has
+      // taken that name meanwhile) and the new name's points at this row.
+      const index: Write[] = [];
+      if (joinToken && newName !== undefined) {
+        const row = await readDoc(playerRef(clubId, playerId));
+        const data = row?.exists() ? row.data() : undefined;
+        if (data && joinNameKey(String(data.name ?? "")) !== joinNameKey(newName)) {
+          const removal = await removeNameEntry(
+            db,
+            deps.online,
+            joinToken,
+            String(data.name ?? ""),
+            playerId,
+          );
+          if (removal) index.push(removal);
+          index.push(await setNameEntry(db, joinToken, newName, playerId, !!data.link));
+        }
+      }
+      await commitWithIndex(
+        db,
+        deps.online,
+        [(batch) => batch.update(playerRef(clubId, playerId), { ...patch })],
+        index,
+      );
     },
 
     async removeClubPlayer(clubId, playerId) {
-      await requireClub(clubId);
+      const joinToken = await requireClubJoinToken(clubId);
       // Online this reads the server, offline the cache (nothing cached: an unlinked row is the
       // usual case).
       const row = await readDoc(playerRef(clubId, playerId));
-      const linked = !!row?.exists() && !!toClubPlayer(playerId, row.data() ?? {}).link;
+      const data = row?.exists() ? row.data() : undefined;
+      const linked = !!data && !!toClubPlayer(playerId, data).link;
       // A linked row also changes who is on the Club, which needs the connection and a check.
       if (linked) return changeLinks(clubId, { type: "removePlayer", playerId });
-      await settle(deps.online, deleteDoc(playerRef(clubId, playerId)));
+      const removal =
+        joinToken &&
+        data &&
+        (await removeNameEntry(db, deps.online, joinToken, String(data.name ?? ""), playerId));
+      await commitWithIndex(
+        db,
+        deps.online,
+        [(batch) => batch.delete(playerRef(clubId, playerId))],
+        removal ? [removal] : [],
+      );
     },
 
     async lookupAccount(accountId) {
@@ -599,7 +695,9 @@ export function createFirebaseClubs(
   /**
    * Removes `clubId` entirely. The history goes first, always: the Ended sessions (any Organizer
    * may delete them), so that nothing is left behind for somebody who learns the id and creates
-   * the Club again. Then the rows nobody is linked to, then the rest with the Club in one batch.
+   * the Club again. Then its Join record and name index (while the Club stands: the rules find
+   * the Organizer through it), the rows nobody is linked to, then the rest with the Club in one
+   * batch.
    */
   async function deleteWholeClub(clubId: string): Promise<void> {
     const CHUNK = 400;
@@ -618,6 +716,11 @@ export function createFirebaseClubs(
     await removeInBatches(
       (await getDocs(collection(db, "clubs", clubId, "endedSessions"))).docs.map((d) => d.ref),
     );
+    const joinToken = clubJoinToken(club.data());
+    if (joinToken) {
+      const names = rows.map((row) => String(row.data().name ?? ""));
+      await removeJoinRecord(db, deps.online, joinToken, names);
+    }
     // Rows nobody is linked to can go while the Club stands; the linked ones go with the Club.
     await removeInBatches(rows.filter((row) => !row.data().link).map((row) => row.ref));
 
@@ -688,6 +791,8 @@ interface LoadedClub {
   linkUids: Map<string, string>;
   memberUids: string[];
   organizerUids: string[];
+  /** The Club's current Join link token, or null before it is first shared. */
+  joinToken: string | null;
 }
 
 function toClubPlayer(id: string, data: DocumentData): ClubPlayer {

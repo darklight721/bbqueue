@@ -3,6 +3,7 @@ import { runBackendContract } from "./backend.contract.ts";
 import { runSharedClubsContract } from "./backend.clubs.contract.ts";
 import { runRolesContract } from "./backend.roles.contract.ts";
 import { runDeleteAccountContract } from "./backend.deleteAccount.contract.ts";
+import { runJoinLinkContract } from "./backend.joinLink.contract.ts";
 import { runMakeSharedContract } from "./backend.makeShared.contract.ts";
 import { runSessionsContract } from "./backend.sessions.contract.ts";
 import { createInMemoryBackend, createInMemoryServer } from "./inMemoryBackend.ts";
@@ -44,6 +45,16 @@ runMakeSharedContract("in-memory", () => {
 });
 
 runDeleteAccountContract("in-memory", () => {
+  const server = createInMemoryServer();
+  return {
+    device() {
+      const backend = createInMemoryBackend({ server });
+      return { backend, setOnline: (online) => backend.setOnline(online) };
+    },
+  };
+});
+
+runJoinLinkContract("in-memory", () => {
   const server = createInMemoryServer();
   return {
     device() {

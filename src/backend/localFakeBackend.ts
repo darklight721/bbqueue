@@ -63,6 +63,7 @@ function toSharedClub(raw: Record<string, unknown>): Club {
     name: String(raw.name),
     kind: "shared",
     players: Array.isArray(raw.players) ? (raw.players as Club["players"]) : [],
+    ...(typeof raw.joinToken === "string" ? { joinToken: raw.joinToken } : {}),
   };
 }
 

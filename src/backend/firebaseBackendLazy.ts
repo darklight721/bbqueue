@@ -71,6 +71,15 @@ export function createLazyFirebaseBackend(
       loaded.then((backend) => backend.unlinkClubPlayer(clubId, playerId)),
     leaveClub: (clubId) => loaded.then((backend) => backend.leaveClub(clubId)),
 
+    // Join links
+    getJoinLink: (clubId) => loaded.then((backend) => backend.getJoinLink(clubId)),
+    resetJoinLink: (clubId) => loaded.then((backend) => backend.resetJoinLink(clubId)),
+    getJoinLinkInfo: (token) => loaded.then((backend) => backend.getJoinLinkInfo(token)),
+    findJoinLinkName: (token, name) =>
+      loaded.then((backend) => backend.findJoinLinkName(token, name)),
+    claimClubPlayer: (token, name) =>
+      loaded.then((backend) => backend.claimClubPlayer(token, name)),
+
     // Shared Active session
     observeActiveSessions: (listener) =>
       observeWhenLoaded((backend) => backend.observeActiveSessions(listener)),

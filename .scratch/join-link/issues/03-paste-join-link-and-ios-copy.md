@@ -1,6 +1,6 @@
 # 03 Have a Join link? on Clubs, and the iOS copy line on the Join page
 
-Status: ready-for-agent
+Status: done
 Spec: ../spec.md
 Blocked by: 02
 

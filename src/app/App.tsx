@@ -1,11 +1,12 @@
 import { lazy, Suspense, useLayoutEffect, useRef } from "react";
-import { Redirect, Route, Switch, useLocation } from "wouter";
+import { Redirect, Route, Switch, useLocation, useRoute } from "wouter";
 import { getBackend } from "../backend/index.ts";
 import { AccountSettingsScreen } from "../features/account/AccountSettingsScreen.tsx";
 import { ClubScreen } from "../features/club-edit/ClubScreen.tsx";
 import { EditPlayersScreen } from "../features/club-edit/EditPlayersScreen.tsx";
 import { ClubsScreen } from "../features/clubs/ClubsScreen.tsx";
 import { HomeScreen } from "../features/home/HomeScreen.tsx";
+import { JoinScreen } from "../features/join/JoinScreen.tsx";
 import { NewSessionScreen } from "../features/new-session/NewSessionScreen.tsx";
 import {
   ClubSessionsScreen,
@@ -46,11 +47,14 @@ export function App() {
   useScrollToTopOnNavigate();
   const welcomeDone = useWelcomeDone();
   const hasAccount = useAccount() !== null;
+  // A Join link opens straight away, even on a device that has never opened the app.
+  const [onJoinPage] = useRoute("/join/:token");
   // No Backend (no Firebase config): no Accounts, so no Welcome screen either.
   const backend = getBackend();
+  const welcome = backend && !welcomeDone && !hasAccount && !onJoinPage;
   return (
     <>
-      {backend && !welcomeDone && !hasAccount ? <WelcomeScreen backend={backend} /> : <Routes />}
+      {welcome ? <WelcomeScreen backend={backend} /> : <Routes />}
       {supportsServiceWorker ? (
         <Suspense fallback={null}>
           <UpdatePrompt />
@@ -87,6 +91,7 @@ function Routes() {
         {(params) => <ClubSessionsScreen clubId={params.clubId} />}
       </Route>
       <Route path="/clubs/:clubId">{(params) => <ClubScreen clubId={params.clubId} />}</Route>
+      <Route path="/join/:token">{(params) => <JoinScreen token={params.token} />}</Route>
       <Route path="/sessions" component={PastSessionsScreen} />
       <Route path="/sessions/new" component={NewSessionScreen} />
       <Route path="/sessions/:id/summary">

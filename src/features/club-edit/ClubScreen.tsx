@@ -6,13 +6,14 @@ import { useOnline } from "../../backend/useOnline.ts";
 import { ConfirmDialog } from "../../components/ConfirmDialog.tsx";
 import { TrashIcon, WarningIcon } from "../../components/icons.tsx";
 import { Screen } from "../../components/Screen.tsx";
-import { canDeleteClub, canEditClub, ownRow } from "../../domain/permissions.ts";
+import { canChangeRoles, canDeleteClub, canEditClub, ownRow } from "../../domain/permissions.ts";
 import type { Club } from "../../domain/types.ts";
 import { useAccount, useClubs } from "../../storage/store.ts";
 import { ClubCard } from "./ClubCard.tsx";
 import { takeFromEditPlayers } from "./clubPaths.ts";
 import { clubErrorMessage } from "./clubErrors.ts";
 import { ClubSessionCards } from "./ClubSessionCards.tsx";
+import { JoinLinkCard } from "./JoinLinkCard.tsx";
 import { DangerZone, LEAVE_MESSAGE, LeaveClub } from "./LeaveClub.tsx";
 import { MakeShared } from "./MakeShared.tsx";
 import { EditPlayersLink, PlayersHeading, RosterList } from "./Roster.tsx";
@@ -32,7 +33,8 @@ function ClubPage({ club }: { club: Club }) {
   const viewer = account?.accountId;
   const canEdit = canEditClub(club, viewer);
   const online = useOnline();
-  const hasBackend = getBackend() !== null;
+  const backend = getBackend();
+  const hasBackend = backend !== null;
   const canDelete = canDeleteClub(club, viewer);
   const canLeave = club.kind === "shared" && !!ownRow(club, viewer);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -116,6 +118,11 @@ function ClubPage({ club }: { club: Club }) {
           {announcement}
         </p>
       </section>
+
+      {/* Organizers of a Shared club only (canEditClub is true on a Local club too). */}
+      {backend && canChangeRoles(club, viewer) ? (
+        <JoinLinkCard club={club} backend={backend} online={online !== false} />
+      ) : null}
 
       {club.kind === "local" && hasBackend ? (
         <MakeShared club={club} account={account} online={online !== false} />

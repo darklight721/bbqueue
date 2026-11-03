@@ -1,12 +1,12 @@
 rules_version = '2';
 
-// Security Rules (ADR-0006, ADR-0007). Tested on the Firebase emulator:
+// Security Rules (ADR-0006, ADR-0007, ADR-0010). Tested on the Firebase emulator:
 // src/backend/firestore.rules.emulator.test.ts (`pnpm test:firebase`).
 //
 // Data (see src/backend/firebaseBackend.ts and firebaseClubs.ts):
 // accounts/{uid} { accountId, name, createdAt }
 // accountIds/{normalised id} { uid } reserves an Account ID for good
-// clubs/{clubId} { name, memberUids, organizerUids, createdAt }
+// clubs/{clubId} { name, memberUids, organizerUids, createdAt, joinToken? }
 // clubs/{clubId}/players/{playerId} { name, skill, link?: { accountId, uid, role } }
 // clubs/{clubId}/activeSession/current
 // { sessionId, sessionJson, hostUid, hostAccountId, hostName, updatedAt }
@@ -14,6 +14,9 @@ rules_version = '2';
 // { uid, accountId, sessionId, sessionPlayerId, kind, createdAt }
 // clubs/{clubId}/endedSessions/{sessionId}
 // { hostUid, endedAt, endedJson, createdAt }
+// joinLinks/{token} { clubId, clubName, createdAt } the Join record of a Club's Join link
+// joinLinks/{token}/names/{nameHash} { playerId, linked } one per Club player, linked ones too
+// joinLinks/{token}/claims/{uid} { clubId, playerId, createdAt } who Claimed which row
 //
 // The Active session of a Shared club is one fixed record, so a Club has at most one. It holds the
 // Session host's whole Session (as JSON text) and who the host is; see the rules at the end.
@@ -39,6 +42,18 @@ rules_version = '2';
 // A new Club's first batch (ADR-0008): the creator is a member and Organizer, and the batch may
 // also link other Accounts, with any Role. Each such row is checked like a later link: the Account
 // ID is reserved by that uid and the lists, as they will be after the batch, agree with it.
+//
+// Join links (ADR-0010): the Club keeps its current `joinToken`, which Organizers set, each new
+// token with a new Join record in the same batch. Holding the current token, anyone signed in may
+// read the Join record (the Club's id and name) and look a name up in its index, one entry at a
+// time (an old token's leftovers can't be read): `nameHash` is the hex SHA-256 of
+// `token + ":" + joinNameKey(name)` (src/domain/joinLink.ts), and nobody may list the index, so a
+// link holder can check a name but not read the roster. The index is derived data, like the
+// lists: every write that adds, renames, removes, links or unlinks a row, or renames the Club,
+// updates it in the same batch (Not enforced here: the rules can't hash). A Claim is one batch by
+// an Account that isn't on the Club: its claim record under the Club's *current* token, the link
+// on a row that had none (as Player), its uid added to `memberUids`, and the name's entry marked
+// linked. Resetting the link changes `joinToken`, so records left under an old token are inert.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -128,16 +143,43 @@ service cloud.firestore {
         && request.resource.data.memberUids.toSet().hasAll(request.resource.data.organizerUids)
         && request.resource.data.createdAt == request.time;
 
-      // An Organizer may rename the Club and change who is a member or Organizer (the rows say
-      // who, see above), as long as an Organizer is left and Organizers are members.
+      // The claim record of a Claim by this Account under the Club's current Join link, as it
+      // will be after the batch.
+      function claimAfter() {
+        return getAfter(/databases/$(database)/documents/joinLinks/$(before().joinToken)/claims/$(request.auth.uid)).data;
+      }
+
+      // An Organizer may rename the Club, change who is a member or Organizer (the rows say who,
+      // see above), as long as an Organizer is left and Organizers are members, and set its Join
+      // link's token.
       allow update: if signedIn()
         && (
           (
             request.auth.uid in resource.data.organizerUids
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'memberUids', 'organizerUids'])
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'memberUids', 'organizerUids', 'joinToken'])
             && validName(request.resource.data.name)
             && request.resource.data.organizerUids.size() > 0
             && request.resource.data.memberUids.toSet().hasAll(request.resource.data.organizerUids)
+            && (
+              request.resource.data.get('joinToken', null) == resource.data.get('joinToken', null)
+              || !('joinToken' in request.resource.data)
+              // A new token gets its own new Join record in the same batch: a Club can't take
+              // over a record that is already there (an old Club's, or another Club's).
+              || (
+                request.resource.data.joinToken.matches('[A-Za-z0-9_-]{22}')
+                && !exists(/databases/$(database)/documents/joinLinks/$(request.resource.data.joinToken))
+                && existsAfter(/databases/$(database)/documents/joinLinks/$(request.resource.data.joinToken))
+              )
+            )
+          )
+          // Somebody who isn't on the Club Claims a row (see the rows' update rule): they add
+          // themselves to the members, and nothing else.
+          || (
+            !(request.auth.uid in resource.data.memberUids)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberUids'])
+            && request.resource.data.memberUids.toSet() == resource.data.memberUids.toSet().union([request.auth.uid].toSet())
+            && claimAfter().clubId == clubId
+            && getAfter(/databases/$(database)/documents/clubs/$(clubId)/players/$(claimAfter().playerId)).data.link.uid == request.auth.uid
           )
           // Anyone on the Club may take themselves off the lists (leave), and only themselves.
           || (
@@ -225,6 +267,21 @@ service cloud.firestore {
               && request.resource.data.name == resource.data.name
               && request.resource.data.skill == resource.data.skill
               && !(request.auth.uid in after().memberUids)
+            )
+            // A Claim through the Club's current Join link (ADR-0010): somebody who wasn't on the
+            // Club links themselves, as Player, to a row that had no link, leaving the rest of the
+            // row as it was, with a claim record for this row in the same batch.
+            || (
+              !(request.auth.uid in before().memberUids)
+              && !('link' in resource.data)
+              && 'link' in request.resource.data
+              && request.resource.data.link.uid == request.auth.uid
+              && request.resource.data.link.role == 'player'
+              && linkAgreesWithClub(request.resource.data.link)
+              && request.resource.data.name == resource.data.name
+              && request.resource.data.skill == resource.data.skill
+              && claimAfter().clubId == clubId
+              && claimAfter().playerId == playerId
             )
           );
 
@@ -424,6 +481,120 @@ service cloud.firestore {
         allow update: if false;
 
         allow delete: if signedIn() && request.auth.uid in before().organizerUids;
+      }
+    }
+
+    // --- Join links (ADR-0010) ------------------------------------------------------------
+
+    // The Join record: which Club a Join link is for, and its name to show. Anyone signed in who
+    // holds the token reads it while it is the Club's current one (a token that names no record
+    // reads as missing); nobody lists the records. An Organizer of the Club creates it in
+    // the batch that makes this token the Club's current one, keeps its name in step, and deletes
+    // it (on a reset, or with the Club).
+    match /joinLinks/{token} {
+      function clubOf(clubId) {
+        return /databases/$(database)/documents/clubs/$(clubId);
+      }
+
+      // Whether this is the current Join link of Club `clubId` (false, or an error, for a Club
+      // that is gone).
+      function currentFor(clubId) {
+        return get(clubOf(clubId)).data.get('joinToken', null) == token;
+      }
+
+      allow get: if signedIn() && (resource == null || currentFor(resource.data.clubId));
+
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['clubId', 'clubName', 'createdAt'])
+        && request.resource.data.keys().hasAll(['clubId', 'clubName', 'createdAt'])
+        && request.resource.data.clubId is string
+        && validName(request.resource.data.clubName)
+        && request.resource.data.createdAt == request.time
+        && request.auth.uid in get(clubOf(request.resource.data.clubId)).data.organizerUids
+        && getAfter(clubOf(request.resource.data.clubId)).data.get('joinToken', null) == token;
+
+      allow update: if signedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['clubName'])
+        && validName(request.resource.data.clubName)
+        && request.auth.uid in get(clubOf(resource.data.clubId)).data.organizerUids;
+
+      allow delete: if signedIn()
+        && request.auth.uid in get(clubOf(resource.data.clubId)).data.organizerUids;
+
+      function linkPath() {
+        return /databases/$(database)/documents/joinLinks/$(token);
+      }
+      // The Club this Join record is for: as it is, or as it is being created in this batch.
+      function joinClubId() {
+        return exists(linkPath()) ? get(linkPath()).data.clubId : getAfter(linkPath()).data.clubId;
+      }
+      function rowPath(playerId) {
+        return /databases/$(database)/documents/clubs/$(joinClubId())/players/$(playerId);
+      }
+      function organizerHere() {
+        return request.auth.uid in get(clubOf(joinClubId())).data.organizerUids;
+      }
+
+      // The name index: one entry per Club player, named by the hash of its name (see the top).
+      // Read one at a time, never listed, and only while the token is the Club's current one, so
+      // entries left behind by a reset or a deleted Club say nothing. Organizers write it. Besides
+      // them, the entry of a row changes only from unlinked to linked in a Claim of that row, and
+      // from linked to unlinked when whoever is linked to the row unlinks themselves (leaves, or
+      // deletes their Account).
+      match /names/{nameHash} {
+        function validEntry(entry) {
+          return entry.keys().hasOnly(['playerId', 'linked'])
+            && entry.keys().hasAll(['playerId', 'linked'])
+            && entry.playerId is string
+            && entry.linked is bool;
+        }
+
+        allow get: if signedIn() && exists(linkPath()) && currentFor(get(linkPath()).data.clubId);
+
+        allow create: if signedIn() && validEntry(request.resource.data) && organizerHere();
+
+        allow update: if signedIn()
+          && validEntry(request.resource.data)
+          && (
+            organizerHere()
+            || (
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly(['linked'])
+              && request.resource.data.linked == true
+              && getAfter(/databases/$(database)/documents/joinLinks/$(token)/claims/$(request.auth.uid)).data.playerId == resource.data.playerId
+              && getAfter(rowPath(resource.data.playerId)).data.link.uid == request.auth.uid
+            )
+            || (
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly(['linked'])
+              && request.resource.data.linked == false
+              && get(rowPath(resource.data.playerId)).data.link.uid == request.auth.uid
+              && !('link' in getAfter(rowPath(resource.data.playerId)).data)
+            )
+          );
+
+        allow delete: if signedIn() && organizerHere();
+      }
+
+      // A Claim's record, by the Account Claiming: only under the Club's current Join link, only
+      // by somebody who wasn't on the Club, and only in the batch that links them to that row and
+      // adds them to the members (see the Club and row rules, which check it). Written again on a
+      // later Claim through the same link (after an Organizer unlinked the first one). Not read.
+      match /claims/{uid} {
+        function claimedClub() {
+          return clubOf(request.resource.data.clubId);
+        }
+
+        allow create, update: if signedIn()
+          && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['clubId', 'playerId', 'createdAt'])
+          && request.resource.data.keys().hasAll(['clubId', 'playerId', 'createdAt'])
+          && request.resource.data.clubId is string
+          && request.resource.data.playerId is string
+          && request.resource.data.createdAt == request.time
+          && get(linkPath()).data.clubId == request.resource.data.clubId
+          && get(claimedClub()).data.get('joinToken', null) == token
+          && !(uid in get(claimedClub()).data.memberUids)
+          && uid in getAfter(claimedClub()).data.memberUids
+          && getAfter(/databases/$(database)/documents/clubs/$(request.resource.data.clubId)/players/$(request.resource.data.playerId)).data.link.uid == uid;
       }
     }
   }

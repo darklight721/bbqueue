@@ -1,30 +1,43 @@
 import { useId, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { getBackend } from "../../backend/index.ts";
-import { ChevronRightIcon, PlusIcon, UsersIcon } from "../../components/icons.tsx";
+import { ChevronRightIcon, LinkIcon, PlusIcon, UsersIcon } from "../../components/icons.tsx";
 import { Screen } from "../../components/Screen.tsx";
 import type { Club } from "../../domain/types.ts";
 import { useAccount, useClubs } from "../../storage/store.ts";
 import { playerCountLabel, rowBadge, sortClubs } from "./clubList.ts";
+import { JoinLinkSheet } from "./JoinLinkSheet.tsx";
 import { NewClubSheet } from "./NewClubSheet.tsx";
 
-/** List of Clubs; each row opens the Club's page. Add club opens the New club sheet. */
+/**
+ * List of Clubs; each row opens the Club's page. Add club opens the New club sheet; with an
+ * Account, Have a Join link? opens a sheet to paste one into.
+ */
 export function ClubsScreen() {
   const clubs = useClubs();
   const accountId = useAccount()?.accountId;
   const sorted = useMemo(() => sortClubs(clubs), [clubs]);
   const empty = sorted.length === 0;
   const [adding, setAdding] = useState(false);
+  const [pasting, setPasting] = useState(false);
   const addClub = () => setAdding(true);
+  const onJoinLink = accountId ? () => setPasting(true) : undefined;
 
   return (
     <Screen
       title="Clubs"
       backTo="/"
-      footer={empty ? undefined : <AddClubButton onClick={addClub} />}
+      footer={
+        empty ? undefined : (
+          <div className="flex flex-col gap-1">
+            <AddClubButton onClick={addClub} />
+            {onJoinLink ? <JoinLinkButton onClick={onJoinLink} /> : null}
+          </div>
+        )
+      }
     >
       {empty ? (
-        <EmptyState onAddClub={addClub} />
+        <EmptyState onAddClub={addClub} onJoinLink={onJoinLink} />
       ) : (
         <ul className="flex flex-col gap-3">
           {sorted.map((club, index) => (
@@ -35,6 +48,7 @@ export function ClubsScreen() {
         </ul>
       )}
       <NewClubSheet open={adding} onClose={() => setAdding(false)} />
+      <JoinLinkSheet open={pasting} onClose={() => setPasting(false)} />
     </Screen>
   );
 }
@@ -99,7 +113,29 @@ function AddClubButton({ className = "", onClick }: { className?: string; onClic
   );
 }
 
-function EmptyState({ onAddClub }: { onAddClub: () => void }) {
+/** The quieter way in: a Join link someone shared. */
+function JoinLinkButton({ className = "", onClick }: { className?: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      className={`btn w-full btn-ghost ${className}`}
+      aria-haspopup="dialog"
+      onClick={onClick}
+    >
+      <LinkIcon className="size-5" />
+      Have a Join link?
+    </button>
+  );
+}
+
+function EmptyState({
+  onAddClub,
+  onJoinLink,
+}: {
+  onAddClub: () => void;
+  /** With an Account only. */
+  onJoinLink?: () => void;
+}) {
   return (
     <section
       aria-labelledby="clubs-empty-title"
@@ -118,6 +154,7 @@ function EmptyState({ onAddClub }: { onAddClub: () => void }) {
         Add a club to keep its players ready for every session.
       </p>
       <AddClubButton className="mt-6 max-w-xs" onClick={onAddClub} />
+      {onJoinLink ? <JoinLinkButton className="mt-2 max-w-xs" onClick={onJoinLink} /> : null}
     </section>
   );
 }

@@ -2041,3 +2041,365 @@ describe("Deleting an Account", () => {
     await assertSucceeds(batch.commit());
   });
 });
+
+describe("Join links", () => {
+  const TOKEN = "AbCdEfGhIjKlMnOpQr_-12";
+  const NEW_TOKEN = "ZyXwVuTsRqPoNmLkJi_-34";
+  const record = (db: Firestore, token = TOKEN) => doc(db, "joinLinks", token);
+  const entry = (db: Firestore, hash: string, token = TOKEN) =>
+    doc(db, "joinLinks", token, "names", hash);
+  const claim = (db: Firestore, uid: string, token = TOKEN) =>
+    doc(db, "joinLinks", token, "claims", uid);
+  const row = (db: Firestore, id: string) => doc(db, "clubs", "c1", "players", id);
+
+  /** Club `c1` (see `seedClub`) with its Join link: the record and an entry for each row. */
+  async function seedJoinLink() {
+    await seedClub();
+    await seed(async (db) => {
+      await updateDoc(doc(db, "clubs", "c1"), { joinToken: TOKEN });
+      await setDoc(record(db), { clubId: "c1", clubName: "Tuesday" });
+      await setDoc(entry(db, "h-roy"), { playerId: "p-roy", linked: true });
+      await setDoc(entry(db, "h-ana"), { playerId: "p-ana", linked: true });
+      await setDoc(entry(db, "h-cat"), { playerId: "p-cat", linked: false });
+    });
+  }
+
+  /** Ben Claims row `rowId` the way the app does, with `change` applied to each write first. */
+  function claimAs(
+    person: Person,
+    rowId: string,
+    options: {
+      token?: string;
+      hash?: string;
+      link?: Record<string, unknown>;
+      row?: Record<string, unknown>;
+      club?: Record<string, unknown>;
+      skip?: "claim" | "row" | "club";
+    } = {},
+  ) {
+    const db = as(person.uid);
+    const batch = writeBatch(db);
+    if (options.skip !== "claim") {
+      batch.set(claim(db, person.uid, options.token), {
+        clubId: "c1",
+        playerId: rowId,
+        createdAt: serverTimestamp(),
+      });
+    }
+    if (options.skip !== "row") {
+      batch.update(row(db, rowId), {
+        link: options.link ?? link(person, "player"),
+        ...options.row,
+      });
+    }
+    if (options.skip !== "club") {
+      batch.update(doc(db, "clubs", "c1"), {
+        memberUids: arrayUnion(person.uid),
+        ...options.club,
+      });
+    }
+    batch.update(entry(db, options.hash ?? "h-cat", options.token), { linked: true });
+    return batch.commit();
+  }
+
+  describe("the Join record and its names", () => {
+    it("lets anyone signed in read the record and one name, but nobody list them", async () => {
+      await seedJoinLink();
+      const db = as(BEN.uid);
+      await assertSucceeds(getDoc(record(db)));
+      await assertSucceeds(getDoc(entry(db, "h-cat")));
+      await assertSucceeds(getDoc(entry(db, "h-nobody")));
+      await assertFails(getDocs(collection(db, "joinLinks")));
+      await assertFails(getDocs(collection(db, "joinLinks", TOKEN, "names")));
+      await assertFails(getDocs(collection(as(ROY.uid), "joinLinks", TOKEN, "names")));
+      await assertFails(getDoc(record(anonymous())));
+      await assertFails(getDoc(entry(anonymous(), "h-cat")));
+    });
+
+    it("refuses reading an old token's record and names: after a reset, or with the Club gone", async () => {
+      await seedJoinLink();
+      await seed(async (db) => {
+        await updateDoc(doc(db, "clubs", "c1"), { joinToken: NEW_TOKEN });
+        await setDoc(record(db, NEW_TOKEN), { clubId: "c1", clubName: "Tuesday" });
+        await setDoc(entry(db, "h-cat", NEW_TOKEN), { playerId: "p-cat", linked: false });
+      });
+      for (const person of [BEN, ROY]) {
+        const db = as(person.uid);
+        await assertFails(getDoc(record(db)));
+        await assertFails(getDoc(entry(db, "h-cat")));
+        await assertSucceeds(getDoc(record(db, NEW_TOKEN)));
+        await assertSucceeds(getDoc(entry(db, "h-cat", NEW_TOKEN)));
+      }
+      // Names left behind without their record say nothing either.
+      await seed(async (db) => {
+        await deleteDoc(record(db));
+      });
+      await assertFails(getDoc(entry(as(BEN.uid), "h-ana")));
+      // A token nobody uses reads as missing.
+      await assertSucceeds(getDoc(record(as(BEN.uid), "QqQqQqQqQqQqQqQqQqQq_-")));
+
+      await seed(async (db) => {
+        await deleteDoc(doc(db, "clubs", "c1"));
+      });
+      await assertFails(getDoc(record(as(BEN.uid), NEW_TOKEN)));
+      await assertFails(getDoc(entry(as(BEN.uid), "h-cat", NEW_TOKEN)));
+    });
+
+    it("refuses a new token without its own new record: none, or one that is already there", async () => {
+      await seedJoinLink();
+      await seed(async (db) => {
+        await setDoc(record(db, NEW_TOKEN), { clubId: "c1", clubName: "Old Tuesday" });
+      });
+      const db = as(ROY.uid);
+      await assertFails(updateDoc(doc(db, "clubs", "c1"), { joinToken: NEW_TOKEN }));
+      await assertFails(updateDoc(doc(db, "clubs", "c1"), { joinToken: "QqQqQqQqQqQqQqQqQqQq_-" }));
+      // Leaving the token as it is, or taking it off, needs no record.
+      await assertSucceeds(updateDoc(doc(db, "clubs", "c1"), { name: "Thursday" }));
+      await assertSucceeds(updateDoc(doc(db, "clubs", "c1"), { joinToken: deleteField() }));
+    });
+
+    it("lets an Organizer make the Club's Join link: the token on the Club, the record and the names in one batch", async () => {
+      await seedClub();
+      const db = as(ROY.uid);
+      const batch = writeBatch(db);
+      batch.update(doc(db, "clubs", "c1"), { joinToken: TOKEN });
+      batch.set(record(db), { clubId: "c1", clubName: "Tuesday", createdAt: serverTimestamp() });
+      batch.set(entry(db, "h-cat"), { playerId: "p-cat", linked: false });
+      await assertSucceeds(batch.commit());
+    });
+
+    it("refuses a Player or a stranger making one", async () => {
+      await seedClub();
+      for (const person of [ANA, BEN]) {
+        const db = as(person.uid);
+        const batch = writeBatch(db);
+        batch.update(doc(db, "clubs", "c1"), { joinToken: TOKEN });
+        batch.set(record(db), { clubId: "c1", clubName: "Tuesday", createdAt: serverTimestamp() });
+        await assertFails(batch.commit());
+        await assertFails(
+          setDoc(record(db), { clubId: "c1", clubName: "Tuesday", createdAt: serverTimestamp() }),
+        );
+      }
+    });
+
+    it("refuses a record for a token that isn't the Club's current one", async () => {
+      await seedJoinLink();
+      const db = as(ROY.uid);
+      // A stale (or made-up) token, with the Club keeping its current one.
+      await assertFails(
+        setDoc(record(db, NEW_TOKEN), {
+          clubId: "c1",
+          clubName: "Tuesday",
+          createdAt: serverTimestamp(),
+        }),
+      );
+      // A token that isn't a token.
+      await assertFails(updateDoc(doc(db, "clubs", "c1"), { joinToken: "short" }));
+    });
+
+    it("lets an Organizer reset the link, rename the record and delete it and its names; nobody else", async () => {
+      await seedJoinLink();
+      const ana = as(ANA.uid);
+      await assertFails(updateDoc(record(ana), { clubName: "Thursday" }));
+      await assertFails(updateDoc(entry(ana, "h-cat"), { playerId: "p-roy" }));
+      await assertFails(setDoc(entry(ana, "h-ben"), { playerId: "p-cat", linked: false }));
+      await assertFails(deleteDoc(entry(as(BEN.uid), "h-cat")));
+      await assertFails(deleteDoc(record(ana)));
+
+      const db = as(ROY.uid);
+      await assertFails(updateDoc(record(db), { clubId: "c2" }));
+      const rename = writeBatch(db);
+      rename.update(doc(db, "clubs", "c1"), { name: "Thursday" });
+      rename.update(record(db), { clubName: "Thursday" });
+      await assertSucceeds(rename.commit());
+      await assertSucceeds(updateDoc(entry(db, "h-cat"), { linked: true }));
+
+      const reset = writeBatch(db);
+      reset.update(doc(db, "clubs", "c1"), { joinToken: NEW_TOKEN });
+      reset.set(record(db, NEW_TOKEN), {
+        clubId: "c1",
+        clubName: "Thursday",
+        createdAt: serverTimestamp(),
+      });
+      reset.set(entry(db, "h-cat", NEW_TOKEN), { playerId: "p-cat", linked: false });
+      await assertSucceeds(reset.commit());
+      const cleanUp = writeBatch(db);
+      cleanUp.delete(entry(db, "h-cat"));
+      cleanUp.delete(record(db));
+      await assertSucceeds(cleanUp.commit());
+    });
+
+    it("refuses a name entry of another shape", async () => {
+      await seedJoinLink();
+      const db = as(ROY.uid);
+      await assertFails(setDoc(entry(db, "h-x"), { playerId: "p-cat" }));
+      await assertFails(setDoc(entry(db, "h-x"), { playerId: "p-cat", linked: "no" }));
+      await assertFails(
+        setDoc(entry(db, "h-x"), { playerId: "p-cat", linked: false, name: "Cat" }),
+      );
+    });
+  });
+
+  describe("claiming", () => {
+    it("lets somebody who isn't on the Club Claim an unlinked row as Player", async () => {
+      await seedJoinLink();
+      await assertSucceeds(claimAs(BEN, "p-cat"));
+      // Ben is on the Club now and reads it.
+      await assertSucceeds(getDoc(club(BEN.uid)));
+    });
+
+    it("refuses a stale token", async () => {
+      await seedJoinLink();
+      await seed(async (db) => {
+        await updateDoc(doc(db, "clubs", "c1"), { joinToken: NEW_TOKEN });
+        await setDoc(record(db, NEW_TOKEN), { clubId: "c1", clubName: "Tuesday" });
+        await setDoc(entry(db, "h-cat", NEW_TOKEN), { playerId: "p-cat", linked: false });
+      });
+      await assertFails(claimAs(BEN, "p-cat"));
+      await assertSucceeds(claimAs(BEN, "p-cat", { token: NEW_TOKEN }));
+    });
+
+    it("refuses a Club without a Join link", async () => {
+      await seedJoinLink();
+      await seed(async (db) => {
+        await updateDoc(doc(db, "clubs", "c1"), { joinToken: deleteField() });
+      });
+      await assertFails(claimAs(BEN, "p-cat"));
+    });
+
+    it("refuses a row that is linked already", async () => {
+      await seedJoinLink();
+      await assertFails(claimAs(BEN, "p-ana", { hash: "h-ana" }));
+    });
+
+    it("refuses the Organizer Role, or touching the Organizers", async () => {
+      await seedJoinLink();
+      await assertFails(claimAs(BEN, "p-cat", { link: link(BEN, "organizer") }));
+      await assertFails(
+        claimAs(BEN, "p-cat", {
+          link: link(BEN, "organizer"),
+          club: { organizerUids: arrayUnion(BEN.uid) },
+        }),
+      );
+      await assertFails(claimAs(BEN, "p-cat", { club: { organizerUids: arrayUnion(BEN.uid) } }));
+      await assertFails(claimAs(BEN, "p-cat", { club: { name: "Mine now" } }));
+    });
+
+    it("refuses linking somebody else's uid or Account ID", async () => {
+      await seedAccounts({ uid: "eve-uid", accountId: "eve-5555", name: "Eve" });
+      await seedJoinLink();
+      await assertFails(
+        claimAs(BEN, "p-cat", {
+          link: { accountId: "eve-5555", uid: "eve-uid", role: "player" },
+          club: { memberUids: arrayUnion("eve-uid") },
+        }),
+      );
+      await assertFails(
+        claimAs(BEN, "p-cat", {
+          link: { accountId: "eve-5555", uid: BEN.uid, role: "player" },
+        }),
+      );
+      // A claim record for somebody else.
+      const db = as(BEN.uid);
+      await assertFails(
+        setDoc(claim(db, "eve-uid"), {
+          clubId: "c1",
+          playerId: "p-cat",
+          createdAt: serverTimestamp(),
+        }),
+      );
+    });
+
+    it("refuses changing the row's name or skill while Claiming", async () => {
+      await seedJoinLink();
+      await assertFails(claimAs(BEN, "p-cat", { row: { name: "Ben" } }));
+      await assertFails(claimAs(BEN, "p-cat", { row: { skill: "beginner" } }));
+    });
+
+    it("refuses a member Claiming a second row", async () => {
+      await seedJoinLink();
+      await seed(async (db) => {
+        await setDoc(row(db, "p-dan"), { name: "Dan", skill: "beginner" });
+        await setDoc(entry(db, "h-dan"), { playerId: "p-dan", linked: false });
+      });
+      await assertFails(claimAs(ANA, "p-dan", { hash: "h-dan" }));
+      await assertSucceeds(claimAs(BEN, "p-cat"));
+      await assertFails(claimAs(BEN, "p-dan", { hash: "h-dan" }));
+    });
+
+    it("refuses any part of a Claim on its own", async () => {
+      await seedJoinLink();
+      await assertFails(claimAs(BEN, "p-cat", { skip: "claim" }));
+      await assertFails(claimAs(BEN, "p-cat", { skip: "row" }));
+      await assertFails(claimAs(BEN, "p-cat", { skip: "club" }));
+      const db = as(BEN.uid);
+      await assertFails(
+        setDoc(claim(db, BEN.uid), {
+          clubId: "c1",
+          playerId: "p-cat",
+          createdAt: serverTimestamp(),
+        }),
+      );
+      await assertFails(updateDoc(entry(db, "h-cat"), { linked: true }));
+      await assertFails(updateDoc(doc(db, "clubs", "c1"), { memberUids: arrayUnion(BEN.uid) }));
+    });
+
+    it("refuses a claim record naming another row than the one linked, or marking another name", async () => {
+      await seedJoinLink();
+      await seed(async (db) => {
+        await setDoc(row(db, "p-dan"), { name: "Dan", skill: "beginner" });
+        await setDoc(entry(db, "h-dan"), { playerId: "p-dan", linked: false });
+      });
+      const db = as(BEN.uid);
+      const batch = writeBatch(db);
+      batch.set(claim(db, BEN.uid), {
+        clubId: "c1",
+        playerId: "p-dan",
+        createdAt: serverTimestamp(),
+      });
+      batch.update(row(db, "p-cat"), { link: link(BEN, "player") });
+      batch.update(doc(db, "clubs", "c1"), { memberUids: arrayUnion(BEN.uid) });
+      await assertFails(batch.commit());
+      await assertFails(claimAs(BEN, "p-cat", { hash: "h-dan" }));
+    });
+
+    it("refuses being added to the members again after an Organizer unlinked the Claim, without linking a row", async () => {
+      await seedJoinLink();
+      await claimAs(BEN, "p-cat");
+      const roy = as(ROY.uid);
+      const unlink = writeBatch(roy);
+      unlink.update(row(roy, "p-cat"), { link: deleteField() });
+      unlink.update(doc(roy, "clubs", "c1"), { memberUids: arrayRemove(BEN.uid) });
+      unlink.update(entry(roy, "h-cat"), { linked: false });
+      await assertSucceeds(unlink.commit());
+
+      await assertFails(
+        updateDoc(doc(as(BEN.uid), "clubs", "c1"), { memberUids: arrayUnion(BEN.uid) }),
+      );
+      // Claiming the row again through the same link works (ADR-0010: fixed by a reset).
+      await assertSucceeds(claimAs(BEN, "p-cat"));
+    });
+  });
+
+  describe("leaving", () => {
+    it("lets whoever is linked mark their own name unlinked as they leave, and nobody else", async () => {
+      await seedJoinLink();
+      const leave = (person: Person, rowId: string, hash: string) => {
+        const db = as(person.uid);
+        const batch = writeBatch(db);
+        batch.update(row(db, rowId), { link: deleteField() });
+        batch.update(doc(db, "clubs", "c1"), {
+          memberUids: arrayRemove(person.uid),
+          organizerUids: arrayRemove(person.uid),
+        });
+        batch.update(entry(db, hash), { linked: false });
+        return batch.commit();
+      };
+      // Ana can't mark Roy's name, nor her own without leaving.
+      await assertFails(updateDoc(entry(as(ANA.uid), "h-roy"), { linked: false }));
+      await assertFails(updateDoc(entry(as(ANA.uid), "h-ana"), { linked: false }));
+      await assertFails(updateDoc(entry(as(ANA.uid), "h-ana"), { linked: false, playerId: "x" }));
+      await assertSucceeds(leave(ANA, "p-ana", "h-ana"));
+    });
+  });
+});

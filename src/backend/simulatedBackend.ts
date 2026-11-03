@@ -2,6 +2,7 @@ import { accountIdsEqual, generateAccountId, normalizeAccountId } from "../domai
 import type { Account, Club } from "../domain/types.ts";
 import { applyClubChange } from "../domain/clubChanges.ts";
 import { createSimulatedClubs, serverChanged, type SimulatedClubsState } from "./simulatedClubs.ts";
+import { createSimulatedJoinLinks } from "./simulatedJoinLinks.ts";
 import { createSimulatedSessions, type SimulatedSessionsState } from "./simulatedSessions.ts";
 import {
   BackendError,
@@ -74,6 +75,16 @@ export function createSimulatedBackend(
 
   const sessions = createSimulatedSessions(state, () => state.loadAccount(), online);
 
+  const joinLinks = createSimulatedJoinLinks(
+    state,
+    () => state.loadAccount(),
+    online,
+    () => {
+      refreshClubs();
+      serverChanged();
+    },
+  );
+
   /** What a Club leaves behind on the "server" goes with it, so its id can't be used to read it. */
   function deleteHistory(clubId: string) {
     state.saveEndedSessions(state.loadEndedSessions().filter((ended) => ended.clubId !== clubId));
@@ -84,6 +95,7 @@ export function createSimulatedBackend(
   return {
     ...clubs,
     ...sessions,
+    ...joinLinks,
 
     async deleteSharedClub(clubId) {
       await clubs.deleteSharedClub(clubId);

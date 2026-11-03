@@ -1,6 +1,6 @@
 # 01 Join link: Join record, Security Rules, and the Join link card
 
-Status: ready-for-agent
+Status: done
 Spec: ../spec.md
 ADR: docs/adr/0010-join-link-claims-checked-by-rules.md
 

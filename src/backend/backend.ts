@@ -31,6 +31,8 @@ export type BackendErrorCode =
   | "unknown-account"
   /** The Account is already linked to another Club player in this Club. */
   | "already-linked"
+  /** The Club player is linked to an Account already: somebody else Claimed it first. */
+  | "already-claimed"
   /** The Shared club already has an Active session. */
   | "session-exists"
   /** Every Account ID that was tried was already taken. */
@@ -169,6 +171,38 @@ export interface Backend {
   /** The current Account leaves the Club: its row stays on the roster, no longer linked. */
   leaveClub(clubId: string): Promise<void>;
 
+  // --- Join links (ADR-0010) --------------------------------------------------------
+  //
+  // An Organizer shares a Shared club's Join link; anyone holding it can Claim an unlinked Club
+  // player by name, which links their Account to it as a Player. Holding the link never shows the
+  // roster: a name is checked one at a time. All of these need a connection (`offline`), except
+  // `getJoinLink` for a Club that has its Join link already.
+
+  /**
+   * The token of the Club's Join link (also on the Club as `joinToken`), made on first use. Only an
+   * Organizer: `forbidden` otherwise, `not-found` without the Club.
+   */
+  getJoinLink(clubId: string): Promise<string>;
+  /** A new Join link for the Club: the old one stops working at once. Organizers only. */
+  resetJoinLink(clubId: string): Promise<string>;
+  /** The Club a Join link is for, or null when it doesn't work (reset, unknown, Club deleted). */
+  getJoinLinkInfo(token: string): Promise<JoinLinkInfo | null>;
+  /**
+   * The Club player with this name (equal under `joinNameKey`) in the Club of a Join link, and
+   * whether it is linked to an Account. Null when nobody has that name, or the link doesn't work.
+   */
+  findJoinLinkName(
+    token: string,
+    name: string,
+  ): Promise<{ playerId: string; linked: boolean } | null>;
+  /**
+   * This device's Account Claims the Club player with this name: it is linked to it as a Player and
+   * is on the Club from then on. Resolves with the Club's id. Rejects with `no-account`, `offline`,
+   * `not-found` (the link doesn't work, or nobody has that name), `already-claimed` (the Club
+   * player is linked already) or `already-linked` (this Account is on the Club already).
+   */
+  claimClubPlayer(token: string, name: string): Promise<{ clubId: string }>;
+
   // --- Shared Active session (ADR-0007) -------------------------------------------
   //
   // Each Shared club has at most one Active session: the Session host's whole copy of the
@@ -304,6 +338,18 @@ export type SharedClubsApi = Pick<
   | "setClubPlayerRole"
   | "unlinkClubPlayer"
   | "leaveClub"
+>;
+
+/** The Club a Join link is for, as its Join record names it. */
+export interface JoinLinkInfo {
+  clubId: string;
+  clubName: string;
+}
+
+/** The Join links part of the {@link Backend}. */
+export type JoinLinksApi = Pick<
+  Backend,
+  "getJoinLink" | "resetJoinLink" | "getJoinLinkInfo" | "findJoinLinkName" | "claimClubPlayer"
 >;
 
 /** The Active sessions, Ended sessions and Player requests part of the {@link Backend}. */

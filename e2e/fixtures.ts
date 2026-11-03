@@ -75,7 +75,8 @@ export interface SeedData {
   otherAccounts?: Account[];
   /**
    * Shared clubs on the fake "server". They show up for the seeded Account when one of their Club
-   * players is linked to it.
+   * players is linked to it. A Club's current Join link token is its `joinToken` (22 characters of
+   * `[A-Za-z0-9_-]`); without one the Club has no Join link yet.
    */
   sharedClubs?: Club[];
   /** Active sessions of Shared clubs on the fake "server" (each one's club must be in `sharedClubs`). */

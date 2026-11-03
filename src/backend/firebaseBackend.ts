@@ -36,11 +36,13 @@ import {
   requireValidName,
   type ActiveSessionsApi,
   type Backend,
+  type JoinLinksApi,
   type OnlineSource,
   type SharedClubsApi,
 } from "./backend.ts";
 import { FIREBASE_EMULATOR } from "./firebaseEmulator.ts";
 import { createFirebaseClubs } from "./firebaseClubs.ts";
+import { createFirebaseJoinLinks } from "./firebaseJoinLinks.ts";
 import { retryDelay, toBackendError } from "./firebaseShared.ts";
 import { createFirebaseActiveSessions } from "./firebaseSessions.ts";
 
@@ -51,6 +53,8 @@ import { createFirebaseActiveSessions } from "./firebaseSessions.ts";
  * - `accounts/{uid}`: `{ accountId, name, createdAt }`
  * - `accountIds/{normalised Account ID}`: `{ uid }`, the reservation that keeps IDs unique. It is
  * never deleted, so an Account ID is never given out twice.
+ * - Shared clubs: see `firebaseClubs.ts`; their Join links (`joinLinks/{token}`): see
+ * `firebaseJoinLinks.ts`.
  *
  * This is the only module (with `firebaseBackendLazy.ts`) that imports Firebase.
  */
@@ -116,7 +120,10 @@ export function createFirebaseBackend(
    */
   let justCreatedUntil = 0;
 
-  const backend: Omit<Backend, keyof SharedClubsApi | keyof ActiveSessionsApi | "deleteAccount"> = {
+  const backend: Omit<
+    Backend,
+    keyof SharedClubsApi | keyof JoinLinksApi | keyof ActiveSessionsApi | "deleteAccount"
+  > = {
     isOnline: () => online.get(),
     observeOnline: (listener) => online.subscribe(listener),
 
@@ -235,6 +242,15 @@ export function createFirebaseBackend(
     ...backend,
     ...clubs,
     ...createFirebaseActiveSessions(db, shared),
+    ...createFirebaseJoinLinks(db, {
+      ...shared,
+      // Reading a Join record needs a sign-in, which a device without an Account doesn't have yet
+      // (`createAccount` then carries on with it).
+      async signIn() {
+        await auth.authStateReady();
+        if (!auth.currentUser) await signInAnonymously(auth);
+      },
+    }),
 
     async deleteAccount(input) {
       if (!online.get()) throw new BackendError("offline");

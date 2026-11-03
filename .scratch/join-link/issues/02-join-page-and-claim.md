@@ -1,6 +1,6 @@
 # 02 Join page and Claim
 
-Status: ready-for-agent
+Status: done
 Spec: ../spec.md
 Blocked by: 01
 ADR: docs/adr/0010-join-link-claims-checked-by-rules.md

@@ -1,4 +1,10 @@
-import type { DocumentData } from "firebase/firestore";
+import {
+  getDoc,
+  getDocFromCache,
+  type DocumentData,
+  type DocumentReference,
+  type DocumentSnapshot,
+} from "firebase/firestore";
 import type { Account, AccountLink, ClubPlayer } from "../domain/types.ts";
 import { BackendError, type OnlineSource, type Unsubscribe } from "./backend.ts";
 
@@ -37,6 +43,28 @@ export const SETTLE_TIMEOUT_MS = 8_000;
 export const CACHE_TIMEOUT_MS = 2_000;
 /** How long a write may take to reach the server before it counts as not having. */
 const CONFIRM_TIMEOUT_MS = 30_000;
+
+/**
+ * A record from the server, or from the cache when it can't be reached; null when neither answers.
+ */
+export async function readDoc(
+  online: OnlineSource,
+  ref: DocumentReference,
+): Promise<DocumentSnapshot | null> {
+  if (online.get()) {
+    try {
+      return await getDoc(ref);
+    } catch {
+      // Fall back to the cache.
+    }
+  }
+  try {
+    // Reading the cache can stall in some browsers, so don't wait for it for long.
+    return await withTimeout(getDocFromCache(ref), CACHE_TIMEOUT_MS);
+  } catch {
+    return null;
+  }
+}
 
 export const stringList = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
@@ -106,10 +134,25 @@ export async function confirmed<T>(write: Promise<T>): Promise<T> {
   }
 }
 
+/** What a {@link Write} goes into: a batch or a transaction. */
+export interface Writer {
+  set(ref: DocumentReference, data: DocumentData): unknown;
+  update(ref: DocumentReference, data: DocumentData): unknown;
+  delete(ref: DocumentReference): unknown;
+}
+
+/** One write that goes into a batch (or a transaction). */
+export type Write = (writer: Writer) => void;
+
+const firestoreCode = (error: unknown) => (error as { code?: unknown } | null)?.code;
+
+/** Whether Firestore refused this (Security Rules), before it is in the Backend's words. */
+export const isPermissionDenied = (error: unknown) => firestoreCode(error) === "permission-denied";
+
 /** Firestore and Auth errors in the Backend's words. */
 export function toBackendError(error: unknown): BackendError {
   if (error instanceof BackendError) return error;
-  const code = (error as { code?: unknown } | null)?.code;
+  const code = firestoreCode(error);
   if (code === "permission-denied") {
     return new BackendError("forbidden", undefined, { cause: error });
   }

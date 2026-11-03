@@ -196,4 +196,63 @@ describe("ClubsScreen", () => {
     expect(within(mill).queryByText("Player")).not.toBeInTheDocument();
     expect(mill).toHaveAccessibleDescription("No players This device only");
   });
+
+  describe("Have a Join link?", () => {
+    const TOKEN = "AbCdEfGhIjKlMnOpQrStUv";
+    const signIn = () => setAccount({ accountId: "roy-7k3f", name: "Roy" });
+
+    it("isn't offered without an Account", () => {
+      setLocalClubs([{ id: "c1", name: "Riverside", kind: "local", players: [] }]);
+      renderScreen();
+      expect(screen.queryByRole("button", { name: "Have a Join link?" })).not.toBeInTheDocument();
+    });
+
+    it("is next to Add club in the empty state", async () => {
+      signIn();
+      renderScreen();
+      await userEvent.click(screen.getByRole("button", { name: "Have a Join link?" }));
+      const sheet = screen.getByRole("dialog", { name: "Have a Join link?" });
+      expect(within(sheet).getByRole("heading", { name: "Have a Join link?" })).toHaveFocus();
+    });
+
+    it("opens the Join page of a pasted link", async () => {
+      signIn();
+      setLocalClubs([{ id: "c1", name: "Riverside", kind: "local", players: [] }]);
+      const location = renderScreen();
+      await userEvent.click(screen.getByRole("button", { name: "Have a Join link?" }));
+      const sheet = screen.getByRole("dialog", { name: "Have a Join link?" });
+      await userEvent.type(
+        within(sheet).getByRole("textbox", { name: "Paste the Join link" }),
+        `https://bbqueue.example/app/join/${TOKEN}`,
+      );
+      await userEvent.click(within(sheet).getByRole("button", { name: "Open" }));
+
+      expect(location.history.at(-1)).toBe(`/join/${TOKEN}`);
+    });
+
+    it("takes just the token too", async () => {
+      signIn();
+      const location = renderScreen();
+      await userEvent.click(screen.getByRole("button", { name: "Have a Join link?" }));
+      const field = screen.getByRole("textbox", { name: "Paste the Join link" });
+      await userEvent.type(field, `${TOKEN}{Enter}`);
+
+      expect(location.history.at(-1)).toBe(`/join/${TOKEN}`);
+    });
+
+    it("refuses anything else", async () => {
+      signIn();
+      const location = renderScreen();
+      await userEvent.click(screen.getByRole("button", { name: "Have a Join link?" }));
+      const sheet = screen.getByRole("dialog", { name: "Have a Join link?" });
+      const field = within(sheet).getByRole("textbox", { name: "Paste the Join link" });
+      await userEvent.type(field, "https://bbqueue.example/clubs/c1");
+      await userEvent.click(within(sheet).getByRole("button", { name: "Open" }));
+
+      expect(field).toHaveAccessibleDescription("That isn't a Join link.");
+      expect(field).toHaveAttribute("aria-invalid", "true");
+      expect(field).toHaveFocus();
+      expect(location.history.at(-1)).toBe("/clubs");
+    });
+  });
 });

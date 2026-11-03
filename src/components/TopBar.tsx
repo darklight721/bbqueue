@@ -5,6 +5,8 @@ import { ChevronLeftIcon } from "./icons.tsx";
 export interface TopBarProps {
   /** Where the Back button goes. */
   backTo: string;
+  /** The Back button's accessible name: "Home" on a page with no way back into the app. */
+  backLabel?: string;
   /**
    * Optional guard run before going back (e.g. "Discard changes?").
    * Return `false` (or resolve to `false`) to stay on the screen.
@@ -19,7 +21,15 @@ export interface TopBarProps {
   right?: ReactNode;
 }
 
-export function TopBar({ backTo, onBack, onLeave, title, subtitle, right }: TopBarProps) {
+export function TopBar({
+  backTo,
+  backLabel = "Back",
+  onBack,
+  onLeave,
+  title,
+  subtitle,
+  right,
+}: TopBarProps) {
   const [, navigate] = useLocation();
   const [busy, setBusy] = useState(false);
 
@@ -44,7 +54,7 @@ export function TopBar({ backTo, onBack, onLeave, title, subtitle, right }: TopB
         <button
           type="button"
           className="btn btn-ghost btn-circle -ml-2 size-12 shrink-0"
-          aria-label="Back"
+          aria-label={backLabel}
           onClick={() => void handleBack()}
         >
           <ChevronLeftIcon className="size-7" />

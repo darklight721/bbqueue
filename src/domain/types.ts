@@ -45,6 +45,8 @@ export interface Club {
   name: string;
   kind: ClubKind;
   players: ClubPlayer[];
+  /** A Shared club's current Join link token (ADR-0010), once an Organizer has shared it. */
+  joinToken?: string;
 }
 
 export interface SessionPlayer {

@@ -1,6 +1,6 @@
 # Spec: Join link
 
-Status: ready-for-agent
+Status: done
 Depends on: club-page, accounts
 
 Screens (new): `/join/:token` (Join page).
@@ -63,13 +63,13 @@ Today only an Organizer links an Account to a Club player: the person sends thei
 
 ### Matching
 
-- A name matches a Club player when they're equal under `namesEqual` (`src/domain/validation.ts`), ignoring case and extra spaces. Nothing fuzzy: "Jo" doesn't match "Joanne", and "Zoë" doesn't match "Zoe". Club player names are unique within a Club, so at most one Club player matches.
+- A name matches a Club player when they're equal under `joinNameKey` (`src/domain/joinLink.ts`): `namesEqual` (`src/domain/validation.ts`), ignoring case and extra spaces, with letters compared in one Unicode form (NFC) and a lower case that doesn't depend on the device's language. Nothing fuzzy: "Jo" doesn't match "Joanne", and "Zoë" doesn't match "Zoe". Club player names are unique within a Club, so at most one Club player matches.
 
 ### Dead ends
 
 - Link reset, unknown, or its Club deleted: "This Join link doesn't work any more. Ask an Organizer for a new one." and **Go to Home**.
 - The Account on this device is already on the Club (linked to any row): go straight to the Club page (replace).
-- Offline: "Connect to the internet to join this club." Retries when back online.
+- Offline: "Connect to the internet to join this club." Retries when back online. When the device thinks it is online but the server can't be reached, it retries by itself with growing pauses and offers **Try again**.
 - Someone else claimed the same Club player first: the sheet closes with "Alex was just linked to another Account." and **Try another name**.
 - Claiming needs the app's Backend. A build with no Backend shows the "doesn't work" message.
 
