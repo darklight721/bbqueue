@@ -35,7 +35,7 @@ A link to a Shared club that an Organizer shares so other people can Claim a Clu
 _Avoid_: Invite link, invite code, club link, share link
 
 **Claim**:
-An Account linking itself, through a Join link, to a Club player that isn't linked to any Account yet. It gives the Account the Player Role in that Club. Only an Organizer can link anyone else.
+An Account linking itself, through a Join link, to a Club player that isn't linked to any Account yet. It gives the Account the Player Role in that Club. Only an Organizer can link anyone else. The app may say "join" to the person doing it; that is UI copy only, not a separate term.
 _Avoid_: Join, connect, self-link
 
 **Role**:

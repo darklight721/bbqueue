@@ -6,7 +6,7 @@ Depends on: club-page, accounts
 Screens (new): `/join/:token` (Join page).
 Screens (changed): `/clubs/:clubId` (Club page: Join link card for Organizers), `/clubs` (Clubs page: Have a Join link?).
 
-Vocabulary: **Join link**, **Claim**, **Club player**, **Shared club**, **Organizer**, **Player** (the Role), **Account**, **Account ID** (GLOSSARY.md). Don't call the Join link an invite. Claiming isn't "joining" or "connecting".
+Vocabulary: **Join link**, **Claim**, **Club player**, **Shared club**, **Organizer**, **Player** (the Role), **Account**, **Account ID** (GLOSSARY.md). Don't call the Join link an invite. Claiming isn't "joining" or "connecting" (the app's own copy may say "join": see Claim in the glossary).
 
 Decided in a grilling session (2026-11-03). Storage and Security Rules: ADR-0010.
 
@@ -25,7 +25,7 @@ Today only an Organizer links an Account to a Club player: the person sends thei
 ## Join page `/join/:token`
 
 - Opens straight away, without Welcome or the install hint, even on a device that has never opened the app. It shows no Back to anything inside the app, only a way Home.
-- Court-green card (as on the Club page): pill "Join club", the Club name, large and uppercase.
+- Court-green card (as on the Club page): the caption "Welcome to", then the Club name, large and uppercase. No pill (spec: join-page-welcome).
 - No roster is shown. Nobody holding the link can see the Club's players.
 - No install hint on this page. The Account page still has one.
 
