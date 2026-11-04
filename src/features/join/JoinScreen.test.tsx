@@ -62,6 +62,7 @@ const confirmSheet = (name: string) =>
   screen.findByRole("dialog", { name: `You're ${name} in ${CLUB}?` });
 const nameInClubField = () => screen.findByRole("textbox", { name: `Your name in ${CLUB}` });
 const OFFLINE = "Connect to the internet to join this club.";
+const explanation = () => screen.queryByRole("heading", { name: "What happens next" });
 /** Lets the in-memory Backend's answers land while the timers are fake. */
 const advance = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
 
@@ -89,7 +90,8 @@ describe("Join page without an Account", () => {
     renderAt();
 
     expect(await screen.findByRole("heading", { name: CLUB })).toBeInTheDocument();
-    expect(screen.getByText("Join club")).toBeInTheDocument();
+    expect(screen.getByText("Welcome to")).toBeInTheDocument();
+    expect(screen.queryByText("Join club")).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /welcome/i })).not.toBeInTheDocument();
     expect(screen.queryByText("Alex")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Back" })).not.toBeInTheDocument();
@@ -352,6 +354,78 @@ describe("Join page with an Account", () => {
 
     expect(await screen.findByText("Shared club · You're an Organizer")).toBeInTheDocument();
     expect(location.history()).toEqual(["/clubs/c1"]);
+  });
+});
+
+describe("Join page explanation", () => {
+  async function typeYourName(name: string) {
+    await userEvent.type(await screen.findByRole("textbox", { name: "Your name" }), name);
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+  }
+
+  it("says what happens next and what a Player can do, above Your name", async () => {
+    renderAt();
+    const field = await screen.findByRole("textbox", { name: "Your name" });
+
+    expect(explanation()).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Find your name on the club's list and it becomes yours. No sign-up needed.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Then you can" })).toBeInTheDocument();
+    expect(screen.getAllByRole("listitem").map((item) => item.textContent)).toEqual([
+      "Follow sessions live: courts, lineups and who's up next",
+      "Look back at past sessions",
+      "See your own stats, including matches you've already played",
+    ]);
+    expect(
+      explanation()!.compareDocumentPosition(field) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("stays on the name in the Club, and behind Confirm", async () => {
+    renderAt();
+    await typeYourName("Jordan");
+
+    await nameInClubField();
+    expect(explanation()).toBeInTheDocument();
+    await userEvent.type(await nameInClubField(), "Alex{Enter}");
+    await confirmSheet("Alex");
+    expect(screen.getByText("Look back at past sessions")).toBeInTheDocument();
+  });
+
+  it("goes when the page has something else to say", async () => {
+    renderAt();
+    await typeYourName("Bea");
+    await screen.findByText(/is already linked to an Account/);
+    expect(explanation()).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Try another name" }));
+    await userEvent.type(await nameInClubField(), "Sammy{Enter}");
+    await screen.findByText(/^No one called Sammy/);
+    expect(explanation()).not.toBeInTheDocument();
+  });
+
+  it("isn't behind Confirm straight from the Account's Name", async () => {
+    startDevice(device, await device.createAccount("Alex"));
+    renderAt();
+
+    await confirmSheet("Alex");
+    expect(screen.queryByText("Look back at past sessions")).not.toBeInTheDocument();
+  });
+
+  it("goes when the connection does, and comes back with it", async () => {
+    renderAt();
+    await screen.findByRole("textbox", { name: "Your name" });
+
+    act(() => device.setOnline(false));
+    expect(await screen.findByText(OFFLINE)).toBeInTheDocument();
+    expect(explanation()).not.toBeInTheDocument();
+
+    act(() => device.setOnline(true));
+    await screen.findByRole("textbox", { name: "Your name" });
+    expect(explanation()).toBeInTheDocument();
   });
 });
 

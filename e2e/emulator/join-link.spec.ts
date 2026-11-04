@@ -86,7 +86,7 @@ async function openOnFreshDevice(browser: Browser, baseURL: string | undefined, 
 
 /** On the Join page, types `name` as their name and gets to the Confirm sheet. */
 async function reachConfirm(other: Page, name: string, clubName: string) {
-  await expect(other.getByText("Join club", { exact: true })).toBeVisible();
+  await expect(other.getByText("Welcome to", { exact: true })).toBeVisible();
   await expect(other.getByRole("heading", { level: 2, name: clubName })).toBeVisible();
   await other.getByRole("textbox", { name: "Your name", exact: true }).fill(name);
   await other.getByRole("button", { name: "Continue" }).click();
@@ -204,7 +204,7 @@ test.describe("Join link between people on a real server", () => {
     await third.goto(oldPath);
     await expect(third.getByRole("heading", { level: 1, name: "Join link" })).toBeVisible();
     await expect(third.getByText(DOESNT_WORK)).toBeVisible();
-    await expect(third.getByText("Join club", { exact: true })).toHaveCount(0);
+    await expect(third.getByText("Welcome to", { exact: true })).toHaveCount(0);
 
     // The new link works.
     const newPath = await shareLink(page, club);

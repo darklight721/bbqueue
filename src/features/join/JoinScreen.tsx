@@ -4,7 +4,7 @@ import { useLocation } from "wouter";
 import { BackendError, type Backend, type JoinLinkInfo } from "../../backend/backend.ts";
 import { getBackend } from "../../backend/index.ts";
 import { useOnline } from "../../backend/useOnline.ts";
-import { CourtCard } from "../../components/CourtCard.tsx";
+import { CourtCard, CourtCardCaption } from "../../components/CourtCard.tsx";
 import { CopyIcon } from "../../components/icons.tsx";
 import { Modal } from "../../components/Modal.tsx";
 import { NAME_ERROR_MESSAGE } from "../../components/nameErrors.ts";
@@ -292,9 +292,11 @@ function JoinFlow({ backend, token }: { backend: Backend; token: string }) {
   const confirming = step.type === "confirm" ? step : null;
   /** What the page shows under the card for this step (the form under Confirm, too). */
   const shown: JoinStep["type"] | LookupFrom = confirming ? confirming.from : step.type;
+  const needsConnection = offline && NEEDS_CONNECTION.has(step.type);
+  const asksName = !needsConnection && (shown === "your-name" || shown === "name-in-club");
 
   let body: ReactNode = null;
-  if (offline && NEEDS_CONNECTION.has(step.type)) {
+  if (needsConnection) {
     body = (
       <div className="flex flex-col gap-4">
         <OfflineNotice>Connect to the internet to join this club.</OfflineNotice>
@@ -389,6 +391,7 @@ function JoinFlow({ backend, token }: { backend: Backend; token: string }) {
     <JoinFrame>
       {club ? <JoinCard clubName={clubName} /> : null}
       {club ? <HomeScreenCopyLine token={token} /> : null}
+      {asksName ? <JoinExplanation /> : null}
       {body}
 
       <Modal
@@ -439,22 +442,41 @@ function JoinFlow({ backend, token }: { backend: Backend; token: string }) {
   );
 }
 
-/** The court-green card, as on the Club page: what this is, and the Club's name. No roster. */
+/** The court-green card, as on the Club page: a welcome, and the Club's name. No roster. */
 function JoinCard({ clubName }: { clubName: string }) {
   const nameId = useId();
   return (
     <CourtCard labelledBy={nameId}>
-      <p className="mb-3 inline-flex items-center gap-2 self-start rounded-full bg-black/20 px-3 py-1 text-xs font-bold tracking-[0.18em] uppercase">
-        <span className="size-2 rounded-full bg-volt" aria-hidden="true" />
-        Join club
-      </p>
+      <CourtCardCaption>Welcome to</CourtCardCaption>
       <h2
         id={nameId}
-        className="min-w-0 font-display text-4xl leading-none font-bold break-words uppercase"
+        className="mt-1 min-w-0 font-display text-4xl leading-none font-bold break-words uppercase"
       >
         {clubName}
       </h2>
     </CourtCard>
+  );
+}
+
+/** Above the name form: what finding your name does, and what a Player gets from it. */
+function JoinExplanation() {
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-1">
+        <h3 className="font-display text-2xl uppercase">What happens next</h3>
+        <p className="text-base-content/80">
+          Find your name on the club's list and it becomes yours. No sign-up needed.
+        </p>
+      </div>
+      <div className="flex flex-col gap-1">
+        <h3 className="font-display text-2xl uppercase">Then you can</h3>
+        <ul className="flex list-disc flex-col gap-1 pl-5 text-base-content/80">
+          <li>Follow sessions live: courts, lineups and who's up next</li>
+          <li>Look back at past sessions</li>
+          <li>See your own stats, including matches you've already played</li>
+        </ul>
+      </div>
+    </div>
   );
 }
 

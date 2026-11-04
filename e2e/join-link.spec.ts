@@ -65,10 +65,10 @@ async function stubClipboard(page: Page) {
 const copiedText = (page: Page) =>
   page.evaluate(() => (window as unknown as { __copied?: string }).__copied ?? null);
 
-/** The Join page of `token`, opened for Tuesday: its card says Join club and the Club's name. */
+/** The Join page of `token`, opened for Tuesday: its card says Welcome to and the Club's name. */
 async function expectJoinPage(page: Page) {
   await expect(page.getByRole("heading", { level: 1, name: "Join link" })).toBeVisible();
-  await expect(page.getByText("Join club", { exact: true })).toBeVisible();
+  await expect(page.getByText("Welcome to", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { level: 2, name: "Tuesday" })).toBeVisible();
 }
 
@@ -350,7 +350,7 @@ test.describe("A Join link that doesn't work", () => {
       await expect(
         page.getByText("This Join link doesn't work any more. Ask an Organizer for a new one."),
       ).toBeVisible();
-      await expect(page.getByText("Join club", { exact: true })).toHaveCount(0);
+      await expect(page.getByText("Welcome to", { exact: true })).toHaveCount(0);
       await page.getByRole("button", { name: "Go to Home" }).click();
       await expect(page).toHaveURL(/\/$/);
       await expect(page.getByRole("heading", { level: 1, name: "BBQueue" })).toBeVisible();
