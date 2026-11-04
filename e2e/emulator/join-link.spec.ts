@@ -2,6 +2,7 @@ import { expect, test, type Browser, type Page } from "@playwright/test";
 import type { Account, Club } from "../../src/domain/types.ts";
 import { readStoredData } from "../fixtures.ts";
 import { adminGetDoc, readServerClub, seedSharedClub, signUp, uniqueId } from "./emulator.ts";
+import { lagListeners } from "./listen-lag.ts";
 import { startSession, watchFromHome } from "./sessions.ts";
 
 // People on the Firebase emulators, each in their own browser context: Roy (an Organizer) shares
@@ -147,6 +148,26 @@ test.describe("Join link between people on a real server", () => {
     });
 
     await alexPage.context().close();
+  });
+
+  test("a person with no Account claims on the first tap, even when their new Account reaches their listeners late", async ({
+    page,
+    browser,
+    baseURL,
+  }) => {
+    const club = await royWithClub(page);
+    const path = await shareLink(page, club);
+
+    const context = await browser.newContext({ baseURL });
+    const stopLag = await lagListeners(context);
+    const alexPage = await context.newPage();
+    await alexPage.goto(path);
+    const confirm = await reachConfirm(alexPage, "Alex", club.name);
+    await confirm.getByRole("button", { name: "Yes, that's me" }).click();
+    await expectOnClubAsPlayer(alexPage, club, "Alex");
+
+    await context.close();
+    stopLag();
   });
 
   test("two people claim the same name: the second to confirm gets just linked to another Account", async ({

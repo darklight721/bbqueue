@@ -116,7 +116,9 @@ export function createFirebaseBackend(
   let lastKnown: Account | null = null;
   /**
    * Signing in comes before the Account is written, so the Account's own listener can hear "there
-   * is none" from the server just after it was created here. Don't take that for a deletion.
+   * is none" from the server just after it was created here, and a read while it listens gets the
+   * same answer from it (the transaction that wrote the Account doesn't reach the local cache).
+   * Don't take that for a deletion.
    */
   let justCreatedUntil = 0;
 
@@ -136,7 +138,9 @@ export function createFirebaseBackend(
       try {
         // Offline, getDoc would wait for a connection that isn't coming; the cache answers at once.
         const snapshot = online.get() ? await getDoc(ref) : await getDocFromCache(ref);
-        return (lastKnown = accountFromSnapshot(snapshot) ?? (online.get() ? null : lastKnown));
+        const account = accountFromSnapshot(snapshot);
+        if (!account && Date.now() < justCreatedUntil) return lastKnown;
+        return (lastKnown = account ?? (online.get() ? null : lastKnown));
       } catch {
         // Offline: fall back to whatever the cache has, then to what this session last saw.
         try {
