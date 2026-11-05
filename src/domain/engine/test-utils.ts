@@ -45,6 +45,7 @@ export function match(options: {
     id: options.id,
     number: options.number ?? null,
     courtNumber: options.court ?? 1,
+    courtName: `Court ${options.court ?? 1}`,
     teams: options.teams,
     freeAtStart: options.freeAtStart ?? [],
     startedAt: options.startedAt,
@@ -76,6 +77,7 @@ export function session(options: {
     courts: Array.from({ length: options.courts ?? 1 }, (_, i) => ({
       id: `c${i + 1}`,
       number: i + 1,
+      name: `Court ${i + 1}`,
       lineup: null,
       activeMatchId:
         matches.find((m) => m.status === "active" && m.courtNumber === i + 1)?.id ?? null,

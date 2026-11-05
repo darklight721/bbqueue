@@ -16,6 +16,7 @@ function ended(
   const matches: EndedSessionMatch[] = rows.map((row, index) => ({
     number: index + 1,
     courtNumber: 1,
+    courtName: "Court 1",
     teams: [row.a, row.b],
     target: 21,
     startedAt: endedAt - 100_000 + index * 1000,

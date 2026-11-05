@@ -196,7 +196,7 @@ function PlayerRow({ player, onMenu }: { player: SessionPlayer; onMenu: () => vo
             </span>
           ) : null}
           <span
-            className={`rounded-full border-[1.5px] px-2 py-px text-xs font-semibold whitespace-nowrap ${STATUS_TONE_CLASS[status.tone]}`}
+            className={`max-w-full rounded-2xl border-[1.5px] px-2 py-px text-xs font-semibold wrap-anywhere ${STATUS_TONE_CLASS[status.tone]}`}
           >
             {status.label}
           </span>

@@ -75,7 +75,9 @@ export interface Lineup {
 
 export interface Court {
   id: string;
+  /** Hidden: the Court's place in the order. People see `name`. */
   number: number;
+  name: string;
   lineup: Lineup | null;
   activeMatchId: string | null;
 }
@@ -85,6 +87,10 @@ export interface Match {
   /** 1-based sequence of Ended matches, assigned when the Match ends; null while active. */
   number: number | null;
   courtNumber: number;
+  /** The Court this was played on. Absent on Matches started before Courts had names. */
+  courtId?: string;
+  /** Follows a rename of the Court until the Session has Ended. */
+  courtName: string;
   teams: [Team, Team];
   /** Free players not in this Match when it started (used for Streak / Rest). */
   freeAtStart: string[];
@@ -198,6 +204,7 @@ export interface EndedSessionPlayer {
 export interface EndedSessionMatch {
   number: number;
   courtNumber: number;
+  courtName: string;
   teams: [Team, Team];
   target: PointSystem;
   startedAt: number;

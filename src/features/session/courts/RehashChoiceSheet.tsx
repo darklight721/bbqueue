@@ -9,16 +9,16 @@ import { RehashAllOption } from "./RehashBlockedSheet.tsx";
  */
 export function RehashChoiceSheet({
   open,
-  courtNumber,
+  courtName,
   otherLineups,
   onJustThisCourt,
   onRehashAll,
   onCancel,
 }: {
   open: boolean;
-  courtNumber: number;
-  /** Numbers of the other Idle Courts that hold a Lineup (not empty). */
-  otherLineups: readonly number[];
+  courtName: string;
+  /** Names of the other Idle Courts that hold a Lineup (not empty). */
+  otherLineups: readonly string[];
   onJustThisCourt: () => void;
   onRehashAll: () => void;
   onCancel: () => void;
@@ -28,7 +28,7 @@ export function RehashChoiceSheet({
   return (
     <Modal
       open={open}
-      title={`Rehash Court ${courtNumber}`}
+      title={`Rehash ${courtName}`}
       initialFocusRef={justThisRef}
       onClose={onCancel}
     >

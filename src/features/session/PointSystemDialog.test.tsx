@@ -165,7 +165,7 @@ describe("playingLine", () => {
     session = ok(setPointSystem(session, 31, at(T0 + 1000)));
     session = ok(startMatch(session, session.courts[1]!.id, at(T0 + 2000)));
     expect(playingLine(session)).toBe(
-      "Matches being played keep their points: court 1 at 21, court 2 at 31.",
+      "Matches being played keep their points: Court 1 at 21, Court 2 at 31.",
     );
   });
 });

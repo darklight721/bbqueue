@@ -7,7 +7,7 @@ import {
   makeSessionPlayer,
   seedStorage,
 } from "./fixtures.ts";
-import { court, lineupOf, openScoreDialog, playersOf, storedSession } from "./session-helpers.ts";
+import { court, lineupOf, playersOf, storedSession } from "./session-helpers.ts";
 
 /**
  * Seeded layout (10 players), deliberately not alphabetical:
@@ -39,6 +39,7 @@ function buildSession({ sittingOut = [], skills = {}, history = [] }: Tweaks = {
       id: `history-${index}`,
       number: index + 1,
       courtNumber: 1,
+      courtName: "Court 1",
       teams: [
         [idOf(a[0]), idOf(a[1])],
         [idOf(b[0]), idOf(b[1])],
@@ -182,6 +183,7 @@ test.describe("Up next", () => {
       ...first,
       id: "match-court-2",
       courtNumber: 2,
+      courtName: "Court 2",
       teams: [
         [ids[4]!, ids[5]!],
         [ids[6]!, ids[7]!],
@@ -214,41 +216,25 @@ test.describe("Up next", () => {
     await expect(
       upNext(page).getByText("The rest will come from whoever comes off court."),
     ).toBeVisible();
-    await expect(upNext(page).getByRole("button", { name: "Queue these four" })).toHaveCount(0);
   });
 
-  test("shows only the next four; Queue these four queues them, and Move to court plays them", async ({
+  test("shows only the next four, and the Session host has nothing to tap on them", async ({
     page,
   }) => {
-    const session = bothCourtsBusy();
-    const names = session.players.map((player) => player.name);
-    await openSeeded(page, session);
+    await openSeeded(page, bothCourtsBusy());
     // 6 free; only the four the app would pick are shown.
     await expect(upNextRows(page)).toHaveCount(4);
-    const four = await upNextNames(page, names);
+    await expect(upNext(page).getByRole("button")).toHaveCount(0);
 
-    await upNext(page).getByRole("button", { name: "Queue these four" }).click();
+    await queuesRegion(page).getByRole("button", { name: "Add queue" }).click();
     const q = queue(page, 1);
-    await expect(q.getByText("4 of 4")).toBeVisible();
-    const stored = await storedSession(page);
-    const nameOf = new Map(stored.players.map((p) => [p.id, p.name]));
-    const slots = stored.queues[0]!.slots.map((team) => team.map((id) => nameOf.get(id!)!));
-    expect(slots.flat().sort()).toEqual([...four].sort());
+    await expect(q).toBeVisible();
     // Up next stays above the Queued subsection and its Queue card.
     const upNextBox = (await upNext(page).boundingBox())!;
     const queuedHeading = queuesRegion(page).getByRole("heading", { level: 3, name: "Queued" });
     const queuedBox = (await queuedHeading.boundingBox())!;
     expect(queuedBox.y).toBeGreaterThan(upNextBox.y + upNextBox.height - 1);
     expect((await q.boundingBox())!.y).toBeGreaterThan(queuedBox.y + queuedBox.height - 1);
-
-    const dialog = await openScoreDialog(page, 1);
-    await dialog.getByRole("button", { name: "End without score" }).click();
-    await expect(court(page, 1).getByText("Idle", { exact: true })).toBeVisible();
-    await move(q, "Court 1 · Idle").click();
-    await expect(notice(page, "Match started on court 1")).toBeVisible();
-    const after = await storedSession(page);
-    const started = after.matches.find((m) => m.status === "active" && m.courtNumber === 1)!;
-    expect(started.teams.map((team) => team.map((id) => nameOf.get(id)))).toEqual(slots);
   });
 
   test("players on their 2nd Match in a row are tagged Resting", async ({ page }) => {
@@ -292,10 +278,10 @@ test.describe("Picking players", () => {
     const list = picker(page).getByRole("list", { name: "Players" });
     await expect(
       list.getByRole("button", { name: "Zoe", exact: true }),
-    ).toHaveAccessibleDescription("On court 1");
+    ).toHaveAccessibleDescription("On Court 1");
     await expect(
       list.getByRole("button", { name: "Eve", exact: true }),
-    ).toHaveAccessibleDescription("In lineup · court 2");
+    ).toHaveAccessibleDescription("In lineup · Court 2");
     await expect(
       list.getByRole("button", { name: "Ivy", exact: true }),
     ).toHaveAccessibleDescription("Free");
@@ -391,7 +377,7 @@ test.describe("Move to court", () => {
     await expect(move(q, "Court 2 · Idle")).toBeEnabled();
     await move(q, "Court 2 · Idle").click();
 
-    await expect(notice(page, "Match started on court 2")).toBeVisible();
+    await expect(notice(page, "Match started on Court 2")).toBeVisible();
     await expect(page.getByRole("region", { name: /^Queue \d/ })).toHaveCount(0);
     await expect(queuesRegion(page).getByText("Pick the next four players")).toBeVisible();
 
@@ -426,12 +412,12 @@ test.describe("Move to court", () => {
     await expect(move(q, "Court 1 · Playing")).toBeDisabled();
     await expect(move(q, "Court 1 · Playing")).toHaveAccessibleDescription("Court in use");
 
-    // Complete, but Ben is on court 1.
+    // Complete, but Ben is on Court 1.
     await pick(page, q, "Team A", 2, "Jon");
     await pick(page, q, "Team B", 1, "Eve");
     await pick(page, q, "Team B", 2, "Ben");
     await expect(move(q, "Court 2 · Idle")).toBeDisabled();
-    await expect(move(q, "Court 2 · Idle")).toHaveAccessibleDescription("Ben is on court 1");
+    await expect(move(q, "Court 2 · Idle")).toHaveAccessibleDescription("Ben is on Court 1");
     await expect(move(q, "Court 1 · Playing")).toBeDisabled();
     await expect(move(q, "Court 1 · Playing")).toHaveAccessibleDescription("Court in use");
 
@@ -482,7 +468,7 @@ test.describe("Move to court", () => {
     const q = queue(page, 1);
     await fill(page, q, ["Ann", "Ian", "Joy", "Kai"]);
     await move(q, "Court 2 · Idle").click();
-    await expect(notice(page, "Match started on court 2")).toBeVisible();
+    await expect(notice(page, "Match started on Court 2")).toBeVisible();
 
     await expect(court(page, 2).getByText("Playing", { exact: true })).toBeVisible();
     expect(await lineupOf(court(page, 2))).toEqual({ a: ["Ann", "Ian"], b: ["Joy", "Kai"] });
@@ -509,7 +495,7 @@ test.describe("Move to court", () => {
     ).toBeVisible();
     await expect(move(q, "Court 2 · Idle")).toBeEnabled();
     await move(q, "Court 2 · Idle").click();
-    await expect(notice(page, "Match started on court 2")).toBeVisible();
+    await expect(notice(page, "Match started on Court 2")).toBeVisible();
 
     expect(await lineupOf(court(page, 2))).toEqual({ a: ["Jon", "Ivy"], b: ["Eve", "Fay"] });
     const stored = await storedSession(page);

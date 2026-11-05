@@ -8,7 +8,14 @@ import type {
   SkillLevel,
   Team,
 } from "../types.ts";
-import { findDuplicateName, namesEqual, normalizeName } from "../validation.ts";
+import {
+  defaultCourtName,
+  findDuplicateName,
+  namesEqual,
+  normalizeCourtName,
+  normalizeName,
+  validateCourtName,
+} from "../validation.ts";
 import { makeId, type EngineContext } from "./context.ts";
 import {
   fillLineups,
@@ -79,6 +86,7 @@ export function createSession(input: CreateSessionInput, ctx: EngineContext): Se
   const courts: Court[] = Array.from({ length: input.courts }, (_, i) => ({
     id: makeId(ctx),
     number: i + 1,
+    name: defaultCourtName(i + 1),
     lineup: null,
     activeMatchId: null,
   }));
@@ -208,6 +216,8 @@ function beginMatch(
     id: makeId(ctx),
     number: null,
     courtNumber: court.number,
+    courtId: court.id,
+    courtName: court.name,
     teams,
     freeAtStart: restingAtStart(session, court.id, inMatch),
     startedAt: ctx.now,
@@ -363,12 +373,19 @@ export function removeMatch(
 
 // ---------------------------------------------------------------------- courts
 
+/** A new Court goes last, on the next number whose default name no Court has taken. */
 export function addCourt(session: Session, ctx: EngineContext): Result<"max-courts"> {
   if (session.courts.length >= MAX_COURTS) return fail("max-courts");
-  const used = new Set(session.courts.map((court) => court.number));
-  let number = 1;
-  while (used.has(number)) number += 1;
-  const court: Court = { id: makeId(ctx), number, lineup: null, activeMatchId: null };
+  const names = session.courts.map((court) => court.name);
+  let number = Math.max(0, ...session.courts.map((court) => court.number)) + 1;
+  while (findDuplicateName(defaultCourtName(number), names) !== -1) number += 1;
+  const court: Court = {
+    id: makeId(ctx),
+    number,
+    name: defaultCourtName(number),
+    lineup: null,
+    activeMatchId: null,
+  };
   const courts = [...session.courts, court].sort((a, b) => a.number - b.number);
   return ok(fillLineups({ ...session, courts }, ctx));
 }
@@ -383,6 +400,34 @@ export function removeCourt(
   if (!isIdle(court)) return fail("court-busy");
   const next: Session = { ...session, courts: session.courts.filter((c) => c.id !== courtId) };
   return ok(fillLineups(next, ctx));
+}
+
+/**
+ * Give a Court a new Court name, on the Matches played on it too: a rename corrects the label, it
+ * doesn't move the court. Matches from before Courts had names say which Court only while Active.
+ */
+export function renameCourt(
+  session: Session,
+  courtId: string,
+  name: string,
+): Result<"court-not-found" | "name-required" | "name-too-long" | "duplicate-name"> {
+  const court = session.courts.find((candidate) => candidate.id === courtId);
+  if (!court) return fail("court-not-found");
+  const others = session.courts.filter((other) => other.id !== courtId).map((other) => other.name);
+  const error = validateCourtName(name, others);
+  if (error === "required") return fail("name-required");
+  if (error === "too-long") return fail("name-too-long");
+  if (error === "duplicate") return fail("duplicate-name");
+  const courtName = normalizeCourtName(name);
+  return ok({
+    ...session,
+    courts: session.courts.map((c) => (c.id === courtId ? { ...c, name: courtName } : c)),
+    matches: session.matches.map((match) =>
+      match.courtId === courtId || match.id === court.activeMatchId
+        ? { ...match, courtName }
+        : match,
+    ),
+  });
 }
 
 // --------------------------------------------------------------------- players

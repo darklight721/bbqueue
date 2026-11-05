@@ -116,7 +116,7 @@ export function QueueCard({ queue, number }: { queue: Queue; number: number }) {
                 <div key={court.id} className="flex flex-col gap-0.5">
                   <button
                     type="button"
-                    className={`btn ${check.ok ? "btn-primary" : "btn-outline border-base-300"}`}
+                    className={`btn h-auto min-h-10 w-full py-2 wrap-anywhere ${check.ok ? "btn-primary" : "btn-outline border-base-300"}`}
                     disabled={!check.ok}
                     aria-describedby={
                       check.ok ? undefined : busy ? hintId : queueReason ? queueReasonId : undefined
@@ -125,10 +125,10 @@ export function QueueCard({ queue, number }: { queue: Queue; number: number }) {
                       const moved = actions.run((s, ctx) =>
                         moveQueueToCourt(s, queue.id, court.id, ctx),
                       );
-                      if (moved) actions.notify(`Match started on court ${court.number}`);
+                      if (moved) actions.notify(`Match started on ${court.name}`);
                     }}
                   >
-                    Court {court.number} · {busy ? "Playing" : "Idle"}
+                    {court.name} · {busy ? "Playing" : "Idle"}
                   </button>
                   {busy ? (
                     <span id={hintId} className="text-center text-xs text-base-content/60">

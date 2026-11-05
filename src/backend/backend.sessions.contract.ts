@@ -51,6 +51,7 @@ export function makeClubEnded(session: Session, endedAt: number): EndedSession {
       {
         number: 1,
         courtNumber: 1,
+        courtName: "Court 1",
         teams: [
           [a!.id, b!.id],
           [c!.id, d!.id],

@@ -10,22 +10,22 @@ export interface PlayerStatusView {
   note: string | null;
 }
 
-/** "On court 1", "In lineup · court 2", "Sitting out", "Free". */
+/** "On Court 1", "In lineup · Court 2", "Sitting out", "Free". */
 export function playerStatus(
   player: SessionPlayer,
   stats: PlayerStats | undefined,
 ): PlayerStatusView {
-  const court = stats?.courtNumber ?? null;
+  const court = stats?.courtName ?? null;
   switch (stats?.status) {
     case "on-court":
       return {
-        label: court === null ? "On court" : `On court ${court}`,
+        label: court === null ? "On court" : `On ${court}`,
         tone: "on-court",
         note: player.sittingOut ? "Sitting out after this match" : null,
       };
     case "in-lineup":
       return {
-        label: court === null ? "In lineup" : `In lineup · court ${court}`,
+        label: court === null ? "In lineup" : `In lineup · ${court}`,
         tone: "in-lineup",
         note: null,
       };

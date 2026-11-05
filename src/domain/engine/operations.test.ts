@@ -14,12 +14,14 @@ import {
   removeCourt,
   removeMatch,
   removePlayer,
+  renameCourt,
   setPointSystem,
   setSittingOut,
   setSkill,
   startMatch,
   type CreateSessionInput,
 } from "./operations.ts";
+import { toEndedSession } from "./endedSession.ts";
 import { addQueue, removeQueue, setQueueSlot } from "./queues.ts";
 import { allPlayerStats } from "./playerStats.ts";
 import { lineupPlayerIds } from "./select.ts";
@@ -118,6 +120,7 @@ describe("startMatch", () => {
       status: "active",
       number: null,
       courtNumber: 1,
+      courtName: "Court 1",
       startedAt: T0 + MIN,
       endedAt: null,
       score: null,
@@ -265,13 +268,95 @@ describe("removeMatch", () => {
   });
 });
 
+describe("Court names", () => {
+  const renamed = (s: Session, index: number, name: string) =>
+    unwrap(renameCourt(s, s.courts[index]!.id, name));
+
+  it("starts every Court as Court N", () => {
+    const { session: s } = created(8, 2);
+    expect(s.courts.map((c) => c.name)).toEqual(["Court 1", "Court 2"]);
+  });
+
+  it("keeps a name as typed, cleaned up, and makes only digits a Court", () => {
+    const { session: s } = created(8, 2);
+    expect(renamed(s, 0, "  Hall   B ").courts[0]!.name).toBe("Hall B");
+    expect(renamed(s, 0, "5").courts[0]!.name).toBe("Court 5");
+  });
+
+  it("refuses a blank, too long or duplicate name, but not its own in a new case", () => {
+    const { session: s } = created(8, 2);
+    const id = s.courts[0]!.id;
+    expect(renameCourt(s, id, "  ")).toEqual({ ok: false, reason: "name-required" });
+    expect(renameCourt(s, id, "x".repeat(21))).toEqual({ ok: false, reason: "name-too-long" });
+    expect(renameCourt(s, id, "court 2")).toEqual({ ok: false, reason: "duplicate-name" });
+    expect(renameCourt(s, id, "2")).toEqual({ ok: false, reason: "duplicate-name" });
+    expect(renameCourt(s, "nope", "Hall B")).toEqual({ ok: false, reason: "court-not-found" });
+    expect(unwrap(renameCourt(s, id, "COURT 1")).courts[0]!.name).toBe("COURT 1");
+  });
+
+  it("changes the Matches played on that Court, Active and Ended, and no others", () => {
+    const { ctx, session: s } = created(8, 2);
+    const [one, two] = s.courts;
+    let current = unwrap(startMatch(s, one!.id, ctx));
+    current = unwrap(startMatch(current, two!.id, ctx));
+    const [first] = current.matches;
+    current = unwrap(endMatch(current, first!.id, null, ctx));
+    current = unwrap(startMatch(current, one!.id, ctx));
+    current = renamed(current, 0, "Hall B");
+    expect(current.matches.map((m) => m.courtName)).toEqual(["Hall B", "Court 2", "Hall B"]);
+  });
+
+  it("names a Match with no courtId only while it is that Court's Active match", () => {
+    const { ctx, session: s } = created(8, 1);
+    const court = s.courts[0]!;
+    const started = unwrap(startMatch(s, court.id, ctx));
+    const ended = unwrap(endMatch(started, started.matches[0]!.id, null, ctx));
+    const again = unwrap(startMatch(ended, court.id, ctx));
+    const old: Session = {
+      ...again,
+      matches: again.matches.map(({ courtId: _courtId, ...match }) => match),
+    };
+    expect(renamed(old, 0, "Hall B").matches.map((m) => m.courtName)).toEqual([
+      "Court 1",
+      "Hall B",
+    ]);
+  });
+
+  it("leaves a removed Court's Matches alone when a new Court reuses its number", () => {
+    const { ctx, session: s } = created(8, 2);
+    const two = s.courts[1]!;
+    let current = unwrap(startMatch(s, two.id, ctx));
+    current = unwrap(endMatch(current, current.matches[0]!.id, null, ctx));
+    current = renamed(current, 1, "Hall B");
+    current = unwrap(removeCourt(current, two.id, ctx));
+    current = unwrap(addCourt(current, ctx));
+    expect(current.courts.map((c) => c.number)).toEqual([1, 2]);
+    current = renamed(current, 1, "Hall C");
+    expect(current.matches.map((m) => m.courtName)).toEqual(["Hall B"]);
+  });
+
+  it("skips a default name another Court already has, and sorts by number, not name", () => {
+    const { ctx, session: s } = created(8, 2);
+    const added = unwrap(addCourt(renamed(s, 0, "Court 3"), ctx));
+    expect(added.courts.map((c) => c.name)).toEqual(["Court 3", "Court 2", "Court 4"]);
+  });
+
+  it("keeps the Court name on an Ended session", () => {
+    const { ctx, session: s } = created(8, 1);
+    let current = unwrap(startMatch(s, s.courts[0]!.id, ctx));
+    current = unwrap(endMatch(current, current.matches[0]!.id, null, ctx));
+    current = renamed(current, 0, "Hall B");
+    expect(toEndedSession(current, T0)!.matches[0]!.courtName).toBe("Hall B");
+  });
+});
+
 describe("courts", () => {
-  it("adds the lowest unused number, up to 10, and fills the new Court", () => {
+  it("adds the new Court last, up to 10, and fills it", () => {
     const { ctx, session: s } = created(8, 2);
     const without1 = unwrap(removeCourt(s, s.courts[0]!.id, ctx));
     const added = unwrap(addCourt(without1, ctx));
-    expect(added.courts.map((c) => c.number)).toEqual([1, 2]);
-    expect(added.courts[0]!.lineup).not.toBeNull();
+    expect(added.courts.map((c) => c.name)).toEqual(["Court 2", "Court 3"]);
+    expect(added.courts[1]!.lineup).not.toBeNull();
 
     let many = s;
     for (let i = 0; i < 8; i++) many = unwrap(addCourt(many, ctx));
@@ -742,6 +827,7 @@ describe("endSession", () => {
       expect(kept.clubPlayerId).toBe(current.players.find((p) => p.id === kept.id)!.clubPlayerId);
     }
     expect(Object.keys(ended.matches[0]!).sort()).toEqual([
+      "courtName",
       "courtNumber",
       "endedAt",
       "number",

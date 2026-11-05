@@ -19,7 +19,7 @@ export function warningLabel(warning: QueueWarning, queue: Queue, players: Looku
     case "sitting-out":
       return `Sitting out: ${nameOf(warning.playerId, players)}`;
     case "on-court":
-      // Covered by the Move to court reason ("Ana is on court 1").
+      // Covered by the Move to court reason ("Ana is on Court 1").
       return null;
   }
 }
@@ -33,7 +33,7 @@ export function moveBlockedReason(check: MoveCheck): string | null {
     case "queue-incomplete":
       return "Fill all 4 spots";
     case "player-on-court":
-      return `${check.playerName} is on court ${check.courtNumber}`;
+      return `${check.playerName} is on ${check.courtName}`;
     case "player-not-found":
       return "A player has left the session";
   }

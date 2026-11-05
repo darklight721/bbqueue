@@ -86,15 +86,15 @@ function PickerBody({
                   type="button"
                   aria-label={player.name}
                   aria-describedby={statusId}
-                  className="flex min-h-14 w-full items-center gap-2 rounded-field px-2 py-2 text-left hover:bg-base-200 active:bg-base-300"
+                  className="flex min-h-14 w-full flex-wrap items-center gap-x-2 gap-y-1 rounded-field px-2 py-2 text-left hover:bg-base-200 active:bg-base-300"
                   onClick={() => onPick(player.id)}
                 >
-                  <span className="min-w-0 flex-1">
+                  <span className="min-w-40 flex-1">
                     <SessionPlayerChip playerId={player.id} layout="inline" />
                   </span>
                   <span
                     id={statusId}
-                    className={`shrink-0 rounded-full border-[1.5px] px-2 py-px text-xs font-semibold whitespace-nowrap ${STATUS_TONE_CLASS[status.tone]}`}
+                    className={`max-w-full rounded-2xl border-[1.5px] px-2 py-px text-xs font-semibold wrap-anywhere ${STATUS_TONE_CLASS[status.tone]}`}
                   >
                     {status.label}
                   </span>

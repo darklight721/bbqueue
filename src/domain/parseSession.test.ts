@@ -76,6 +76,31 @@ describe("parseSession", () => {
     expect(parsed?.matches[0]?.target).toBe(21);
   });
 
+  it("fills in Court names for older saves, from the Court's number", () => {
+    const real = played();
+    const value = viaJson(real) as {
+      courts: Record<string, unknown>[];
+      matches: Record<string, unknown>[];
+    };
+    for (const court of value.courts) delete court.name;
+    for (const match of value.matches) {
+      delete match.courtName;
+      delete match.courtId;
+    }
+    const parsed = parseSession(value)!;
+    expect(parsed.courts.map((court) => court.name)).toEqual(
+      real.courts.map((c) => `Court ${c.number}`),
+    );
+    expect(parsed.matches[0]!.courtName).toBe(`Court ${real.matches[0]!.courtNumber}`);
+    expect(parsed.matches[0]).not.toHaveProperty("courtId");
+  });
+
+  it("cuts a Court name that is too long", () => {
+    const real = played();
+    real.courts[0] = { ...real.courts[0]!, name: "x".repeat(50) };
+    expect(parseSession(viaJson(real))!.courts[0]!.name).toHaveLength(20);
+  });
+
   it("drops fields it doesn't know", () => {
     const parsed = parseSession({ ...(viaJson(played()) as object), isAdmin: true, __proto__: 1 });
     expect(parsed).not.toBeNull();
@@ -173,6 +198,14 @@ describe("parseEndedSession", () => {
 
   it("accepts a real Ended session as it is", () => {
     expect(parseEndedSession(viaJson(real()))).toEqual(real());
+  });
+
+  it("fills in Court names for older Ended sessions", () => {
+    const real = toEndedSession(played(), 1_000)!;
+    const value = viaJson(real) as { matches: Record<string, unknown>[] };
+    for (const match of value.matches) delete match.courtName;
+    const parsed = parseEndedSession(value)!;
+    expect(parsed.matches[0]!.courtName).toBe(`Court ${real.matches[0]!.courtNumber}`);
   });
 
   it("fills in the Club's name for older Ended sessions", () => {

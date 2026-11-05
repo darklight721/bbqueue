@@ -268,7 +268,7 @@ test.describe("Courts and Lineups", () => {
     await expect(three.getByRole("button", { name: "Rehash", exact: true })).toBeDisabled();
     expect((await storedSession(page)).courts.map((c) => c.number)).toEqual([1, 2, 3]);
 
-    await three.getByRole("button", { name: "Remove court 3", exact: true }).click();
+    await three.getByRole("button", { name: "Remove Court 3", exact: true }).click();
     await expect(court(page, 3)).toHaveCount(0);
     expect((await storedSession(page)).courts).toHaveLength(2);
 
@@ -283,7 +283,7 @@ test.describe("Courts and Lineups", () => {
     await expect(court(page, 1).getByText("Playing")).toBeVisible();
     await expect(court(page, 1).getByRole("button", { name: /^Remove court/ })).toHaveCount(0);
     await expect(
-      court(page, 2).getByRole("button", { name: "Remove court 2", exact: true }),
+      court(page, 2).getByRole("button", { name: "Remove Court 2", exact: true }),
     ).toBeEnabled();
   });
 
@@ -600,7 +600,7 @@ test.describe("Spare players warning", () => {
     await expect(popover(page)).toContainText("Use 2 courts or add players");
     await page.keyboard.press("Escape");
 
-    await court(page, 3).getByRole("button", { name: "Remove court 3", exact: true }).click();
+    await court(page, 3).getByRole("button", { name: "Remove Court 3", exact: true }).click();
     await expect(court(page, 3)).toHaveCount(0);
     await expect(icon(page)).toHaveCount(0);
   });
@@ -683,6 +683,7 @@ test.describe("Rehash when no one else can come in", () => {
       id,
       number,
       courtNumber: 1,
+      courtName: "Court 1",
       teams,
       freeAtStart: everyone.filter((name) => !teams.flat().includes(name)),
       startedAt,
@@ -868,5 +869,113 @@ test.describe("Rehash when no one else can come in", () => {
       .poll(async () => splitKey(await lineupOf(court(page, 1))))
       .not.toEqual(splitKey(before));
     await expect(sheet(page)).toHaveCount(0);
+  });
+});
+
+test.describe("Court names", () => {
+  const named = (page: Page, name: string) => page.getByRole("region", { name, exact: true });
+  const pencil = (page: Page, name: string) =>
+    page.getByRole("button", { name: `Edit name of ${name}`, exact: true });
+  const sheet = (page: Page) => page.getByRole("dialog", { name: "Edit court name" });
+  const field = (page: Page) => sheet(page).getByRole("textbox", { name: "Court name" });
+  const cardNames = (page: Page) =>
+    page
+      .getByRole("region", { name: "Courts", exact: true })
+      .getByRole("heading", { level: 3 })
+      .allTextContents();
+
+  const rename = async (page: Page, from: string, to: string) => {
+    await pencil(page, from).click();
+    await field(page).fill(to);
+    await field(page).press("Enter");
+    await expect(sheet(page)).toBeHidden();
+  };
+
+  test("the Session host renames an Idle Court; the name shows everywhere and survives a reload", async ({
+    page,
+  }) => {
+    await startSession(page);
+    await page.getByRole("button", { name: "Add queue" }).click();
+    const lineup = await lineupOf(court(page, 1));
+
+    await pencil(page, "Court 1").click();
+    await expect(field(page)).toHaveValue("Court 1");
+    await field(page).fill("Hall B");
+    await field(page).press("Enter");
+    await expect(sheet(page)).toBeHidden();
+    await expect(pencil(page, "Hall B")).toBeFocused();
+
+    const check = async () => {
+      await expect(named(page, "Hall B")).toBeVisible();
+      await expect(court(page, 1)).toHaveCount(0);
+      await expect(
+        page
+          .getByRole("group", { name: "Move to court" })
+          .getByRole("button", { name: "Hall B · Idle", exact: true }),
+      ).toBeVisible();
+      await expect(
+        page
+          .getByRole("region", { name: "Players", exact: true })
+          .getByRole("listitem")
+          .filter({ hasText: lineup.a[0]! })
+          .getByText("In lineup · Hall B", { exact: true }),
+      ).toBeVisible();
+    };
+    await check();
+    await page.reload();
+    await check();
+  });
+
+  test("a Busy Court can be renamed while its Match runs", async ({ page }) => {
+    await startSession(page);
+    await court(page, 1).getByRole("button", { name: "Start match" }).click();
+    await expect(court(page, 1).getByText("Playing", { exact: true })).toBeVisible();
+
+    await rename(page, "Court 1", "Center");
+    const center = named(page, "Center");
+    await expect(center.getByText("Playing", { exact: true })).toBeVisible();
+    await center.getByRole("button", { name: "End match" }).click();
+    await expect(page.getByRole("dialog", { name: "End match — Center" })).toBeVisible();
+  });
+
+  test("only digits name that Court", async ({ page }) => {
+    await startSession(page);
+    await rename(page, "Court 1", "5");
+    await expect(court(page, 5)).toBeVisible();
+  });
+
+  test("a blank or duplicate name is refused and the Court keeps its name", async ({ page }) => {
+    await startSession(page);
+    await pencil(page, "Court 1").click();
+
+    await field(page).fill("   ");
+    await field(page).press("Enter");
+    await expect(sheet(page).getByText("Enter a name")).toBeVisible();
+
+    await field(page).fill("court 2");
+    await field(page).press("Enter");
+    await expect(sheet(page).getByText("Another court has this name")).toBeVisible();
+
+    await sheet(page).getByRole("button", { name: "Close" }).click();
+    await expect(sheet(page)).toBeHidden();
+    expect((await storedSession(page)).courts.map((c) => c.name)).toEqual(["Court 1", "Court 2"]);
+  });
+
+  test("a renamed Court stays in its place, and Add court goes last", async ({ page }) => {
+    await startSession(page);
+    await rename(page, "Court 1", "Court 7");
+    await rename(page, "Court 2", "Court 5");
+    await expect.poll(() => cardNames(page)).toEqual(["Court 7", "Court 5"]);
+
+    await rename(page, "Court 7", "Court 6");
+    await page.getByRole("button", { name: "Add court" }).click();
+    await expect.poll(() => cardNames(page)).toEqual(["Court 6", "Court 5", "Court 3"]);
+  });
+
+  test("Add court goes last even when a Court before it was removed", async ({ page }) => {
+    await startSession(page, { courts: 3 });
+    await court(page, 2).getByRole("button", { name: "Remove Court 2", exact: true }).click();
+    await page.getByRole("button", { name: "Add court" }).click();
+    await expect.poll(() => cardNames(page)).toEqual(["Court 1", "Court 3", "Court 4"]);
   });
 });

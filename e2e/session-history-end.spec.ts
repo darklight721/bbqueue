@@ -50,6 +50,7 @@ function build({ matches = [], active, removed = [], names = NAMES }: Scenario =
       id: `ended-${index + 1}`,
       number: index + 1,
       courtNumber: played.court ?? 1,
+      courtName: `Court ${played.court ?? 1}`,
       teams: [team(played.a), team(played.b)],
       freeAtStart: [],
       startedAt,
@@ -67,6 +68,7 @@ function build({ matches = [], active, removed = [], names = NAMES }: Scenario =
       id: "active-1",
       number: null,
       courtNumber,
+      courtName: `Court ${courtNumber}`,
       teams: [team(active.a), team(active.b)],
       freeAtStart: [],
       startedAt: Date.now() - 120_000,
@@ -293,6 +295,7 @@ test.describe("End session", () => {
       id: "active-2",
       number: null,
       courtNumber: 2,
+      courtName: "Court 2",
       teams: [
         [session.players[4]!.id, session.players[5]!.id],
         [session.players[6]!.id, session.players[7]!.id],
@@ -392,5 +395,55 @@ test.describe("Jump bar", () => {
         );
       })
       .toBe(true);
+  });
+});
+
+test.describe("Court names in History", () => {
+  const renameCourt = async (page: Page, from: string, to: string) => {
+    await page.getByRole("button", { name: `Edit name of ${from}`, exact: true }).click();
+    const sheet = page.getByRole("dialog", { name: "Edit court name" });
+    await sheet.getByRole("textbox", { name: "Court name" }).fill(to);
+    await sheet.getByRole("button", { name: "Save" }).click();
+    await expect(sheet).toBeHidden();
+  };
+
+  const playOneMatch = async (page: Page, number: number) => {
+    await court(page, number).getByRole("button", { name: "Start match" }).click();
+    const dialog = await openScoreDialog(page, number);
+    await dialog.getByRole("button", { name: "End without score" }).click();
+    await expect(court(page, number).getByText("Idle", { exact: true })).toBeVisible();
+  };
+
+  test("a rename reaches the Matches played on that Court, and the Ended session keeps it", async ({
+    page,
+  }) => {
+    await startSession(page);
+    await playOneMatch(page, 1);
+    await renameCourt(page, "Court 1", "Hall B");
+
+    await showHistory(page).click();
+    await expect(historyList(page).getByText("Match #1 · Hall B")).toBeVisible();
+
+    await confirmEnd(page);
+    const [ended] = await storedEnded(page);
+    expect(ended!.matches.map((match) => match.courtName)).toEqual(["Hall B"]);
+    await page.goto(`/sessions/${ended!.id}`);
+    await page.getByRole("button", { name: "Show matches" }).click();
+    await expect(page.getByText("Match #1 · Hall B")).toBeVisible();
+  });
+
+  test("a removed Court's Matches keep its name when a new Court reuses its number", async ({
+    page,
+  }) => {
+    await startSession(page);
+    await playOneMatch(page, 2);
+    await renameCourt(page, "Court 2", "Hall B");
+    await page.getByRole("button", { name: "Remove Hall B", exact: true }).click();
+
+    await page.getByRole("button", { name: "Add court" }).click();
+    await renameCourt(page, "Court 2", "Hall C");
+
+    await showHistory(page).click();
+    await expect(historyList(page).getByText("Match #1 · Hall B")).toBeVisible();
   });
 });

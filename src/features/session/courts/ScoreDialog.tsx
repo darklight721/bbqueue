@@ -5,7 +5,7 @@ import { checkScore, scoreMessage } from "./score.ts";
 
 export interface ScoreDialogProps {
   open: boolean;
-  courtNumber: number;
+  courtName: string;
   /** Labels for the two inputs, e.g. ["Ana & Ben", "Cat & Dan"]. */
   teamLabels: [string, string];
   pointSystem: PointSystem;
@@ -19,7 +19,7 @@ export function ScoreDialog(props: ScoreDialogProps) {
   return (
     <Modal
       open={props.open}
-      title={`End match — Court ${props.courtNumber}`}
+      title={`End match — ${props.courtName}`}
       focusTitle
       onClose={props.onCancel}
     >

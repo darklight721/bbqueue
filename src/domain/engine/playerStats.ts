@@ -17,6 +17,8 @@ export interface PlayerStats {
   status: PlayerStatus;
   /** Court number for `on-court` / `in-lineup`, otherwise null. */
   courtNumber: number | null;
+  /** Court name for `on-court` / `in-lineup`, otherwise null. */
+  courtName: string | null;
 }
 
 /**
@@ -28,28 +30,30 @@ export interface PlayerStats {
  */
 export function allPlayerStats(session: Session, now: number): Map<string, PlayerStats> {
   const history = buildHistory(session, now);
-  const onCourtNumber = new Map<string, number>();
+  const onCourt = new Map<string, { number: number; name: string }>();
   for (const match of session.matches) {
     if (match.status !== "active") continue;
-    for (const id of matchPlayerIds(match)) onCourtNumber.set(id, match.courtNumber);
+    for (const id of matchPlayerIds(match)) {
+      onCourt.set(id, { number: match.courtNumber, name: match.courtName });
+    }
   }
-  const lineupNumber = new Map<string, number>();
+  const inLineup = new Map<string, { number: number; name: string }>();
   for (const court of session.courts) {
-    for (const id of lineupPlayerIds(court.lineup)) lineupNumber.set(id, court.number);
+    for (const id of lineupPlayerIds(court.lineup)) inLineup.set(id, court);
   }
 
   const result = new Map<string, PlayerStats>();
   for (const player of session.players) {
     const h = history.byPlayer.get(player.id)!;
     let status: PlayerStatus = "free";
-    let courtNumber: number | null = null;
+    let court: { number: number; name: string } | null = null;
     if (player.removed) status = "removed";
-    else if (onCourtNumber.has(player.id)) {
+    else if (onCourt.has(player.id)) {
       status = "on-court";
-      courtNumber = onCourtNumber.get(player.id)!;
-    } else if (lineupNumber.has(player.id)) {
+      court = onCourt.get(player.id)!;
+    } else if (inLineup.has(player.id)) {
       status = "in-lineup";
-      courtNumber = lineupNumber.get(player.id)!;
+      court = inLineup.get(player.id)!;
     } else if (player.sittingOut) status = "sitting-out";
     result.set(player.id, {
       streak: h.streak,
@@ -58,7 +62,8 @@ export function allPlayerStats(session: Session, now: number): Map<string, Playe
       matchesPlayed: h.played,
       wait: h.wait,
       status,
-      courtNumber,
+      courtNumber: court?.number ?? null,
+      courtName: court?.name ?? null,
     });
   }
   return result;

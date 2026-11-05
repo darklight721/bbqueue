@@ -89,7 +89,11 @@ The score a Match is played to: the Session's Point system at the moment the Mat
 _Avoid_: Match point system, game length
 
 **Court**:
-A numbered playing area in a Session. Either Idle or Busy (has an Active match).
+A playing area in a Session, known by its Court name. Either Idle or Busy (has an Active match).
+
+**Court name**:
+What a Court is called, so it matches the court at the venue. Starts as "Court 1", "Court 2" and so on, and the Session host can change it at any time during the Session. It lasts for that Session only, and two Courts in a Session can't share one. Matches already played on that Court show the new Court name too, until the Session has Ended.
+_Avoid_: Court number, court label
 
 **Match**:
 Four Session players split into two Teams of two, playing on a Court. Active until Ended or Removed.

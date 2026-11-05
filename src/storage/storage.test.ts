@@ -51,6 +51,7 @@ function endedSession(id: string, endedAt: number): EndedSession {
       {
         number: 1,
         courtNumber: 1,
+        courtName: "Court 1",
         teams: [
           ["p1", "p2"],
           ["p3", "p4"],
@@ -89,6 +90,7 @@ describe("clubs", () => {
       id: "m1",
       number: 1,
       courtNumber: 1,
+      courtName: "Court 1",
       teams: [
         ["a", "b"],
         ["c", "d"],

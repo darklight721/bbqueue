@@ -10,7 +10,7 @@ export interface MatchRowPlayer {
 
 export interface MatchRowData {
   number: number | null;
-  courtNumber: number;
+  courtName: string;
   teams: [Team, Team];
   target: PointSystem;
   score: [number, number] | null;
@@ -41,7 +41,7 @@ export function MatchList({
 }
 
 /**
- * One Ended match: "Match #n · Court N", both Teams with Skill, the score (or "--" per Team when unscored)
+ * One Ended match: "Match #n · <Court name>", both Teams with Skill, the score (or "--" per Team when unscored)
  * and how long it took. The Target is shown only when `showTarget` (both 21 and 31 were used).
  */
 export function MatchRow({
@@ -63,7 +63,7 @@ export function MatchRow({
     <li className="flex flex-col gap-1 border-b border-base-300 px-4 py-3 last:border-b-0 md:odd:border-r">
       <div className="flex items-baseline gap-2 text-sm">
         <span className="font-display text-lg leading-none font-bold uppercase">
-          Match #{match.number} · Court {match.courtNumber}
+          Match #{match.number} · {match.courtName}
         </span>
         {showTarget ? (
           <span className="self-center rounded-full border-[1.5px] border-base-content/25 px-2 py-px text-xs font-bold whitespace-nowrap text-base-content/70">

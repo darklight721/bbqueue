@@ -25,6 +25,29 @@ export function findDuplicateName(name: string, others: readonly string[]): numb
 
 export type NameError = "required" | "too-long" | "duplicate";
 
+/** The longest Court name, in characters. Only the app checks it: it lives in the Session's JSON. */
+export const MAX_COURT_NAME_LENGTH = 20;
+
+/** The Court name a Court starts with. */
+export function defaultCourtName(number: number): string {
+  return `Court ${number}`;
+}
+
+/** A Court name cleaned up as it will be kept: only digits ("5") means that Court ("Court 5"). */
+export function normalizeCourtName(name: string): string {
+  const normalized = normalizeName(name);
+  return /^[0-9]+$/.test(normalized) ? defaultCourtName(Number(normalized)) : normalized;
+}
+
+/** Checks a Court name against the Session's other Court names. */
+export function validateCourtName(name: string, others: readonly string[]): NameError | null {
+  const normalized = normalizeCourtName(name);
+  if (normalized === "") return "required";
+  if (normalized.length > MAX_COURT_NAME_LENGTH) return "too-long";
+  if (findDuplicateName(normalized, others) !== -1) return "duplicate";
+  return null;
+}
+
 export function validateName(name: string, others: readonly string[]): NameError | null {
   const normalized = normalizeName(name);
   if (normalized === "") return "required";

@@ -1,6 +1,6 @@
 # Spec: Up next in the Queues section
 
-Status: resolved (implemented 2026-11-01)
+Status: resolved (implemented 2026-11-01, section 6 amended 2026-11-05)
 
 Vocabulary per `GLOSSARY.md` (adds **Up next**).
 
@@ -55,12 +55,13 @@ Players on a Streak of 2 (a third Match in a row isn't allowed) go last, tagged 
   4. **Waiting M min**: their Wait, in whole minutes (shown at 1 min or more).
   5. No tag otherwise.
 
-### 6. "Queue these four" (Session host only)
+### 6. No actions on Up next
 
-- A button under the Up next list. It adds a new Queue at the end of the Queues, holding exactly the four shown, split into the Teams the app would give them as a Lineup.
-- The new Queue is an ordinary Queue: editable, removable, Move to court as usual.
-- Hidden for read-only viewers and while fewer than four players are free.
-- It can be tapped again. Queues may share players, so a second tap makes a second Queue with the same four.
+Up next is only a forecast, for the Session host and viewers alike (amended 2026-11-05, was: a "Queue these four" button for the Session host that added a Queue holding the four shown).
+
+- People read the button as putting the four on the next Court. It only made a Queue, which still needs Move to court, while the Lineup for a freed Court is picked without looking at Queues and usually gives the same four anyway.
+- To hold four players by hand, the Session host uses Add queue under Queued.
+- Queues already made with the button stay ordinary Queues.
 
 ### 7. Fewer than four free
 
@@ -70,7 +71,8 @@ Players on a Streak of 2 (a third Match in a row isn't allowed) go last, tagged 
 ## Implementation notes
 
 - Domain: add a pure `upNext(session, now)` in `src/domain/engine/` returning the ordered rows (player id, reason) and the four's Teams. It reuses `freePlayerIds`, `makeEnv` and the selection in `select.ts`. `pickLineup` takes a `courtId` today, so pull out a variant that picks from a given candidate list with no Court. Use a fixed `rng` (as `queueWarnings` does: `() => 0`) for the tie-break. Unit tests cover the order, every reason tag, Resting last, the four matching what `fillLineups` would pick for a freed Court when nobody comes off court, and the hidden-before-first-Match rule.
-- UI: an `UpNext` component in `src/features/session/queues/`, rendered at the top of `QueuesSection`. "Queue these four" goes through `actions.run` like Add queue.
+- UI: an `UpNext` component in `src/features/session/queues/`, rendered at the top of `QueuesSection`.
+- Removing the button (2026-11-05): `addQueue` loses its `lineup` argument, which nothing else passes.
 
 ## Out of scope
 
@@ -85,12 +87,12 @@ Players on a Streak of 2 (a third Match in a row isn't allowed) go last, tagged 
 `e2e/session-queues.spec.ts`, new describe "Up next":
 
 - Before any Match has started, the Queues section has no Up next. After a Match starts, Up next lists the free players, and players on court, Sitting out or in a Lineup are not in it.
-- With 4 or more free players (6 free), only four are shown. "Queue these four" adds a Queue holding exactly those four, and Move to court starts the Match with those Teams.
-- With 1 to 3 free players, the list shows them with "The rest will come from whoever comes off court." and no "Queue these four". With nobody free, "Everyone's on court or in a Lineup."
+- With 4 or more free players (6 free), only four are shown, and the Session host has no "Queue these four".
+- With 1 to 3 free players, the list shows them with "The rest will come from whoever comes off court." With nobody free, "Everyone's on court or in a Lineup."
 - After a Match ends, players who played 2 in a row show at the bottom tagged "Resting".
 - Up next stays above Queue cards after Add queue, and above the empty state when the Queues are removed again.
 - The Queued subheading appears together with Up next when the first Match starts, and sits between Up next and the Queue cards.
 
 `e2e/emulator/shared-sessions.spec.ts`:
 
-- The Player watching sees the same Up next (same names, same order) as the host, sees their own row marked "You", and has no "Queue these four".
+- The Player watching sees the same Up next (same names, same order) as the host, and sees their own row marked "You".

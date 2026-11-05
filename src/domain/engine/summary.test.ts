@@ -9,6 +9,7 @@ function ended(rows: Row[], playerCount = 8, courts: number[] = []): EndedSessio
   const matches: EndedSessionMatch[] = rows.map(([a, b, score], index) => ({
     number: index + 1,
     courtNumber: courts[index] ?? 1,
+    courtName: `Court ${courts[index] ?? 1}`,
     teams: [a, b],
     target: 21,
     startedAt: T0 + index * 20 * MIN,

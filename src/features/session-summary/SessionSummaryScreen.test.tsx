@@ -34,6 +34,7 @@ function endedSession(
     number: index + 1,
     // Two Courts, taking turns.
     courtNumber: (index % 2) + 1,
+    courtName: `Court ${(index % 2) + 1}`,
     teams: [a, b],
     target: 21,
     startedAt: START + index * 10 * MIN,

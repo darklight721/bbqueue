@@ -86,7 +86,29 @@ test.describe("Shared active session between two people", () => {
     await expect(
       page.getByRole("region", { name: "Up next", exact: true }).getByText("You", { exact: true }),
     ).toHaveCount(0);
-    await expect(anaPage.getByRole("button", { name: "Queue these four" })).toHaveCount(0);
+
+    await anaPage.context().close();
+  });
+
+  test("the Player sees a Court's new name arrive, and can't rename it", async ({
+    page,
+    browser,
+    baseURL,
+  }) => {
+    const { club, anaPage } = await twoPeople(page, browser, baseURL);
+    await startSession(page, club);
+    await watchFromHome(anaPage);
+    await expect(court(anaPage, 1)).toBeVisible();
+    await expect(anaPage.getByRole("button", { name: /^Edit name of/ })).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Edit name of Court 1", exact: true }).click();
+    const sheet = page.getByRole("dialog", { name: "Edit court name" });
+    await sheet.getByRole("textbox", { name: "Court name" }).fill("Hall B");
+    await sheet.getByRole("button", { name: "Save" }).click();
+    await expect(sheet).toBeHidden();
+
+    await expect(anaPage.getByRole("region", { name: "Hall B", exact: true })).toBeVisible();
+    await expect(court(anaPage, 1)).toHaveCount(0);
 
     await anaPage.context().close();
   });

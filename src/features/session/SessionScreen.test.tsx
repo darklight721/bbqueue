@@ -113,7 +113,7 @@ describe("SessionScreen", () => {
     expect(court(1).getAllByText("0 played")).toHaveLength(4);
     expect(court(1).getByRole("button", { name: "Start match" })).toBeEnabled();
     expect(court(1).getByRole("button", { name: "Rehash" })).toBeEnabled();
-    expect(court(1).getByRole("button", { name: "Remove court 1" })).toBeEnabled();
+    expect(court(1).getByRole("button", { name: "Remove Court 1" })).toBeEnabled();
   });
 
   it("shows Waiting for players when a Court has no Lineup", () => {
@@ -140,7 +140,7 @@ describe("SessionScreen", () => {
 
     // A Busy court can't be removed, so it doesn't offer it.
     expect(court(1).queryByRole("button", { name: /^Remove court/ })).not.toBeInTheDocument();
-    expect(court(2).getByRole("button", { name: "Remove court 2" })).toBeEnabled();
+    expect(court(2).getByRole("button", { name: "Remove Court 2" })).toBeEnabled();
   });
 
   it("ticks the match timer from startedAt, every second", () => {
@@ -300,7 +300,7 @@ describe("SessionScreen", () => {
     expect(add).toBeDisabled();
     expect(screen.getByText("Up to 10 courts.")).toBeInTheDocument();
 
-    await userEvent.click(court(3).getByRole("button", { name: "Remove court 3" }));
+    await userEvent.click(court(3).getByRole("button", { name: "Remove Court 3" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Court 3" })).not.toBeInTheDocument();
     expect(getSession()!.courts).toHaveLength(9);

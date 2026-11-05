@@ -37,6 +37,7 @@ export interface SessionActions {
   swapIntoLineup: (courtId: string) => boolean;
   addCourt: () => boolean;
   removeCourt: (courtId: string) => boolean;
+  renameCourt: (courtId: string, name: string) => boolean;
 }
 
 export const SessionViewContext = createContext<SessionView | null>(null);

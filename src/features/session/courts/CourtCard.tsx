@@ -6,6 +6,7 @@ import type { Court, Match } from "../../../domain/types.ts";
 import { useSessionActions, useSessionView } from "../context.ts";
 import { TeamsView } from "../PlayerViews.tsx";
 import { teamNames } from "../teams.ts";
+import { CourtNameEdit } from "./CourtNameEdit.tsx";
 import { MatchTimer } from "./MatchTimer.tsx";
 import { RehashBlockedSheet, type RehashBlock } from "./RehashBlockedSheet.tsx";
 import { RehashChoiceSheet } from "./RehashChoiceSheet.tsx";
@@ -34,9 +35,12 @@ function BusyCourt({ court, match }: { court: Court; match: Match }) {
     >
       {/* Wraps the timer onto its own line when a long timer and the "to N" tag don't fit. */}
       <header className="flex flex-wrap items-center gap-x-3 gap-y-1 bg-primary px-4 py-3 text-primary-content">
-        <h3 id={headingId} className="font-display text-3xl whitespace-nowrap uppercase">
-          Court {court.number}
-        </h3>
+        <div className="flex min-w-0 items-center gap-1">
+          <h3 id={headingId} className="min-w-0 font-display text-3xl break-words uppercase">
+            {court.name}
+          </h3>
+          {readOnly ? null : <CourtNameEdit court={court} />}
+        </div>
         <span className="inline-flex items-center gap-1.5 rounded-full bg-black/20 px-2.5 py-0.5 text-xs font-bold tracking-wider uppercase">
           <span className="size-2 animate-pulse rounded-full bg-volt" aria-hidden="true" />
           Playing
@@ -79,7 +83,7 @@ function BusyCourt({ court, match }: { court: Court; match: Match }) {
 
       <ScoreDialog
         open={scoring}
-        courtNumber={court.number}
+        courtName={court.name}
         teamLabels={[teamNames(match.teams[0], playerById), teamNames(match.teams[1], playerById)]}
         pointSystem={match.target}
         onSave={(score) => {
@@ -121,8 +125,8 @@ function IdleCourt({ court }: { court: Court }) {
   // Court waiting for players adds nothing to it).
   const otherLineups = session.courts
     .filter((other) => other.id !== court.id && other.activeMatchId === null && other.lineup)
-    .map((other) => other.number)
-    .sort((a, b) => a - b);
+    .sort((a, b) => a.number - b.number)
+    .map((other) => other.name);
   const rehashAllOffered = otherLineups.length > 0;
 
   const rehash = () => {
@@ -144,9 +148,12 @@ function IdleCourt({ court }: { court: Court }) {
       className="flex flex-col overflow-hidden rounded-box border-2 border-base-300 bg-base-100"
     >
       <header className="flex items-center gap-3 bg-base-200 px-4 py-3">
-        <h3 id={headingId} className="font-display text-3xl uppercase">
-          Court {court.number}
-        </h3>
+        <div className="flex min-w-0 items-center gap-1">
+          <h3 id={headingId} className="min-w-0 font-display text-3xl break-words uppercase">
+            {court.name}
+          </h3>
+          {readOnly ? null : <CourtNameEdit court={court} />}
+        </div>
         <span className="rounded-full border-[1.5px] border-base-content/25 px-2.5 py-0.5 text-xs font-bold tracking-wider text-base-content/70 uppercase">
           Idle
         </span>
@@ -154,7 +161,7 @@ function IdleCourt({ court }: { court: Court }) {
           <button
             type="button"
             className="btn -my-2 -mr-2 ml-auto btn-square size-11 btn-ghost text-base-content/60 hover:text-error"
-            aria-label={`Remove court ${court.number}`}
+            aria-label={`Remove ${court.name}`}
             title="Remove court"
             onClick={() => actions.removeCourt(court.id)}
           >
@@ -217,7 +224,7 @@ function IdleCourt({ court }: { court: Court }) {
       {readOnly || !choosing ? null : (
         <RehashChoiceSheet
           open
-          courtNumber={court.number}
+          courtName={court.name}
           otherLineups={otherLineups}
           onJustThisCourt={choose(() => actions.rehashCourt(court.id))}
           onRehashAll={choose(() => actions.rehashAll())}

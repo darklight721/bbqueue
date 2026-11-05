@@ -14,7 +14,7 @@ import {
   type SkillLevel,
   type Team,
 } from "./types.ts";
-import { MAX_NAME_LENGTH } from "./validation.ts";
+import { MAX_COURT_NAME_LENGTH, MAX_NAME_LENGTH, defaultCourtName } from "./validation.ts";
 
 /**
  * Guards for Session data that comes from outside the app: another device's upload (Firestore),
@@ -133,6 +133,11 @@ function queue(value: unknown): Queue | null {
   return { id: value.id, slots: rows as Queue["slots"] };
 }
 
+/** The kept Court name; saves from before Courts had names fall back to the number. */
+function courtNameOf(value: unknown, number: number): string {
+  return text(value, MAX_COURT_NAME_LENGTH) || defaultCourtName(number);
+}
+
 function court(value: unknown): Court | null {
   if (!isRec(value) || !isId(value.id) || !isNum(value.number)) return null;
   const { lineup, activeMatchId } = value;
@@ -147,6 +152,7 @@ function court(value: unknown): Court | null {
   return {
     id: value.id,
     number: value.number,
+    name: courtNameOf(value.name, value.number),
     lineup: parsedLineup,
     activeMatchId: (activeMatchId as string | null | undefined) ?? null,
   };
@@ -174,6 +180,10 @@ function match(pointSystem: PointSystem): (value: unknown) => Match | null {
       id: value.id,
       number: (value.number as number | null | undefined) ?? null,
       courtNumber: value.courtNumber,
+      ...(typeof value.courtId === "string" && isId(value.courtId)
+        ? { courtId: value.courtId }
+        : {}),
+      courtName: courtNameOf(value.courtName, value.courtNumber),
       teams: matchTeams,
       freeAtStart: free,
       startedAt: value.startedAt,
@@ -281,6 +291,7 @@ function endedMatch(pointSystem: PointSystem): (value: unknown) => EndedSessionM
     return {
       number: value.number,
       courtNumber: value.courtNumber,
+      courtName: courtNameOf(value.courtName, value.courtNumber),
       teams: matchTeams,
       target: isPointSystem(value.target) ? value.target : pointSystem,
       startedAt: value.startedAt,

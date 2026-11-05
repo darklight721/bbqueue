@@ -42,10 +42,10 @@ export function RehashBlockedSheet({
   open: boolean;
   block: RehashBlock;
   /**
-   * Set when Rehash all is offered (another Idle Court holds a Lineup): the numbers of those
+   * Set when Rehash all is offered (another Idle Court holds a Lineup): the names of those
    * other Idle Courts. Null hides the option.
    */
-  rehashAll: readonly number[] | null;
+  rehashAll: readonly string[] | null;
   onNewTeams: () => void;
   onRehashAll: () => void;
   onSwapAnyway: () => void;
@@ -122,7 +122,7 @@ export function RehashAllOption({
   onClick,
 }: {
   /** Numbers of the other Idle Courts that hold a Lineup. */
-  otherLineups: readonly number[];
+  otherLineups: readonly string[];
   primary: boolean;
   onClick: () => void;
 }) {

@@ -6,6 +6,7 @@ import {
   rehashAll,
   rehashCourt,
   removeCourt,
+  renameCourt,
   removeMatch,
   startMatch,
   swapIntoLineup,
@@ -111,6 +112,7 @@ export function SessionProvider({
       swapIntoLineup: (courtId) => run((s, ctx) => swapIntoLineup(s, courtId, ctx)),
       addCourt: () => run((s, ctx) => addCourt(s, ctx)),
       removeCourt: (courtId) => run((s, ctx) => removeCourt(s, courtId, ctx)),
+      renameCourt: (courtId, name) => run((s) => renameCourt(s, courtId, name)),
     };
   }, [notify, hostedClubId, readOnly]);
 

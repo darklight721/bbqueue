@@ -1,4 +1,4 @@
-import type { Court, Lineup, Queue, Session } from "../types.ts";
+import type { Court, Queue, Session } from "../types.ts";
 import { makeId, type EngineContext } from "./context.ts";
 import { balanceOf, makeEnv, type Split } from "./select.ts";
 import { matchPlayerIds } from "./stats.ts";
@@ -19,16 +19,14 @@ export function queueTeams(queue: Queue): Split | null {
   ];
 }
 
-/** Add a Queue at the end: empty, or holding `lineup`'s Teams ("Queue these four"). */
-export function addQueue(session: Session, ctx: EngineContext, lineup?: Lineup): Session {
+/** Add an empty Queue at the end. */
+export function addQueue(session: Session, ctx: EngineContext): Session {
   const queue: Queue = {
     id: makeId(ctx),
-    slots: lineup
-      ? [[...lineup.teams[0]], [...lineup.teams[1]]]
-      : [
-          [null, null],
-          [null, null],
-        ],
+    slots: [
+      [null, null],
+      [null, null],
+    ],
   };
   return { ...session, queues: [...session.queues, queue] };
 }
@@ -105,7 +103,7 @@ export type MoveCheck =
       reason: "player-on-court";
       playerId: string;
       playerName: string;
-      courtNumber: number;
+      courtName: string;
     };
 
 /** Whether a Queue can be moved onto a Court right now, and why not. */
@@ -126,7 +124,7 @@ export function canMoveQueue(session: Session, queue: Queue, court: Court): Move
       reason: "player-on-court",
       playerId: onCourt,
       playerName: player?.name ?? "",
-      courtNumber: match.courtNumber,
+      courtName: match.courtName,
     };
   }
   return { ok: true };

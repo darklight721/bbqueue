@@ -479,6 +479,7 @@ function playedBy(
       {
         number: 1,
         courtNumber: 1,
+        courtName: "Court 1",
         teams: [
           [a, "g3"],
           [b, "g4"],

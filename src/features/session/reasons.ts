@@ -17,6 +17,7 @@ const REASON_MESSAGES: Record<string, string> = {
   "duplicate-in-queue": "That player is already in this queue.",
   "player-in-active-match": "End or remove their match first.",
   "name-required": "Enter a name.",
+  "name-too-long": "That name is too long.",
   "duplicate-name": "That name is already used in this session.",
   "no-session": "There's no session in progress.",
   "not-host": "Only the session host can change this session.",

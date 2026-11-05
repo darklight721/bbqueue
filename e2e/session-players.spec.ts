@@ -113,10 +113,10 @@ test.describe("Players list", () => {
     expect(await rowNames(page)).toEqual(SORTED);
 
     for (const name of ["Zoe", "Ben", "ana", "Dan"]) {
-      await expect(row(page, name).getByText("On court 1", { exact: true })).toBeVisible();
+      await expect(row(page, name).getByText("On Court 1", { exact: true })).toBeVisible();
     }
     for (const name of ["Eve", "Fay", "Gus", "Hal"]) {
-      await expect(row(page, name).getByText("In lineup · court 2", { exact: true })).toBeVisible();
+      await expect(row(page, name).getByText("In lineup · Court 2", { exact: true })).toBeVisible();
     }
     await expect(row(page, "Ivy").getByText("Free", { exact: true })).toBeVisible();
     await expect(row(page, "Jon").getByText("Sitting out", { exact: true })).toBeVisible();
@@ -143,7 +143,7 @@ test.describe("Sit out / Back in", () => {
     expect(replacements).toHaveLength(1);
     expect(["Ivy", "Jon"]).toContain(replacements[0]);
     await expect(
-      row(page, replacements[0]!).getByText("In lineup · court 2", { exact: true }),
+      row(page, replacements[0]!).getByText("In lineup · Court 2", { exact: true }),
     ).toBeVisible();
     // Only the sitting-out player was swapped.
     expect(after.filter((name) => before.a.concat(before.b).includes(name))).toEqual(
@@ -163,7 +163,7 @@ test.describe("Sit out / Back in", () => {
     await openSeeded(page);
     await row(page, "ana").getByRole("button", { name: "Sit out ana" }).click();
 
-    await expect(row(page, "ana").getByText("On court 1", { exact: true })).toBeVisible();
+    await expect(row(page, "ana").getByText("On Court 1", { exact: true })).toBeVisible();
     await expect(
       row(page, "ana").getByText("Sitting out after this match", { exact: true }),
     ).toBeVisible();
@@ -262,7 +262,7 @@ test.describe("Add players", () => {
 
     await expect(court(page, 3).getByText("Lineup", { exact: true })).toBeVisible();
     expect(playersOf(await lineupOf(court(page, 3)))).toEqual(added);
-    await expect(row(page, "Kim").getByText("In lineup · court 3", { exact: true })).toBeVisible();
+    await expect(row(page, "Kim").getByText("In lineup · Court 3", { exact: true })).toBeVisible();
 
     const stored = await storedSession(page);
     expect(stored.players).toHaveLength(12);

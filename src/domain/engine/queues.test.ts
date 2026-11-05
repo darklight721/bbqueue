@@ -142,7 +142,7 @@ describe("canMoveQueue", () => {
       reason: "player-on-court",
       playerId: "a1",
       playerName: "a1",
-      courtNumber: 1,
+      courtName: "Court 1",
     });
   });
 

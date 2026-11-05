@@ -73,6 +73,7 @@ function ended(id: string, at: number, scores: Score[], overrides: Partial<Ended
     matches: scores.map((score, index) => ({
       number: index + 1,
       courtNumber: 1,
+      courtName: "Court 1",
       teams: [
         ["ann", "bob"],
         ["cat", "gus"],

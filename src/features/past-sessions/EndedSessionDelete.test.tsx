@@ -43,6 +43,7 @@ function ended(
       {
         number: 1,
         courtNumber: 1,
+        courtName: "Court 1",
         teams: [
           ["a", "b"],
           ["c", "d"],

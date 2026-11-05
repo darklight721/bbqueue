@@ -116,9 +116,9 @@ describe("PlayersSection", () => {
       "zoe",
     ]);
 
-    for (const id of onCourt) expect(row(nameOf(id)).getByText("On court 1")).toBeInTheDocument();
+    for (const id of onCourt) expect(row(nameOf(id)).getByText("On Court 1")).toBeInTheDocument();
     for (const id of inLineup) {
-      expect(row(nameOf(id)).getByText("In lineup · court 2")).toBeInTheDocument();
+      expect(row(nameOf(id)).getByText("In lineup · Court 2")).toBeInTheDocument();
     }
     expect(row(nameOf(free[0]!)).getByText("Sitting out")).toBeInTheDocument();
     expect(row(nameOf(free[1]!)).getByText("Free")).toBeInTheDocument();
@@ -138,7 +138,7 @@ describe("PlayersSection", () => {
     expect(after).toHaveLength(4);
     expect(after).not.toContain(lineup[0]);
     const replacement = after.find((id) => !lineup.includes(id))!;
-    expect(row(nameOf(replacement)).getByText("In lineup · court 1")).toBeInTheDocument();
+    expect(row(nameOf(replacement)).getByText("In lineup · Court 1")).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: `Back in ${leaving}` }));
     expect(getSession()!.players.find((p) => p.name === leaving)!.sittingOut).toBe(false);
@@ -152,7 +152,7 @@ describe("PlayersSection", () => {
 
     await userEvent.click(screen.getByRole("button", { name: `Sit out ${player}` }));
 
-    expect(row(player).getByText("On court 1")).toBeInTheDocument();
+    expect(row(player).getByText("On Court 1")).toBeInTheDocument();
     expect(row(player).getByText("Sitting out after this match")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: `Back in ${player}` })).toBeInTheDocument();
   });

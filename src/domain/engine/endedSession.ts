@@ -37,6 +37,7 @@ export function toEndedSession(session: Session, endedAt: number): EndedSession 
     matches: ended.map((match, index) => ({
       number: match.number ?? index + 1,
       courtNumber: match.courtNumber,
+      courtName: match.courtName,
       teams: match.teams,
       target: match.target,
       startedAt: match.startedAt,

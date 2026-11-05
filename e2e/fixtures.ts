@@ -132,7 +132,14 @@ export function makeSessionPlayer(overrides: Partial<SessionPlayer> = {}): Sessi
 }
 
 export function makeCourt(number: number, overrides: Partial<Court> = {}): Court {
-  return { id: nextId("court"), number, lineup: null, activeMatchId: null, ...overrides };
+  return {
+    id: nextId("court"),
+    number,
+    name: `Court ${number}`,
+    lineup: null,
+    activeMatchId: null,
+    ...overrides,
+  };
 }
 
 export function makeSession(overrides: Partial<Session> = {}): Session {
@@ -183,6 +190,7 @@ export function makeEndedSessionFromMatches(
   const matches: EndedSessionMatch[] = rows.map((row, index) => ({
     number: index + 1,
     courtNumber: row.court ?? 1,
+    courtName: `Court ${row.court ?? 1}`,
     teams: [row.a, row.b],
     target: 21,
     startedAt: startedAt + index * 15 * 60_000,
@@ -295,6 +303,7 @@ export function makeMidMatchSession(options: {
     id: nextId("match"),
     number: null,
     courtNumber: 1,
+    courtName: "Court 1",
     teams: [
       [a, b],
       [c, d],

@@ -14,7 +14,7 @@ export function playingLine(session: Session): string | null {
       ? `The match being played stays at ${target} points.`
       : `Matches being played stay at ${target} points.`;
   }
-  const perCourt = active.map((match) => `court ${match.courtNumber} at ${match.target}`);
+  const perCourt = active.map((match) => `${match.courtName} at ${match.target}`);
   return `Matches being played keep their points: ${perCourt.join(", ")}.`;
 }
 

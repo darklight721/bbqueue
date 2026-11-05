@@ -1,31 +1,24 @@
 import { useId } from "react";
-import { PlusIcon } from "../../../components/icons.tsx";
-import { addQueue, type UpNext as Forecast } from "../../../domain/engine/index.ts";
+import type { UpNext as Forecast } from "../../../domain/engine/index.ts";
 import { useAccount } from "../../../storage/store.ts";
 import { useNow } from "../clock.ts";
-import { useSessionActions, useSessionView } from "../context.ts";
+import { useSessionView } from "../context.ts";
 import { isOwnWhileWatching } from "../ownPlayer.ts";
 import { SessionPlayerChip } from "../PlayerViews.tsx";
 import { upNextReasonLabel } from "./upNextText.ts";
 
 /**
  * Up next: the four players the app would put on the next free Court (fewer when fewer are free).
- * A forecast for everyone watching; the Session host can turn the four into a Queue.
+ * A forecast for everyone watching, with nothing to tap.
  * The parent works out `forecast` (`upNext` at `asOf`) and leaves this out until the first Match.
  */
 export function UpNext({ forecast }: { forecast: Forecast }) {
   const view = useSessionView();
-  const { playerById, asOf, readOnly } = view;
-  const actions = useSessionActions();
+  const { playerById, asOf } = view;
   const account = useAccount();
   const now = useNow();
   const headingId = useId();
   const { rows, lineup } = forecast;
-
-  const queueThese = () => {
-    if (!lineup) return;
-    actions.run((s, ctx) => ({ ok: true as const, session: addQueue(s, ctx, lineup) }));
-  };
 
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-3">
@@ -76,16 +69,7 @@ export function UpNext({ forecast }: { forecast: Forecast }) {
             <p className="text-sm text-base-content/70">
               The rest will come from whoever comes off court.
             </p>
-          ) : readOnly ? null : (
-            <button
-              type="button"
-              className="btn btn-lg btn-outline border-base-300"
-              onClick={queueThese}
-            >
-              <PlusIcon className="size-5" />
-              Queue these four
-            </button>
-          )}
+          ) : null}
         </>
       )}
     </section>

@@ -106,7 +106,7 @@ describe("QueuesSection", () => {
       "zoe",
     ]);
     expect(within(dialog).getByRole("button", { name: "ana" })).toHaveAccessibleDescription(
-      /^(Free|In lineup · court \d)$/,
+      /^(Free|In lineup · Court \d)$/,
     );
 
     const filter = within(dialog).getByRole("searchbox", { name: "Filter players" });
@@ -225,7 +225,7 @@ describe("QueuesSection", () => {
 
     const idle = queue().getByRole("button", { name: "Court 2 · Idle" });
     expect(idle).toBeDisabled();
-    expect(idle).toHaveAccessibleDescription(`${onCourt} is on court 1`);
+    expect(idle).toHaveAccessibleDescription(`${onCourt} is on Court 1`);
   });
 
   it("moves a full queue onto a court: the match starts with those Teams", async () => {
@@ -240,7 +240,7 @@ describe("QueuesSection", () => {
 
     await userEvent.click(queue().getByRole("button", { name: "Court 2 · Idle" }));
 
-    expect(screen.getByRole("status")).toHaveTextContent("Match started on court 2");
+    expect(screen.getByRole("status")).toHaveTextContent("Match started on Court 2");
     expect(screen.queryByRole("region", { name: "Queue 1" })).not.toBeInTheDocument();
     const after = getSession()!;
     expect(after.queues).toEqual([]);
@@ -322,12 +322,9 @@ describe("Up next", () => {
     expect(
       upNextRegion().getByText("The rest will come from whoever comes off court."),
     ).toBeInTheDocument();
-    expect(
-      upNextRegion().queryByRole("button", { name: "Queue these four" }),
-    ).not.toBeInTheDocument();
   });
 
-  it("shows only the next four, and Queue these four queues exactly them", async () => {
+  it("shows only the next four, with nothing to tap", () => {
     let session = makeSession();
     session = ok(startMatch(session, session.courts[0]!.id, ctx()));
     session = ok(removeCourt(session, session.courts[1]!.id, ctx()));
@@ -335,13 +332,7 @@ describe("Up next", () => {
     const names = upNextNames();
     // 6 free, only the four the app would pick are shown.
     expect(names).toHaveLength(4);
-
-    await userEvent.click(upNextRegion().getByRole("button", { name: "Queue these four" }));
-    const queued = getSession()!.queues[0]!.slots.flat();
-    expect(queued.map((id) => session.players.find((p) => p.id === id)!.name).sort()).toEqual(
-      [...names].sort(),
-    );
-    expect(queue().getByText("4 of 4")).toBeInTheDocument();
+    expect(upNextRegion().queryByRole("button")).not.toBeInTheDocument();
   });
 
   it("says so when everyone is on court or in a Lineup", () => {

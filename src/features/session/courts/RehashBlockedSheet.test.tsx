@@ -48,6 +48,7 @@ function fakeActions(): SessionActions {
     rehashAll: vi.fn(() => true),
     addCourt: vi.fn(() => true),
     removeCourt: vi.fn(() => true),
+    renameCourt: vi.fn(() => true),
     swapIntoLineup: vi.fn(() => true),
   };
 }
@@ -79,9 +80,11 @@ const sheet = () => screen.queryByRole("dialog", { name: "No one else can come i
 describe("alsoChangesText", () => {
   it("names the other Idle Courts with a Lineup", () => {
     expect(alsoChangesText([])).toBeNull();
-    expect(alsoChangesText([2])).toBe("Also changes the Lineup on Court 2.");
-    expect(alsoChangesText([2, 3])).toBe("Also changes Courts 2 and 3.");
-    expect(alsoChangesText([2, 3, 4])).toBe("Also changes Courts 2, 3 and 4.");
+    expect(alsoChangesText(["Court 2"])).toBe("Also changes the Lineup on Court 2.");
+    expect(alsoChangesText(["Court 2", "Hall B"])).toBe("Also changes Court 2 and Hall B.");
+    expect(alsoChangesText(["Court 2", "Court 3", "Hall B"])).toBe(
+      "Also changes Court 2, Court 3 and Hall B.",
+    );
   });
 });
 
@@ -248,7 +251,7 @@ describe("Rehash with another Idle Court holding a Lineup", () => {
     await userEvent.click(screen.getByRole("button", { name: "Rehash" }));
     const rehashAll = within(choice()!).getByRole("button", { name: "Rehash all idle courts" });
     expect(rehashAll).toHaveClass("btn-outline");
-    expect(rehashAll).toHaveAccessibleDescription("Also changes Courts 2 and 3.");
+    expect(rehashAll).toHaveAccessibleDescription("Also changes Court 2 and Court 3.");
     await userEvent.click(rehashAll);
     expect(actions.rehashAll).toHaveBeenCalled();
     expect(actions.rehashCourt).not.toHaveBeenCalled();

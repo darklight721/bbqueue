@@ -32,6 +32,7 @@ function ended(
     matches: [1, 2].map((number) => ({
       number,
       courtNumber: 1,
+      courtName: "Court 1",
       teams: [team("a", "b"), team("c", "d")],
       target: 21,
       startedAt: endedAt - 3_000_000 + number * 1000,

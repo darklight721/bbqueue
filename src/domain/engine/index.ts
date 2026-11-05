@@ -19,6 +19,7 @@ export {
   removeCourt,
   removeMatch,
   removePlayer,
+  renameCourt,
   setPointSystem,
   setSkill,
   setSittingOut,
