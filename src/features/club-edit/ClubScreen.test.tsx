@@ -523,7 +523,7 @@ describe("Club page Sessions card", () => {
     expect(link).toHaveAttribute("href", "/clubs/c1/sessions");
     await userEvent.click(link);
     expect(location.current()).toBe("/clubs/c1/sessions");
-    expect(screen.getByRole("heading", { level: 1, name: "Riverside" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Past sessions" })).toBeInTheDocument();
   });
 
   it("sits next to New session in one row; a card on its own takes the whole row", () => {

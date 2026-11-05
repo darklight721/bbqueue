@@ -407,23 +407,21 @@ describe("a Club's own sessions list", () => {
   it("lists only that Club's sessions, with no filter and no Club name on the rows", () => {
     seedClubSessions();
     renderAt("/clubs/c1/sessions");
-    expect(screen.getByRole("heading", { level: 1, name: "Riverside" })).toBeInTheDocument();
-    expect(screen.getByText("Sessions")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Past sessions" })).toBeInTheDocument();
+    expect(within(screen.getByRole("banner")).getByText("Riverside")).toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "Club" })).not.toBeInTheDocument();
     expect(listHrefs()).toEqual(["/sessions/r?fromClub=c1"]);
     const row = within(screen.getByRole("list")).getByRole("link");
     expect(row).not.toHaveTextContent("Riverside");
   });
 
-  it("shows the Club's current name as the title", () => {
+  it("shows the Club's current name under the title", () => {
     setLocalClubs([{ ...riverside, name: "Riverside Renamed" }]);
     addEndedSession(
       ended("r", "River night", 1_000_000_000_000, { clubId: "c1", clubName: "Riverside" }),
     );
     renderAt("/clubs/c1/sessions");
-    expect(
-      screen.getByRole("heading", { level: 1, name: "Riverside Renamed" }),
-    ).toBeInTheDocument();
+    expect(within(screen.getByRole("banner")).getByText("Riverside Renamed")).toBeInTheDocument();
   });
 
   it("goes back to the Club page", async () => {
@@ -458,6 +456,6 @@ describe("a Club's own sessions list", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(location.current()).toBe("/clubs/c1/sessions");
-    expect(screen.getByRole("heading", { level: 1, name: "Riverside" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Past sessions" })).toBeInTheDocument();
   });
 });

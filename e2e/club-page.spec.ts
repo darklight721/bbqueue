@@ -447,7 +447,8 @@ test.describe("Session cards", () => {
 
     await sessions.click();
     await expect(page).toHaveURL(new RegExp(`/clubs/${club.id}/sessions$`));
-    await expect(page.getByRole("heading", { level: 1, name: club.name })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Past sessions" })).toBeVisible();
+    await expect(page.getByRole("banner").getByText(club.name, { exact: true })).toBeVisible();
   });
 
   test("a card on its own takes the whole row", async ({ page }) => {

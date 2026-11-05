@@ -153,12 +153,14 @@ test.describe("Club sessions list", () => {
     await expect(page.getByRole("link", { name: "Sessions", exact: true })).toHaveCount(0);
   });
 
-  test("lists only that Club's Ended sessions, titled with the Club name", async ({ page }) => {
+  test("lists only that Club's Ended sessions, with the Club name under the title", async ({
+    page,
+  }) => {
     const { alpha } = await seedAll(page);
     await page.goto(`/clubs/${alpha.id}/sessions`);
 
-    await expect(page.getByRole("heading", { level: 1, name: "Alpha Club" })).toBeVisible();
-    await expect(page.getByRole("banner").getByText("Sessions", { exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Past sessions" })).toBeVisible();
+    await expect(page.getByRole("banner").getByText("Alpha Club", { exact: true })).toBeVisible();
     await expect(page.getByText("2 sessions")).toBeVisible();
     await expect(sessionLink(page, "Alpha one")).toBeVisible();
     await expect(sessionLink(page, "Alpha two")).toBeVisible();
@@ -181,7 +183,7 @@ test.describe("Club sessions list", () => {
 
     await page.getByRole("button", { name: "Back" }).click();
     await expect(page).toHaveURL(urlEnding(`/clubs/${alpha.id}/sessions`));
-    await expect(page.getByRole("heading", { level: 1, name: "Alpha Club" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Past sessions" })).toBeVisible();
     await expect(page.getByText("2 sessions")).toBeVisible();
 
     await page.getByRole("button", { name: "Back" }).click();

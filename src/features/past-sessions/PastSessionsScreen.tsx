@@ -73,7 +73,11 @@ export function ClubSessionsScreen({ clubId }: { clubId: string }) {
   if (!club) return <Redirect to="/clubs" replace />;
 
   return (
-    <Screen title={club.name} subtitle="Sessions" backTo={`/clubs/${encodeURIComponent(clubId)}`}>
+    <Screen
+      title="Past sessions"
+      subtitle={club.name}
+      backTo={`/clubs/${encodeURIComponent(clubId)}`}
+    >
       {own.length === 0 ? (
         <EmptyState />
       ) : (
