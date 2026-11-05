@@ -1,5 +1,6 @@
 import { useId, useMemo, useState } from "react";
-import { ChevronDownIcon, PlusIcon } from "../../../components/icons.tsx";
+import { CollapseToggle } from "../../../components/CollapseToggle.tsx";
+import { PlusIcon } from "../../../components/icons.tsx";
 import { addQueue, upNext } from "../../../domain/engine/index.ts";
 import { useSessionActions, useSessionView } from "../context.ts";
 import { SectionHeader } from "../SectionHeader.tsx";
@@ -42,19 +43,12 @@ export function QueuesSection({
         title="Queues"
         detail={count > 0 ? `${count} ${count === 1 ? "queue" : "queues"}` : undefined}
         action={
-          <button
-            type="button"
-            className="btn shrink-0 btn-square border-base-300 btn-outline sm:w-auto sm:px-4"
-            aria-expanded={open}
-            aria-controls={bodyId}
-            onClick={() => setOpen(!open)}
-          >
-            {/* Phones: just the chevron, like Players. */}
-            <span className="sr-only sm:not-sr-only">{open ? "Hide queues" : "Show queues"}</span>
-            <ChevronDownIcon
-              className={`size-6 transition-transform sm:size-5 ${open ? "rotate-180" : ""}`}
-            />
-          </button>
+          <CollapseToggle
+            open={open}
+            subject="queues"
+            controls={bodyId}
+            onToggle={() => setOpen(!open)}
+          />
         }
       />
 

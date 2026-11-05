@@ -1,8 +1,10 @@
 import { useId, useState, type CSSProperties, type ReactNode } from "react";
 import { Link } from "wouter";
+import { CollapseToggle } from "../../components/CollapseToggle.tsx";
 import { ChevronRightIcon, UsersIcon } from "../../components/icons.tsx";
 import { SkillBadge } from "../../components/SkillBadge.tsx";
 import type { SessionSummary, StandingsEntry, TopWinner } from "../../domain/types.ts";
+import { SectionHeader } from "../session/SectionHeader.tsx";
 import { countLabel, formatSessionDuration, MEDAL, ordinal, rise } from "./summaryFormat.ts";
 
 /**
@@ -130,8 +132,7 @@ export function Standings({
     <CollapsibleSection
       title="Standings"
       detail={countLabel(standings.length, "player", "players")}
-      showLabel="Show standings"
-      hideLabel="Hide standings"
+      subject="standings"
       defaultOpen
       style={style}
     >
@@ -165,16 +166,15 @@ export function Standings({
 export function CollapsibleSection({
   title,
   detail,
-  showLabel,
-  hideLabel,
+  subject,
   defaultOpen = false,
   style,
   children,
 }: {
   title: string;
   detail: string;
-  showLabel: string;
-  hideLabel: string;
+  /** What the toggle folds away: see `CollapseToggle`. */
+  subject: string;
   defaultOpen?: boolean;
   style?: CSSProperties;
   /** Renders the content; give `contentId` to its root. `reopened` once the user has toggled. */
@@ -186,42 +186,22 @@ export function CollapsibleSection({
   const contentId = useId();
   return (
     <section aria-labelledby={headingId} className="animate-rise flex flex-col gap-3" style={style}>
-      {/* Same look as SectionHeader, but the detail wraps under the title on narrow screens
-          instead of being cut off by the wide Show/Hide button. */}
-      <div className="flex min-h-12 items-center gap-3">
-        <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3">
-          <h2 id={headingId} className="font-display text-3xl uppercase">
-            {title}
-          </h2>
-          <span className="text-sm font-semibold whitespace-nowrap text-base-content/60">
-            {detail}
-          </span>
-        </div>
-        <button
-          type="button"
-          className="btn shrink-0 btn-outline border-base-300"
-          aria-expanded={open}
-          aria-controls={contentId}
-          onClick={() => {
-            setOpen(!open);
-            setToggled(true);
-          }}
-        >
-          {open ? hideLabel : showLabel}
-          <svg
-            viewBox="0 0 24 24"
-            className={`size-5 transition-transform ${open ? "rotate-180" : ""}`}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2.25}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M6 9l6 6 6-6" />
-          </svg>
-        </button>
-      </div>
+      <SectionHeader
+        id={headingId}
+        title={title}
+        detail={detail}
+        action={
+          <CollapseToggle
+            open={open}
+            subject={subject}
+            controls={contentId}
+            onToggle={() => {
+              setOpen(!open);
+              setToggled(true);
+            }}
+          />
+        }
+      />
       {open ? children(contentId, toggled) : null}
     </section>
   );

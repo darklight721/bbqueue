@@ -74,8 +74,7 @@ function Details({ ended }: { ended: EndedSession }) {
       <CollapsibleSection
         title="Matches"
         detail={countLabel(ended.matches.length, "match", "matches")}
-        showLabel="Show matches"
-        hideLabel="Hide matches"
+        subject="matches"
         style={rise(5.5)}
       >
         {(listId) => (

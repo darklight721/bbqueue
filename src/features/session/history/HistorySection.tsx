@@ -1,5 +1,5 @@
 import { useId, useMemo, useState } from "react";
-import { ChevronDownIcon } from "../../../components/icons.tsx";
+import { CollapseToggle } from "../../../components/CollapseToggle.tsx";
 import { MatchList, MatchRow } from "../../../components/MatchRow.tsx";
 import { usesMixedTargets } from "../../../components/matchTargets.ts";
 import { formatDuration } from "../clock.ts";
@@ -47,19 +47,12 @@ export function HistorySection({
         title="History"
         detail={`${count} ${count === 1 ? "match" : "matches"}`}
         action={
-          <button
-            type="button"
-            className="btn shrink-0 btn-square border-base-300 btn-outline sm:w-auto sm:px-4"
-            aria-expanded={open}
-            aria-controls={listId}
-            onClick={() => setOpen(!open)}
-          >
-            {/* Phones: just the chevron, like Players. */}
-            <span className="sr-only sm:not-sr-only">{open ? "Hide history" : "Show history"}</span>
-            <ChevronDownIcon
-              className={`size-6 transition-transform sm:size-5 ${open ? "rotate-180" : ""}`}
-            />
-          </button>
+          <CollapseToggle
+            open={open}
+            subject="history"
+            controls={listId}
+            onToggle={() => setOpen(!open)}
+          />
         }
       />
 

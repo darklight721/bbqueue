@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-/** Section title row used by every part of the Session screen. */
+/** Section title row used by every part of the Session screen, and by `CollapsibleSection`. */
 export function SectionHeader({
   id,
   title,

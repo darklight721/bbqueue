@@ -1,6 +1,7 @@
 import { useId, useMemo, useState } from "react";
 import { ConfirmDialog } from "../../../components/ConfirmDialog.tsx";
-import { ChevronDownIcon, MenuDotsIcon, PlusIcon } from "../../../components/icons.tsx";
+import { CollapseToggle } from "../../../components/CollapseToggle.tsx";
+import { MenuDotsIcon, PlusIcon } from "../../../components/icons.tsx";
 import { SortControl } from "../../../components/SortControl.tsx";
 import { removePlayer, setSittingOut } from "../../../domain/engine/index.ts";
 import type { SessionPlayer } from "../../../domain/types.ts";
@@ -71,19 +72,12 @@ export function PlayersSection({
         title="Players"
         detail={playersSummary(active)}
         action={
-          <button
-            type="button"
-            className="btn shrink-0 btn-square border-base-300 btn-outline sm:w-auto sm:px-4"
-            aria-expanded={open}
-            aria-controls={bodyId}
-            onClick={() => setOpen(!open)}
-          >
-            {/* Phones: just the chevron, so the player count next to the title has room. */}
-            <span className="sr-only sm:not-sr-only">{open ? "Hide players" : "Show players"}</span>
-            <ChevronDownIcon
-              className={`size-6 transition-transform sm:size-5 ${open ? "rotate-180" : ""}`}
-            />
-          </button>
+          <CollapseToggle
+            open={open}
+            subject="players"
+            controls={bodyId}
+            onToggle={() => setOpen(!open)}
+          />
         }
       />
 
